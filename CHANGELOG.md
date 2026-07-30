@@ -6,6 +6,19 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-07-30 12:01:00 -03:00
+
+### Fixed
+
+- Fixed a self-deadlock in the Executor service event loop that froze every
+  terminal start after the first tab produced output: `handleEvent` held the
+  service mutex while calling `handleOutput`/`finishWork`, which re-acquire the
+  same (non-reentrant) mutex. In practice this made Alt+2 (or clicking a second
+  tab) silently spawn orphaned CLI processes without ever switching focus, so a
+  session could never run two CLI tabs at the same time. The lock is now
+  released before those calls, and an end-to-end regression test covers
+  starting, switching, and reattaching two tabs via Alt+1/Alt+2.
+
 ## [0.1.9] - 2026-07-30 11:31:00 -03:00
 
 ### Changed

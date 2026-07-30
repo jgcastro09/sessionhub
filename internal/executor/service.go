@@ -83,25 +83,29 @@ func (s *Service) handleEvent(event terminal.Event) {
 		instance.ExitCode = event.ExitCode
 		s.instances[event.InstanceID] = instance
 	}
-	if event.Kind == terminal.EventOutput && len(event.Data) > 0 {
-		s.handleOutput(event.InstanceID, event.Data)
-	}
+	// Capture the exit recognition while the lock is held, but defer the
+	// calls that take s.mu themselves (handleOutput, finishWork) until after
+	// it is released — sync.RWMutex isn't reentrant, so calling them here
+	// would deadlock this goroutine forever, permanently freezing
+	// Service.Run()'s event loop while still holding the lock Start() needs
+	// to register any future instance.
+	var exitRecognition Recognition
 	if event.Kind == terminal.EventState && event.ExitCode != nil {
-		// s.mu.Lock() (a write lock) is already held from the top of this
-		// function — sync.RWMutex isn't reentrant, so re-acquiring it here
-		// (even as RLock) would deadlock this goroutine forever, permanently
-		// freezing Service.Run()'s event loop while still holding the lock
-		// Start() needs to register any future instance.
-		_, hasWork := s.work[event.InstanceID]
-		config := s.configs[event.InstanceID]
-		if hasWork {
+		if _, hasWork := s.work[event.InstanceID]; hasWork {
+			config := s.configs[event.InstanceID]
 			recognition := RecognizeExit(config.Rules, *event.ExitCode)
 			if recognition.Matched {
-				s.finishWork(event.InstanceID, recognition)
+				exitRecognition = recognition
 			}
 		}
 	}
 	s.mu.Unlock()
+	if event.Kind == terminal.EventOutput && len(event.Data) > 0 {
+		s.handleOutput(event.InstanceID, event.Data)
+	}
+	if exitRecognition.Matched {
+		s.finishWork(event.InstanceID, exitRecognition)
+	}
 	if event.Kind == terminal.EventState {
 		_ = s.store.UpdateInstance(context.Background(), instance)
 	}
