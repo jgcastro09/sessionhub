@@ -20,21 +20,22 @@ import (
 )
 
 type App struct {
-	Version    string
-	Paths      config.Paths
-	Store      *store.Store
-	Terminals  *terminal.Manager
-	Executors  *executor.Service
-	Context    *contexthub.Service
-	Metrics    *metrics.Calculator
-	Automation *automation.Engine
-	Voice      *voice.Manager
-	ctx        context.Context
-	cancel     context.CancelFunc
-	closeOnce  sync.Once
-	remoteMu   sync.Mutex
-	remoteHost *remote.Host
-	recovered  int64
+	Version             string
+	Paths               config.Paths
+	Store               *store.Store
+	Terminals           *terminal.Manager
+	Executors           *executor.Service
+	Context             *contexthub.Service
+	Metrics             *metrics.Calculator
+	Automation          *automation.Engine
+	AutomationScheduler *automation.Scheduler
+	Voice               *voice.Manager
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	closeOnce           sync.Once
+	remoteMu            sync.Mutex
+	remoteHost          *remote.Host
+	recovered           int64
 }
 
 func New(parent context.Context, paths config.Paths, version string) (*App, error) {
@@ -53,15 +54,22 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 	terminals := terminal.NewManager(ctx, repository, 10_000)
 	executors := executor.New(ctx, repository, terminals)
 	automationEngine := automation.NewEngine(repository, executors, 4)
+	automationScheduler, err := automation.NewScheduler(ctx, paths.Root, repository, executors)
+	if err != nil {
+		_ = repository.Close()
+		cancel()
+		return nil, fmt.Errorf("load automations: %w", err)
+	}
 	a := &App{
 		Version: version, Paths: paths, Store: repository,
 		Terminals: terminals, Executors: executors,
 		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
-		Automation: automationEngine,
-		Voice:      voice.NewManager(paths.Tools),
-		ctx:        ctx, cancel: cancel, recovered: recovered,
+		Automation: automationEngine, AutomationScheduler: automationScheduler,
+		Voice: voice.NewManager(paths.Tools),
+		ctx:   ctx, cancel: cancel, recovered: recovered,
 	}
 	go executors.Run()
+	automationScheduler.Start()
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -86,6 +94,7 @@ func (a *App) RecoveredCount() int64 { return a.recovered }
 func (a *App) Close() error {
 	var result error
 	a.closeOnce.Do(func() {
+		a.AutomationScheduler.Close()
 		a.cancel()
 		a.Automation.Wait()
 		result = errors.Join(a.StopRemoteHost(), a.Terminals.Close(), a.Voice.Close(), a.Store.Close())

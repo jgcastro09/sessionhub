@@ -146,6 +146,8 @@ const (
 	queueForm
 	remoteHostForm
 	scheduleForm
+	automationForm
+	automationDetailsView
 	pipelineForm
 	priceForm
 	factoryResetForm
@@ -177,6 +179,7 @@ type formModel struct {
 	// this installForm was opened, so submitForm knows where an
 	// unisolated provider's installer conventionally places its binary.
 	selectedProvider *executor.Provider
+	details          string
 }
 
 type executorChoice struct {
@@ -667,7 +670,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "Remote":
 				m.form = newRemoteHostForm()
 			case "Automations":
-				m.form = newScheduleForm(m.executors)
+				m.form = newAutomationForm(m.sessions, m.executors, m.activeSession)
 			case "Pipelines":
 				m.form = newPipelineForm()
 			case "Metrics":
@@ -684,6 +687,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "Sessions":
 				if m.selected < len(m.sessions) {
 					m.form = editSessionForm(m.sessions[m.selected], m.executors)
+				}
+			case "Automations":
+				if item, ok := m.selectedAutomation(); ok {
+					m.form = editAutomationForm(item)
 				}
 			}
 		case "i":
@@ -711,6 +718,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 						kind: "session", id: session.ID, name: session.Name,
 						message: fmt.Sprintf("Delete session %q? This also clears its instances, checkpoints, queues, pipelines and schedules. The workspace files are untouched.", session.Name),
 					}
+				}
+			case "Automations":
+				if item, ok := m.selectedAutomation(); ok {
+					m.confirm = &confirmRequest{kind: "automation", id: item.ID, name: item.Name,
+						message: fmt.Sprintf("Delete automation %q? Its saved last-run summary will also be removed.", item.Name)}
+				}
+			}
+		case "l":
+			if sections[m.section] == "Automations" {
+				if item, ok := m.selectedAutomation(); ok {
+					m.form = automationDetailsForm(item)
 				}
 			}
 		case "x":
@@ -747,6 +765,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "r":
+			if sections[m.section] == "Automations" {
+				if item, ok := m.selectedAutomation(); ok {
+					if err := m.app.AutomationScheduler.RunNow(item.ID); err != nil {
+						m.lastErr = err.Error()
+					} else {
+						m.status = fmt.Sprintf("Automation %q started manually", item.Name)
+					}
+				}
+				return m, nil
+			}
 			if m.activeTerminal != nil {
 				owner := terminal.Owner{Kind: "local", ID: "operator"}
 				if err := m.activeTerminal.Release(owner); err != nil {
@@ -756,6 +784,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "c":
+			if sections[m.section] == "Automations" {
+				if item, ok := m.selectedAutomation(); ok {
+					if err := m.app.AutomationScheduler.Cancel(item.ID); err != nil {
+						m.lastErr = err.Error()
+					} else {
+						m.status = fmt.Sprintf("Canceling automation %q", item.Name)
+					}
+				}
+				return m, nil
+			}
 			if m.activeSession >= 0 {
 				sessionID := m.sessions[m.activeSession].ID
 				appContext := m.app.Context
@@ -1505,6 +1543,11 @@ func (m Model) updateConfirm(message tea.Msg) (tea.Model, tea.Cmd) {
 				err := m.app.Store.DeleteExecutor(context.Background(), req.id)
 				return savedMsg{kind: "executor", id: req.id, deleted: true, err: err}
 			}
+		case "automation":
+			return m, func() tea.Msg {
+				err := m.app.AutomationScheduler.Delete(req.id)
+				return savedMsg{kind: "automation", id: req.id, deleted: true, err: err}
+			}
 		case "executor-reset":
 			return m, func() tea.Msg {
 				cfg, err := m.app.Store.GetExecutor(context.Background(), req.id)
@@ -1680,9 +1723,50 @@ func (m Model) sectionLength() int {
 		return len(m.sessions)
 	case "Executors":
 		return len(m.executors)
+	case "Automations":
+		return len(m.app.AutomationScheduler.List())
 	default:
 		return 1
 	}
+}
+
+func (m Model) selectedAutomation() (automation.SimpleAutomation, bool) {
+	items := m.app.AutomationScheduler.List()
+	if m.selected < 0 || m.selected >= len(items) {
+		return automation.SimpleAutomation{}, false
+	}
+	return items[m.selected], true
+}
+
+func (m Model) sessionName(sessionID string) string {
+	for _, session := range m.sessions {
+		if session.ID == sessionID {
+			return session.Name
+		}
+	}
+	return "missing session"
+}
+
+func (m Model) automationSessionChoices() string {
+	if len(m.sessions) == 0 {
+		return "(none)"
+	}
+	choices := make([]string, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		choices = append(choices, session.Name+" ("+session.ID+")")
+	}
+	return strings.Join(choices, ", ")
+}
+
+func (m Model) automationExecutorChoices() string {
+	if len(m.executors) == 0 {
+		return "(none)"
+	}
+	choices := make([]string, 0, len(m.executors))
+	for _, cfg := range m.executors {
+		choices = append(choices, cfg.Name+" ("+cfg.ID+")")
+	}
+	return strings.Join(choices, ", ")
 }
 
 func (m Model) View() tea.View {
@@ -2311,7 +2395,47 @@ func (m Model) emptyContent(width, height int) string {
 	case "Pipelines":
 		body.WriteString("Pipelines support prompt, deterministic command, approval, condition, parallel, and consolidation steps.\n\nDependencies, retries, workspace locks, and budgets are enforced by the engine.")
 	case "Automations":
-		body.WriteString("Schedules and watchers run only while this TUI is open.\n\nMissed occurrences use the configured skip, run-once, or ask policy.")
+		body.WriteString(mutedStyle.Render("Automations run only while SessionHub is open.") + "\n\n")
+		items := m.app.AutomationScheduler.List()
+		if len(items) == 0 {
+			body.WriteString("No automations configured yet.\n\nPress " + keyStyle.Render("n") + " to create one.")
+		} else {
+			for i, item := range items {
+				prefix, style := "  ", sideItemStyle
+				if i == m.selected {
+					prefix, style = "› ", sideActiveStyle
+				}
+				next := "—"
+				if item.NextRun != nil {
+					next = item.NextRun.In(time.Local).Format("2006-01-02 15:04")
+				}
+				last := string(item.LastRun.Status)
+				if last == "" {
+					last = "—"
+				}
+				enabled := "disabled"
+				if item.Enabled {
+					enabled = "enabled"
+				}
+				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render(item.Name), mutedStyle.Render("["+enabled+"]")))
+				body.WriteString(fmt.Sprintf("    Session: %s  •  %s  •  Next: %s  •  %d step(s)\n", m.sessionName(item.SessionID), item.Schedule.Type, next, len(item.Steps)))
+				if item.Status == automation.StatusRunning && item.CurrentStep > 0 {
+					executorName := ""
+					if item.CurrentStep <= len(item.Steps) {
+						executorName = m.executorName(item.Steps[item.CurrentStep-1].ExecutorID)
+					}
+					body.WriteString(fmt.Sprintf("    %s\n", keyStyle.Render(fmt.Sprintf("Running step %d of %d • Executor: %s", item.CurrentStep, len(item.Steps), executorName))))
+				} else {
+					body.WriteString(fmt.Sprintf("    Status: %s  •  Last run: %s\n", item.Status, last))
+				}
+				body.WriteString("\n")
+			}
+		}
+		body.WriteString("\n" + titleStyle.Render("Actions") + "\n")
+		body.WriteString("  " + keyStyle.Render("[n New Automation]") + "  " +
+			keyStyle.Render("[r Run Now]") + "  " + keyStyle.Render("[e Edit]") + "  " +
+			keyStyle.Render("[c Cancel]") + "  " + keyStyle.Render("[l Last Run Details]") + "  " +
+			keyStyle.Render("[d Delete]"))
 	case "Metrics":
 		body.WriteString(fmt.Sprintf("Input Tokens     %d\nOutput Tokens    %d\nTotal Tokens     %d\nCache Read       %d\nCache Write      %d\nDuration         %s\n\nCusto equivalente estimado em API: US$ %.6f",
 			m.metrics.InputTokens, m.metrics.OutputTokens, m.metrics.TotalTokens(),
@@ -2640,6 +2764,112 @@ func newScheduleForm(executors []domain.ExecutorConfig) formModel {
 		[]string{"Daily task", "once|daily|weekdays|interval", "13:30", "America/Sao_Paulo", executor, "Prompt sent by PTY", "skip|run_once|ask"})
 }
 
+func newAutomationForm(sessions []domain.Session, executors []domain.ExecutorConfig, activeSession int) formModel {
+	sessionID, executorID := "", ""
+	if activeSession >= 0 && activeSession < len(sessions) {
+		sessionID = sessions[activeSession].ID
+	}
+	if sessionID == "" && len(sessions) > 0 {
+		sessionID = sessions[0].ID
+	}
+	if len(executors) > 0 {
+		executorID = executors[0].ID
+	}
+	return makeForm(automationForm, "New Automation",
+		[]string{"Name", "Session", "Schedule Type", "Date", "Time", "Days of Week", "Enabled", "Steps"},
+		[]string{"Nightly review", sessionID, "once|daily|weekly", "YYYY-MM-DD (once only)", "14:00", "mon,wed,fri (weekly only)", "true", executorID + " | Prompt; executor-id | Next prompt"})
+}
+
+func editAutomationForm(item automation.SimpleAutomation) formModel {
+	form := makeForm(automationForm, "Edit Automation: "+item.Name,
+		[]string{"Name", "Session", "Schedule Type", "Date", "Time", "Days of Week", "Enabled", "Steps"},
+		[]string{"", "session-id", "once|daily|weekly", "YYYY-MM-DD", "14:00", "mon,wed,fri", "true", "executor-id | Prompt; executor-id | Next prompt"})
+	form.editingID = item.ID
+	days := make([]string, 0, len(item.Schedule.DaysOfWeek))
+	for _, day := range item.Schedule.DaysOfWeek {
+		days = append(days, weekdayName(day))
+	}
+	steps := make([]string, 0, len(item.Steps))
+	for _, step := range item.Steps {
+		steps = append(steps, step.ExecutorID+" | "+step.Prompt)
+	}
+	values := []string{item.Name, item.SessionID, string(item.Schedule.Type), item.Schedule.Date, item.Schedule.Time, strings.Join(days, ","), strconv.FormatBool(item.Enabled), strings.Join(steps, "; ")}
+	for i := range values {
+		form.fields[i].SetValue(values[i])
+	}
+	return form
+}
+
+func automationDetailsForm(item automation.SimpleAutomation) formModel {
+	last := item.LastRun
+	started, finished := "—", "—"
+	if last.StartedAt != nil {
+		started = last.StartedAt.In(time.Local).Format("2006-01-02 15:04:05")
+	}
+	if last.FinishedAt != nil {
+		finished = last.FinishedAt.In(time.Local).Format("2006-01-02 15:04:05")
+	}
+	duration := "—"
+	if last.StartedAt != nil && last.FinishedAt != nil {
+		duration = last.FinishedAt.Sub(*last.StartedAt).Round(time.Second).String()
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Status: %s\nTrigger: %s\nStarted: %s\nFinished: %s\nDuration: %s\n", last.Status, last.Trigger, started, finished, duration))
+	if last.FailedStepID != "" {
+		b.WriteString("Failed step: " + last.FailedStepID + "\n")
+	}
+	if last.Error != "" {
+		b.WriteString("Error: " + last.Error + "\n")
+	}
+	if len(last.OutputPreview) > 0 {
+		b.WriteString("\nOutput preview:\n")
+		for i, preview := range last.OutputPreview {
+			b.WriteString(fmt.Sprintf("\nStep %d:\n%s\n", i+1, truncate(preview, 900)))
+		}
+	}
+	return formModel{kind: automationDetailsView, title: "Last Run Details: " + item.Name, details: b.String()}
+}
+
+func weekdayName(day time.Weekday) string {
+	return []string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}[int(day)]
+}
+
+func automationFromValues(values []string, editingID string) (automation.SimpleAutomation, error) {
+	if len(values) != 8 {
+		return automation.SimpleAutomation{}, errors.New("invalid automation form")
+	}
+	enabled, err := strconv.ParseBool(defaultString(values[6], "true"))
+	if err != nil {
+		return automation.SimpleAutomation{}, errors.New("enabled must be true or false")
+	}
+	schedule := automation.SimpleSchedule{
+		Type: automation.SimpleScheduleType(strings.ToLower(strings.TrimSpace(values[2]))),
+		Date: strings.TrimSpace(values[3]), Time: strings.TrimSpace(values[4]),
+	}
+	if schedule.Type == automation.ScheduleWeekly {
+		for _, raw := range strings.Split(values[5], ",") {
+			name := strings.ToLower(strings.TrimSpace(raw))
+			if name == "" {
+				continue
+			}
+			day, ok := map[string]time.Weekday{"sun": time.Sunday, "mon": time.Monday, "tue": time.Tuesday, "wed": time.Wednesday, "thu": time.Thursday, "fri": time.Friday, "sat": time.Saturday}[name]
+			if !ok {
+				return automation.SimpleAutomation{}, fmt.Errorf("unknown day %q (use mon,tue,wed,thu,fri,sat,sun)", name)
+			}
+			schedule.DaysOfWeek = append(schedule.DaysOfWeek, day)
+		}
+	}
+	steps := make([]automation.SimpleStep, 0)
+	for _, raw := range strings.Split(values[7], ";") {
+		parts := strings.SplitN(raw, "|", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			return automation.SimpleAutomation{}, errors.New("steps must use executor-id | prompt; executor-id | prompt")
+		}
+		steps = append(steps, automation.SimpleStep{ExecutorID: strings.TrimSpace(parts[0]), Prompt: strings.TrimSpace(parts[1])})
+	}
+	return automation.SimpleAutomation{ID: editingID, Name: strings.TrimSpace(values[0]), SessionID: strings.TrimSpace(values[1]), Enabled: enabled, Schedule: schedule, Steps: steps}, nil
+}
+
 func newPipelineForm() formModel {
 	return makeForm(pipelineForm, "New pipeline",
 		[]string{"Name", "Original request", "Steps (JSON array)", "Budget (JSON object)", "Save as template"},
@@ -2737,6 +2967,12 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, nil
 	case tea.KeyPressMsg:
+		if m.form.kind == automationDetailsView {
+			if msg.String() == "esc" || msg.String() == "enter" || msg.String() == "l" {
+				m.form = formModel{}
+			}
+			return m, nil
+		}
 		if m.form.kind == providerPickForm {
 			return m.updateProviderPick(msg)
 		}
@@ -3028,6 +3264,16 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			saved, err := m.app.Store.SaveSchedule(context.Background(), schedule)
 			return savedMsg{kind: "schedule", id: saved.ID, err: err}
 		}
+	case automationForm:
+		item, err := automationFromValues(values, m.form.editingID)
+		if err != nil {
+			m.form.err = err.Error()
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			_, err := m.app.AutomationScheduler.Save(item)
+			return savedMsg{kind: "automation", id: item.ID, err: err}
+		}
 	case pipelineForm:
 		if m.activeSession < 0 {
 			m.form.err = "select a session first"
@@ -3185,6 +3431,9 @@ func (m Model) renderFormPanel() string {
 	if m.form.kind == providerPickForm {
 		return m.renderProviderPickPanel()
 	}
+	if m.form.kind == automationDetailsView {
+		return modalStyle.Width(min(86, max(40, m.width-8))).Render(titleStyle.Render(m.form.title) + "\n\n" + m.form.details + "\n" + mutedStyle.Render("enter or esc closes"))
+	}
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(m.form.title) + "\n\n")
 	start := 0
@@ -3242,6 +3491,10 @@ func (m Model) renderFormPanel() string {
 		hint = "tab next • space toggles Executor, ↑↓ moves within the list • ctrl+s save • esc cancel"
 	case factoryResetForm:
 		hint = fmt.Sprintf("type %q exactly, then ctrl+s to WIPE EVERYTHING • esc cancels", factoryResetPhrase)
+	}
+	if m.form.kind == automationForm {
+		b.WriteString("\n" + mutedStyle.Render("Use existing IDs — Sessions: "+m.automationSessionChoices()+"\nExecutors: "+m.automationExecutorChoices()) + "\n")
+		hint = "Steps: executor-id | prompt; executor-id | prompt • ctrl+s save • esc cancel"
 	}
 	b.WriteString("\n" + mutedStyle.Render(hint))
 	return modalStyle.Width(min(86, max(40, m.width-8))).Render(b.String())

@@ -34,6 +34,19 @@ type activeWork struct {
 	StartedAt  time.Time
 	LastOutput time.Time
 	Deadline   time.Time
+	// done is set by the simple Automation scheduler. Queue and pipeline
+	// callers continue using the persisted-work resolution path below.
+	done chan WorkResult
+}
+
+// WorkResult is the bounded completion evidence returned to the simple
+// Automation scheduler. It deliberately exposes a preview rather than a
+// full terminal transcript, which may contain a large or sensitive output.
+type WorkResult struct {
+	InstanceID string
+	Outcome    domain.State
+	Reason     string
+	Output     string
 }
 
 func New(ctx context.Context, repository *store.Store, terminals *terminal.Manager) *Service {
@@ -97,6 +110,10 @@ func (s *Service) handleEvent(event terminal.Event) {
 			recognition := RecognizeExit(config.Rules, *event.ExitCode)
 			if recognition.Matched {
 				exitRecognition = recognition
+			} else if *event.ExitCode == 0 {
+				exitRecognition = Recognition{Matched: true, RuleID: "process_exit", Outcome: domain.StateSucceeded, Reason: "process exited successfully"}
+			} else {
+				exitRecognition = Recognition{Matched: true, RuleID: "process_exit", Outcome: domain.StateFailed, Reason: fmt.Sprintf("process exited with status %d", *event.ExitCode)}
 			}
 		}
 	}
@@ -115,6 +132,70 @@ func (s *Service) handleEvent(event terminal.Event) {
 			SessionID: instance.SessionID, Level: "error", Kind: "terminal",
 			Message: event.Err.Error(),
 		})
+	}
+}
+
+// StartOrReuse uses the normal Session Hub instance lifecycle. An existing
+// live terminal for the same session/executor is retained; otherwise Start
+// creates it with the session workspace and normal PTY manager.
+func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string, width, height int) (*terminal.Session, domain.Instance, error) {
+	s.mu.RLock()
+	for _, instance := range s.instances {
+		if instance.SessionID == sessionID && instance.ExecutorID == executorID &&
+			(instance.State == domain.StateRunning || instance.State == domain.StateWaiting) {
+			if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
+				s.mu.RUnlock()
+				return live, instance, nil
+			}
+		}
+	}
+	s.mu.RUnlock()
+	return s.Start(ctx, sessionID, executorID, width, height)
+}
+
+// RunAutomationStep is the sequential, in-process automation bridge. It
+// intentionally delegates process creation, PTY writes, terminal leases and
+// recognition to Service rather than reimplementing any of those concerns.
+func (s *Service) RunAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int) (WorkResult, error) {
+	term, instance, err := s.StartOrReuse(ctx, sessionID, executorID, width, height)
+	if err != nil {
+		return WorkResult{}, err
+	}
+	owner := terminal.Owner{Kind: "automation", ID: workID}
+	if err := term.Acquire(owner); err != nil {
+		return WorkResult{InstanceID: instance.ID}, err
+	}
+	defer term.Release(owner)
+	if err := term.SendPrompt(owner, prompt); err != nil {
+		return WorkResult{InstanceID: instance.ID}, err
+	}
+	now := time.Now().UTC()
+	done := make(chan WorkResult, 1)
+	s.mu.Lock()
+	config := s.configs[instance.ID]
+	work := &activeWork{ID: workID, InstanceID: instance.ID, Prompt: prompt, StartedAt: now, LastOutput: now, done: done}
+	if config.Timeout > 0 {
+		work.Deadline = now.Add(config.Timeout)
+	}
+	s.work[instance.ID] = work
+	s.mu.Unlock()
+
+	select {
+	case result := <-done:
+		if result.Outcome == domain.StateSucceeded || result.Outcome == domain.StateFinished {
+			return result, nil
+		}
+		return result, fmt.Errorf("%s", result.Reason)
+	case <-ctx.Done():
+		s.mu.Lock()
+		if current := s.work[instance.ID]; current != nil && current.ID == workID {
+			delete(s.work, instance.ID)
+		}
+		s.mu.Unlock()
+		// Stop is the established, process-tree-safe cancellation path. It is
+		// also used when an automation is cancelled or Session Hub closes.
+		_ = s.Stop(context.Background(), instance.ID)
+		return WorkResult{InstanceID: instance.ID, Outcome: domain.StateCanceled, Reason: ctx.Err().Error()}, ctx.Err()
 	}
 }
 
@@ -302,13 +383,17 @@ func (s *Service) finishWork(instanceID string, recognition Recognition) {
 		"reason":           recognition.Reason,
 		"output":           string(work.Output),
 	})
-	err := s.store.ResolveRecognizedWork(context.Background(), work.ID, outcome,
-		recognition.RuleID, result, recognition.Reason)
-	if err != nil {
-		_ = s.store.Log(context.Background(), domain.LogEntry{
-			SessionID: instance.SessionID, Level: "error", Kind: "recognition",
-			Message: err.Error(),
-		})
+	if work.done != nil {
+		work.done <- WorkResult{InstanceID: instanceID, Outcome: outcome, Reason: recognition.Reason, Output: outputPreview(work.Output)}
+	} else {
+		err := s.store.ResolveRecognizedWork(context.Background(), work.ID, outcome,
+			recognition.RuleID, result, recognition.Reason)
+		if err != nil {
+			_ = s.store.Log(context.Background(), domain.LogEntry{
+				SessionID: instance.SessionID, Level: "error", Kind: "recognition",
+				Message: err.Error(),
+			})
+		}
 	}
 	metric := s.calculator.Measure(work.Prompt, string(work.Output), config.Tokenizer, metrics.Usage{})
 	metric.SessionID, metric.ExecutorID, metric.InstanceID =
@@ -321,4 +406,12 @@ func (s *Service) finishWork(instanceID string, recognition Recognition) {
 		}
 	}
 	_ = s.store.SaveMetric(context.Background(), metric)
+}
+
+func outputPreview(output []byte) string {
+	const max = 1200
+	if len(output) <= max {
+		return string(output)
+	}
+	return string(output[len(output)-max:])
 }

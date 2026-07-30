@@ -6,6 +6,18 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-07-30 18:18:25 -03:00
+
+### Added
+
+- Added the first in-app Automation workspace. Automations persist in `~/.sessionhub/automations.json`, can target an existing Session, run once/daily/weekly, carry ordered executor-prompt steps, and expose New, Edit, Run Now, Cancel, Delete, and Last Run Details actions.
+- Added an in-process scheduler that runs only while SessionHub is open. It never installs a system task or background daemon, never replays missed daily/weekly work, and records a past one-time occurrence as `Missed`.
+- Added sequential automation execution through the existing Session → Executor → PTY path, including safe cancellation, duplicate-run protection, saved bounded output previews, and clear failures for deleted sessions or executors.
+
+### Changed
+
+- Executor completion now treats a normal process exit as completion evidence when no explicit exit recognition rule is configured; non-zero exits fail the active work. Interactive CLIs still use their configured recognition rules to signal completion.
+
 ## [0.3.12] - 2026-07-30 17:55:18 -03:00
 
 ### Added
