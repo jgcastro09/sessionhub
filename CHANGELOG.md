@@ -6,7 +6,11 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.8] - 2026-07-30 11:30:00 -03:00
+## [0.1.9] - 2026-07-30 11:31:00 -03:00
+
+### Changed
+
+- Updated `AGENTS.md` rule #6 mandating direct terminal publishing inside `npm/` via `npm publish --access public`.
 
 ### Added
 
@@ -59,7 +63,8 @@ All notable changes to Session Hub are documented here. The format follows
 - Git workspace summaries, release update checks, and the NPM binary installer.
 - Cross-platform CI and reproducible release configuration.
 
-[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/jgcastro09/sessionhub/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jgcastro09/sessionhub/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/jgcastro09/sessionhub/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/jgcastro09/sessionhub/compare/v0.1.5...v0.1.6
