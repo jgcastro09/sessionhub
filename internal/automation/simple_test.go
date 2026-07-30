@@ -73,12 +73,12 @@ func TestSchedulerSanitizesTerminalColorsBeforeSavingHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.items["a"] = SimpleAutomation{ID: "a", Status: StatusRunning}
-	s.setLiveOutput("a", "\x1b[48;5;0mblack background\x1b[0m\r\nanswer")
+	s.setLiveOutput("a", "\x1b[38;2;255;255;255mwhite text\x1b[48;5;0mblack background\x1b[0m\r\nanswer")
 	item, ok := s.Get("a")
 	if !ok {
 		t.Fatal("automation missing")
 	}
-	if strings.Contains(item.LiveOutput, "\x1b") || item.LiveOutput != "black background\nanswer" {
+	if strings.Contains(item.LiveOutput, "\x1b") || item.LiveOutput != "white textblack background\nanswer" {
 		t.Fatalf("terminal output was not converted to safe plain text: %q", item.LiveOutput)
 	}
 	s.Close()

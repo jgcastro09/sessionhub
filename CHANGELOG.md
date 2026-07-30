@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.25] - 2026-07-30 20:07:41 -03:00
+
+### Fixed
+
+- Ruleless interactive executors such as OpenCode now complete an Automation step after producing output and remaining quiet for five seconds, instead of staying `Running` indefinitely after their answer. The History modal's terminal sanitizer now also removes true-color CSI and OSC control sequences left by full-screen TUIs.
+
 ## [0.3.24] - 2026-07-30 20:00:59 -03:00
 
 ### Fixed

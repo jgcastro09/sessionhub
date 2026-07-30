@@ -44,6 +44,12 @@ type activeWork struct {
 // only when Automation itself has just activated an inactive tab.
 const automationStartupDelay = 5 * time.Second
 
+// Interactive CLIs such as OpenCode remain running after answering. When an
+// executor has no configured completion rule, Automation can still conclude
+// the step once it has observed output and the PTY has been quiet long enough
+// for the response to settle.
+const automationCompletionQuiet = 5 * time.Second
+
 // WorkResult is the bounded completion evidence returned to the simple
 // Automation scheduler. It deliberately exposes a preview rather than a
 // full terminal transcript, which may contain a large or sensitive output.
@@ -545,6 +551,14 @@ func (s *Service) checkWork(now time.Time) {
 		recognition := RecognizeStable(check.config.Rules, now.Sub(check.work.LastOutput))
 		if recognition.Matched {
 			s.finishWork(check.instanceID, recognition)
+			continue
+		}
+		if check.work.done != nil && len(check.config.Rules) == 0 && len(check.work.Output) > 0 &&
+			now.Sub(check.work.LastOutput) >= automationCompletionQuiet {
+			s.finishWork(check.instanceID, Recognition{
+				Matched: true, RuleID: "automation_idle", Outcome: domain.StateSucceeded,
+				Reason: "executor output settled after automation response",
+			})
 		}
 	}
 }

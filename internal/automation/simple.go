@@ -421,6 +421,7 @@ func (s *Scheduler) setLiveOutput(automationID, output string) {
 // background sequences; rendering those sequences inside the Hub UI can
 // paint an unrelated black panel over the Automation list.
 func SanitizeTerminalOutput(value string) string {
+	value = stripTerminalControlSequences(value)
 	value = ansi.Strip(value)
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	value = strings.ReplaceAll(value, "\r", "\n")
@@ -435,6 +436,65 @@ func SanitizeTerminalOutput(value string) string {
 		lines = lines[:len(lines)-1]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// stripTerminalControlSequences handles CSI/OSC control sequences directly.
+// The generic ANSI helper intentionally leaves a few incomplete or unusual
+// true-color sequences emitted by full-screen TUIs; those must not leak into
+// a text-only Automation history modal.
+func stripTerminalControlSequences(value string) string {
+	var out strings.Builder
+	for i := 0; i < len(value); {
+		if value[i] == 0x1b {
+			i++
+			if i >= len(value) {
+				break
+			}
+			switch value[i] {
+			case '[': // CSI: ESC [ ... final-byte
+				i++
+				for i < len(value) {
+					if value[i] >= 0x40 && value[i] <= 0x7e {
+						i++
+						break
+					}
+					i++
+				}
+			case ']': // OSC: ESC ] ... BEL or ESC \\
+				i++
+				for i < len(value) {
+					if value[i] == '\a' {
+						i++
+						break
+					}
+					if value[i] == 0x1b && i+1 < len(value) && value[i+1] == '\\' {
+						i += 2
+						break
+					}
+					i++
+				}
+			default:
+				i++ // two-byte escape sequence
+			}
+			continue
+		}
+		if value[i] == 0x9b { // C1 CSI
+			i++
+			for i < len(value) {
+				if value[i] >= 0x40 && value[i] <= 0x7e {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if value[i] >= 0x20 || value[i] == '\n' || value[i] == '\t' || value[i] == '\r' {
+			out.WriteByte(value[i])
+		}
+		i++
+	}
+	return out.String()
 }
 
 func outputPreviewString(value string, maxBytes int) string {
