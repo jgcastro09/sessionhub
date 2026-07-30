@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/jgcastro09/sessionhub/internal/voice"
+)
 
 func TestVoiceTranscriptDelta(t *testing.T) {
 	tests := []struct {
@@ -21,5 +25,14 @@ func TestVoiceTranscriptDelta(t *testing.T) {
 				t.Fatalf("voiceTranscriptDelta(%q, %q) = %q, want %q", test.previous, test.current, got, test.want)
 			}
 		})
+	}
+}
+
+func TestFormatVoiceProgress(t *testing.T) {
+	if got, want := formatVoiceProgress(voice.Progress{Stage: "Whisper model", Current: 50 << 20, Total: 100 << 20}), "Whisper model: 50% (50.0 / 100.0 MB)"; got != want {
+		t.Fatalf("formatVoiceProgress() = %q, want %q", got, want)
+	}
+	if got, want := formatVoiceProgress(voice.Progress{Stage: "Starting local Whisper server"}), "Starting local Whisper server"; got != want {
+		t.Fatalf("formatVoiceProgress() = %q, want %q", got, want)
 	}
 }

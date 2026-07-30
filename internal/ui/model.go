@@ -100,6 +100,14 @@ type voiceReadyMsg struct {
 	err error
 }
 
+// voiceProgressMsg carries a best-effort update from the one-time local
+// Whisper installation. updates is retained so Update can wait for the next
+// update without blocking Bubble Tea's event loop.
+type voiceProgressMsg struct {
+	progress voice.Progress
+	updates  <-chan voice.Progress
+}
+
 // voiceTranscribedMsg carries a finished transcription (see
 // toggleDictation) back to whichever terminal was focused when recording
 // started (target), even if focus moved on in the meantime.
@@ -537,6 +545,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.recordingTerminal = m.activeTerminal
 		m.status = "🎤 Recording... text will appear as you speak • F9 stops"
 		return m, m.transcribePartialCmd(m.recordingID, recorder)
+	case voiceProgressMsg:
+		if !m.voiceBusy {
+			return m, nil
+		}
+		m.status = formatVoiceProgress(msg.progress)
+		return m, waitVoiceProgressCmd(msg.updates)
 	case voicePartialMsg:
 		if !m.recording || msg.recordingID != m.recordingID {
 			return m, nil
@@ -1195,11 +1209,55 @@ func (m Model) toggleDictation() (Model, tea.Cmd) {
 		}
 	}
 	m.voiceBusy = true
-	m.status = "Setting up local voice transcription (first time may take a few minutes to download)..."
+	m.status = "Preparing local voice transcription..."
 	manager := m.app.Voice
-	return m, func() tea.Msg {
-		return voiceReadyMsg{err: manager.Ensure(context.Background())}
+	updates := make(chan voice.Progress, 1)
+	return m, tea.Batch(voiceSetupCmd(manager, updates), waitVoiceProgressCmd(updates))
+}
+
+func voiceSetupCmd(manager *voice.Manager, updates chan voice.Progress) tea.Cmd {
+	return func() tea.Msg {
+		defer close(updates)
+		err := manager.EnsureWithProgress(context.Background(), func(progress voice.Progress) {
+			// Download readers must never wait on UI rendering. Retain the most
+			// recent update and drop a stale one when the event loop is busy.
+			select {
+			case updates <- progress:
+			default:
+				select {
+				case <-updates:
+				default:
+				}
+				select {
+				case updates <- progress:
+				default:
+				}
+			}
+		})
+		return voiceReadyMsg{err: err}
 	}
+}
+
+func waitVoiceProgressCmd(updates <-chan voice.Progress) tea.Cmd {
+	return func() tea.Msg {
+		progress, ok := <-updates
+		if !ok {
+			return nil
+		}
+		return voiceProgressMsg{progress: progress, updates: updates}
+	}
+}
+
+func formatVoiceProgress(progress voice.Progress) string {
+	if progress.Total <= 0 {
+		return progress.Stage
+	}
+	percent := progress.Current * 100 / progress.Total
+	if percent > 100 {
+		percent = 100
+	}
+	return fmt.Sprintf("%s: %d%% (%.1f / %.1f MB)", progress.Stage, percent,
+		float64(progress.Current)/(1024*1024), float64(progress.Total)/(1024*1024))
 }
 
 // transcribePartialCmd waits just long enough to collect a useful phrase,

@@ -27,7 +27,7 @@ const (
 // EnsureInstalled downloads and verifies whisper.cpp's official prebuilt
 // Windows binary + its model on first use, or returns immediately if a
 // previous run already did so.
-func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
+func EnsureInstalled(ctx context.Context, toolsRoot string, report ProgressReporter) (Installed, error) {
 	dir := filepath.Join(toolsRoot, "whisper", whisperVersion)
 	installed := Installed{
 		ServerExe: filepath.Join(dir, "whisper-server.exe"),
@@ -37,10 +37,11 @@ func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return Installed{}, fmt.Errorf("create whisper tools dir: %w", err)
 		}
-		archive, err := downloadVerified(ctx, whisperDownloadURL, whisperAssetSHA256, maxArchiveBytes)
+		archive, err := downloadVerified(ctx, whisperDownloadURL, whisperAssetSHA256, maxArchiveBytes, "Whisper tools", report)
 		if err != nil {
 			return Installed{}, fmt.Errorf("download whisper.cpp: %w", err)
 		}
+		reportProgress(report, Progress{Stage: "Installing Whisper tools"})
 		if err := extractZip(archive, dir); err != nil {
 			return Installed{}, fmt.Errorf("extract whisper.cpp: %w", err)
 		}
@@ -49,7 +50,7 @@ func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
 		}
 	}
 
-	modelPath, err := ensureModel(ctx, dir)
+	modelPath, err := ensureModel(ctx, toolsRoot, dir, report)
 	if err != nil {
 		return Installed{}, err
 	}

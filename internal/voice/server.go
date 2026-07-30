@@ -38,6 +38,12 @@ func NewManager(toolsRoot string) *Manager {
 // running. Safe to call every time dictation is invoked — it's a no-op once
 // the server is up.
 func (m *Manager) Ensure(ctx context.Context) error {
+	return m.EnsureWithProgress(ctx, nil)
+}
+
+// EnsureWithProgress is Ensure with optional, UI-friendly progress updates
+// for the one-time local tools and model download.
+func (m *Manager) EnsureWithProgress(ctx context.Context, report ProgressReporter) error {
 	m.mu.Lock()
 	if m.cmd != nil {
 		m.mu.Unlock()
@@ -56,7 +62,8 @@ func (m *Manager) Ensure(ctx context.Context) error {
 		m.mu.Unlock()
 	}()
 
-	installed, err := EnsureInstalled(ctx, m.toolsRoot)
+	reportProgress(report, Progress{Stage: "Checking local Whisper files"})
+	installed, err := EnsureInstalled(ctx, m.toolsRoot, report)
 	if err != nil {
 		return err
 	}
@@ -66,6 +73,7 @@ func (m *Manager) Ensure(ctx context.Context) error {
 		return fmt.Errorf("find a free port for whisper-server: %w", err)
 	}
 
+	reportProgress(report, Progress{Stage: "Starting local Whisper server"})
 	cmd := exec.Command(installed.ServerExe,
 		"--host", "127.0.0.1",
 		"--port", fmt.Sprintf("%d", port),
@@ -91,6 +99,7 @@ func (m *Manager) Ensure(ctx context.Context) error {
 	m.baseURL = baseURL
 	m.installed = installed
 	m.mu.Unlock()
+	reportProgress(report, Progress{Stage: "Voice transcription ready"})
 	return nil
 }
 

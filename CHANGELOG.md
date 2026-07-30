@@ -6,6 +6,16 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-07-30 17:39:49 -03:00
+
+### Added
+
+- The first local Whisper setup now shows live, meaningful status in the UI: download stage, percentage, and transferred/total MB for both the platform tools and multilingual model, followed by verification and local server startup states instead of a generic waiting message.
+
+### Changed
+
+- The multilingual `ggml-base.bin` model is now stored once at `~/.sessionhub/tools/whisper-models/ggml-base.bin`, independent of macOS/Windows tool versions. It is reused across restarts and upgrades; existing verified model files are hard-linked into this shared location during the first upgrade, avoiding another ~141MB download.
+
 ## [0.3.9] - 2026-07-30 17:32:48 -03:00
 
 ### Added

@@ -42,7 +42,7 @@ const (
 
 // EnsureInstalled downloads and verifies SessionHub's self-built macOS
 // whisper.cpp + recorder bundle, plus the shared model, on first use.
-func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
+func EnsureInstalled(ctx context.Context, toolsRoot string, report ProgressReporter) (Installed, error) {
 	if macosVoiceAssetSHA256 == "" {
 		return Installed{}, fmt.Errorf(
 			"macOS voice tools checksum isn't pinned yet — run the macos-voice-tools " +
@@ -59,10 +59,11 @@ func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return Installed{}, fmt.Errorf("create whisper tools dir: %w", err)
 		}
-		archive, err := downloadVerified(ctx, macosVoiceURL, macosVoiceAssetSHA256, maxArchiveBytes)
+		archive, err := downloadVerified(ctx, macosVoiceURL, macosVoiceAssetSHA256, maxArchiveBytes, "Whisper tools", report)
 		if err != nil {
 			return Installed{}, fmt.Errorf("download macOS voice tools: %w", err)
 		}
+		reportProgress(report, Progress{Stage: "Installing Whisper tools"})
 		if err := extractTarGz(archive, dir); err != nil {
 			return Installed{}, fmt.Errorf("extract macOS voice tools: %w", err)
 		}
@@ -79,7 +80,7 @@ func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
 		}
 	}
 
-	modelPath, err := ensureModel(ctx, dir)
+	modelPath, err := ensureModel(ctx, toolsRoot, dir, report)
 	if err != nil {
 		return Installed{}, err
 	}
