@@ -24,15 +24,15 @@ func ValidateListenAddress(address string) (netip.AddrPort, error) {
 	if value.Port() == 0 {
 		return netip.AddrPort{}, fmt.Errorf("remote listen port cannot be zero")
 	}
-	if !IsTailscaleIP(value.Addr()) {
-		return netip.AddrPort{}, fmt.Errorf("remote host must bind a Tailscale address, got %s", value.Addr())
+	if !isTrustedRemoteAddress(value.Addr()) {
+		return netip.AddrPort{}, fmt.Errorf("remote host must bind a local-network or Tailscale address, got %s", value.Addr())
 	}
 	assigned, err := localAddresses()
 	if err != nil {
 		return netip.AddrPort{}, err
 	}
 	if !assigned[value.Addr()] {
-		return netip.AddrPort{}, fmt.Errorf("Tailscale address %s is not assigned to this host", value.Addr())
+		return netip.AddrPort{}, fmt.Errorf("remote address %s is not assigned to this host", value.Addr())
 	}
 	return value, nil
 }
@@ -42,10 +42,15 @@ func ValidateRemoteAddress(address string) (netip.AddrPort, error) {
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("remote address must be IP:port: %w", err)
 	}
-	if !IsTailscaleIP(value.Addr()) {
-		return netip.AddrPort{}, fmt.Errorf("remote client may connect only to a Tailscale address")
+	if !isTrustedRemoteAddress(value.Addr()) {
+		return netip.AddrPort{}, fmt.Errorf("remote client may connect only to a local-network or Tailscale address")
 	}
 	return value, nil
+}
+
+func isTrustedRemoteAddress(address netip.Addr) bool {
+	address = address.Unmap()
+	return address.IsLoopback() || address.IsPrivate() || IsTailscaleIP(address)
 }
 
 func localAddresses() (map[netip.Addr]bool, error) {

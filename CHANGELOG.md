@@ -6,6 +6,15 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.29] - 2026-07-30 20:52:06 -03:00
+
+### Added
+
+- Remote Mode now starts automatically with SessionHub, discovers other open SessionHubs on the local network and Tailscale, and shows computer name, online status, network, and address in the Remote tab.
+- Selecting an online device connects its SessionHub environment: remote sessions and executor tabs are loaded through the existing `StartOrReuse → PTY` flow, while keyboard input, paste, resize, and terminal snapshots stay on the selected remote terminal.
+- Remote control is now explicitly one-to-one. A controlled SessionHub accepts one controller at a time, transfers only an idle local terminal lease when needed, and returns terminal control when the connection closes.
+- Both sides visibly enter Remote Mode: the controller uses a green interface/banner, while the controlled computer uses amber with the controller name shown in the top bar.
+
 ## [0.3.28] - 2026-07-30 20:28:59 -03:00
 
 ### Fixed

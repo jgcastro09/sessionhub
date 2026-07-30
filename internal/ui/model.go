@@ -25,6 +25,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/gitstate"
 	"github.com/jgcastro09/sessionhub/internal/id"
+	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	updatecheck "github.com/jgcastro09/sessionhub/internal/update"
 	"github.com/jgcastro09/sessionhub/internal/voice"
@@ -45,6 +46,22 @@ type dataMsg struct {
 	git       *gitstate.State
 	err       error
 }
+
+type remoteConnectedMsg struct {
+	controller *remote.Controller
+	device     remote.Device
+	sessions   []domain.Session
+	executors  []domain.ExecutorConfig
+	err        error
+}
+
+type remoteStartedMsg struct {
+	instance domain.Instance
+	cfg      domain.ExecutorConfig
+	err      error
+}
+
+type remoteInputMsg struct{ err error }
 
 type savedMsg struct {
 	kind    string
@@ -230,7 +247,13 @@ type Model struct {
 	instances      []domain.Instance
 	activeSession  int
 	activeTerminal *terminal.Session
-	activeInstance domain.Instance
+	// remoteController is present only while this UI is controlling another
+	// SessionHub. Local state is reloaded from the store immediately after
+	// disconnecting, so Remote Mode never mutates or replaces local records.
+	remoteController   *remote.Controller
+	remoteDevice       remote.Device
+	remoteTabInstances map[string]string
+	activeInstance     domain.Instance
 	// scrollOffset is how many lines back into the active terminal's
 	// scrollback the view currently shows (0 = live tail).
 	scrollOffset    int
@@ -309,9 +332,10 @@ func New(application *app.App) Model {
 	vp := viewport.New()
 	return Model{
 		app: application, sidebar: true, activeSession: -1,
-		viewport:     vp,
-		tabInstances: make(map[string]string),
-		status:       "click or use keys • ctrl+g command mode • n new session • q quit",
+		viewport:           vp,
+		tabInstances:       make(map[string]string),
+		remoteTabInstances: make(map[string]string),
+		status:             "click or use keys • ctrl+g command mode • n new session • q quit",
 	}
 }
 
@@ -361,6 +385,7 @@ func tick() tea.Cmd {
 
 func (m Model) reload() tea.Cmd {
 	application := m.app
+	controller := m.remoteController
 	sessionID := ""
 	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
 		sessionID = m.sessions[m.activeSession].ID
@@ -368,6 +393,17 @@ func (m Model) reload() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
+		if controller != nil {
+			sessions, err := controller.Sessions(ctx)
+			if err != nil {
+				return dataMsg{err: err}
+			}
+			executors, err := controller.Executors(ctx)
+			if err != nil {
+				return dataMsg{err: err}
+			}
+			return dataMsg{sessions: sessions, executors: executors}
+		}
 		sessions, err := application.Store.ListSessions(ctx)
 		if err != nil {
 			return dataMsg{err: err}
@@ -416,6 +452,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return next, cmd
 		}
 	}
+	if m.focus && m.remoteController != nil {
+		if next, cmd, handled := m.updateRemoteTerminal(message); handled {
+			return next, cmd
+		}
+	}
 	if m.focus {
 		if next, cmd, handled := m.updateTerminal(message); handled {
 			return next, cmd
@@ -453,6 +494,43 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.tabInstances[key] = instance.ID
 				}
 			}
+		}
+	case remoteConnectedMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Couldn't connect remote device: " + msg.err.Error()
+			return m, nil
+		}
+		m.remoteController, m.remoteDevice = msg.controller, msg.device
+		m.remoteTabInstances = make(map[string]string)
+		m.sessions, m.executors, m.instances = msg.sessions, msg.executors, nil
+		m.activeSession, m.activeTerminal, m.focus = -1, nil, false
+		if len(m.sessions) > 0 {
+			m.activeSession = 0
+		}
+		m.status = fmt.Sprintf("REMOTE CONTROL • connected to %s • select a CLI tab", msg.device.Name)
+		m.toastMessage = "Remote control active — press d in Remote to return locally"
+		m.toastExpires = time.Now().Add(8 * time.Second)
+		m.resize()
+	case remoteStartedMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Couldn't open remote terminal: " + msg.err.Error()
+			return m, nil
+		}
+		if m.remoteTabInstances == nil {
+			m.remoteTabInstances = make(map[string]string)
+		}
+		m.remoteTabInstances[tabKeyFor(msg.instance.SessionID, msg.instance.ExecutorID)] = msg.instance.ID
+		m.activeTerminal = nil
+		m.activeInstance = msg.instance
+		m.focus, m.scrollOffset = true, 0
+		m.status = fmt.Sprintf("REMOTE CONTROL • %s on %s • f12 returns to remote hub", msg.cfg.Name, m.remoteDevice.Name)
+		m.resize()
+	case remoteInputMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Remote terminal input failed: " + msg.err.Error()
 		}
 	case savedMsg:
 		if msg.err != nil {
@@ -635,6 +713,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.reload()
 	case tea.KeyPressMsg:
+		// A connected remote hub is view/control-only in this first version:
+		// terminal tabs use the remote PTY, while local configuration actions
+		// stay local and cannot accidentally edit the other computer's store.
+		if m.remoteController != nil && strings.Contains("n e i s x c r", msg.String()) && sections[m.section] != "Remote" {
+			m.status = "Remote control exposes sessions and CLI terminals only • return locally in Remote (d) to edit configuration"
+			return m, nil
+		}
 		switch msg.String() {
 		case "q":
 			return m, tea.Quit
@@ -683,7 +768,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "Queues":
 				m.form = newQueueForm(m.executors)
 			case "Remote":
-				m.form = newRemoteHostForm()
+				m.status = "Remote discovery is automatic — select an online device and press Enter to connect"
 			case "Automations":
 				m.form = newAutomationForm(m.sessions, m.executors, m.activeSession)
 			case "Pipelines":
@@ -718,6 +803,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "d":
 			switch sections[m.section] {
+			case "Remote":
+				if m.remoteController != nil {
+					controller := m.remoteController
+					m.remoteController = nil
+					m.remoteTabInstances = make(map[string]string)
+					m.activeTerminal, m.focus = nil, false
+					m.status = "Returned to local SessionHub environment"
+					return m, func() tea.Msg { _ = controller.Close(); return savedMsg{kind: "local environment"} }
+				}
 			case "Executors":
 				if m.selected < len(m.executors) {
 					cfg := m.executors[m.selected]
@@ -1612,6 +1706,19 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 				"%q is registered. Add it to a session (Sessions: n or e) to open it as a tab, or ctrl+t here to validate it.",
 				m.executors[m.selected].Name)
 		}
+	case "Remote":
+		if m.remoteController != nil {
+			m.status = fmt.Sprintf("Controlling %s • press d to return to this computer", m.remoteDevice.Name)
+			return m, nil
+		}
+		devices := m.app.RemoteDevices()
+		if m.selected < 0 || m.selected >= len(devices) {
+			m.status = "No online SessionHub found yet — both apps must be open on the LAN or Tailscale"
+			return m, nil
+		}
+		device := devices[m.selected]
+		m.status = "Connecting to " + device.Name + "..."
+		return m, m.connectRemote(device)
 	case "Settings":
 		if m.availableUpdate != nil {
 			currentVer := "unknown"
@@ -1674,6 +1781,16 @@ func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	session := m.sessions[m.activeSession]
+	if m.remoteController != nil {
+		width, height := m.terminalSize()
+		controller := m.remoteController
+		return m, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			instance, err := controller.StartTerminal(ctx, session.ID, cfg.ID, width, height)
+			return remoteStartedMsg{instance: instance, cfg: cfg, err: err}
+		}
+	}
 	key := tabKeyFor(session.ID, cfg.ID)
 	if instanceID, ok := m.tabInstances[key]; ok {
 		if live, ok := m.app.Terminals.Get(instanceID); ok && live.State() == domain.StateRunning {
@@ -1726,6 +1843,61 @@ func (m *Model) resize() {
 			m.lastErr = err.Error()
 		}
 	}
+	if m.remoteController != nil && m.focus && m.activeInstance.ID != "" {
+		controller, instanceID := m.remoteController, m.activeInstance.ID
+		go func() { _ = controller.Resize(context.Background(), instanceID, width, height) }()
+	}
+}
+
+func (m Model) connectRemote(device remote.Device) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		name, _ := os.Hostname()
+		controller, err := remote.ConnectController(ctx, device, name)
+		if err != nil {
+			return remoteConnectedMsg{device: device, err: err}
+		}
+		sessions, err := controller.Sessions(ctx)
+		if err != nil {
+			controller.Close()
+			return remoteConnectedMsg{device: device, err: err}
+		}
+		executors, err := controller.Executors(ctx)
+		if err != nil {
+			controller.Close()
+			return remoteConnectedMsg{device: device, err: err}
+		}
+		return remoteConnectedMsg{controller: controller, device: controller.Device(), sessions: sessions, executors: executors}
+	}
+}
+
+func (m Model) updateRemoteTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
+	if m.remoteController == nil || m.activeInstance.ID == "" {
+		return m, nil, false
+	}
+	controller, instanceID := m.remoteController, m.activeInstance.ID
+	sendKey := func(key uv.Key, release bool) tea.Cmd {
+		return func() tea.Msg {
+			err := controller.SendKey(context.Background(), instanceID, key, release)
+			return remoteInputMsg{err: err}
+		}
+	}
+	switch msg := message.(type) {
+	case tea.KeyPressMsg:
+		if msg.String() == "f12" {
+			m.focus = false
+			m.status = "REMOTE CONTROL • hub mode • d in Remote returns locally"
+			return m, nil, true
+		}
+		return m, sendKey(uv.Key(msg.Key()), false), true
+	case tea.KeyReleaseMsg:
+		return m, sendKey(uv.Key(msg.Key()), true), true
+	case tea.PasteMsg:
+		text := msg.Content
+		return m, func() tea.Msg { return remoteInputMsg{err: controller.Paste(context.Background(), instanceID, text)} }, true
+	}
+	return m, nil, false
 }
 
 func (m Model) terminalSize() (int, int) {
@@ -1755,6 +1927,11 @@ func (m Model) sectionLength() int {
 		return len(m.executors)
 	case "Automations":
 		return len(m.app.AutomationScheduler.List())
+	case "Remote":
+		if m.remoteController != nil {
+			return 1
+		}
+		return len(m.app.RemoteDevices())
 	default:
 		return 1
 	}
@@ -1827,7 +2004,34 @@ func (m Model) render() string {
 	if toast := m.renderToast(); toast != "" {
 		content = overlayToast(content, toast, m.width, m.height)
 	}
+	if background := m.remoteBackground(); background != "" {
+		content = lipgloss.NewStyle().Background(lipgloss.Color(background)).Width(max(0, m.width)).Height(max(0, m.height)).Render(content)
+	}
 	return content
+}
+
+func (m Model) remoteBackground() string {
+	if m.remoteController != nil {
+		return "#10251F"
+	} // controller: green
+	if m.app != nil {
+		if status := m.app.RemoteHostStatus(); status.Active {
+			return "#2A1C13"
+		}
+	}
+	return ""
+}
+
+func (m Model) remoteBanner() string {
+	if m.remoteController != nil {
+		return " REMOTE CONTROL • controlling " + m.remoteDevice.Name + " • press d in Remote to return local "
+	}
+	if m.app != nil {
+		if status := m.app.RemoteHostStatus(); status.Active {
+			return " REMOTE CONTROLLED • " + status.Controller + " is operating this SessionHub "
+		}
+	}
+	return ""
 }
 
 func (m Model) renderToast() string {
@@ -1950,7 +2154,12 @@ func (m Model) renderTabs() string {
 		marker := "○"
 		key := tabKeyFor(session.ID, cfg.ID)
 		running := false
-		if instanceID, ok := m.tabInstances[key]; ok {
+		if m.remoteController != nil {
+			if instanceID, ok := m.remoteTabInstances[key]; ok && instanceID != "" {
+				marker = "●"
+				running = true
+			}
+		} else if instanceID, ok := m.tabInstances[key]; ok {
 			if _, alive := m.app.Terminals.Get(instanceID); alive {
 				marker = "●"
 				running = true
@@ -1961,12 +2170,16 @@ func (m Model) renderTabs() string {
 		// UI model. Ask the executor service's in-memory PTY registry as well;
 		// this keeps the online dot truthful without running database work on
 		// every screen refresh.
-		if !running && m.app != nil && m.app.Executors != nil && m.app.Executors.IsActive(session.ID, cfg.ID) {
+		if !running && m.remoteController == nil && m.app != nil && m.app.Executors != nil && m.app.Executors.IsActive(session.ID, cfg.ID) {
 			marker, running = "●", true
 		}
 		label := tabLabel(i, marker, cfg.Name)
 		style := tabStyle
-		if m.focus && running && m.tabInstances[key] == m.activeInstance.ID {
+		activeID := m.tabInstances[key]
+		if m.remoteController != nil {
+			activeID = m.remoteTabInstances[key]
+		}
+		if m.focus && running && activeID == m.activeInstance.ID {
 			style = tabActiveStyle
 		}
 		parts = append(parts, style.Render(label))
@@ -2107,6 +2320,12 @@ func (m Model) renderTop() string {
 	}
 	if m.activeTerminal != nil {
 		executor, state = m.executorName(m.activeInstance.ExecutorID), string(m.activeTerminal.State())
+	} else if m.remoteController != nil && m.activeInstance.ExecutorID != "" {
+		executor = m.executorName(m.activeInstance.ExecutorID)
+		_, remoteState := m.remoteController.Snapshot(m.activeInstance.ID)
+		if remoteState != "" {
+			state = string(remoteState)
+		}
 	}
 	branch := "no git"
 	if m.git != nil {
@@ -2123,6 +2342,9 @@ func (m Model) renderTop() string {
 		ver = "v" + ver
 	}
 	text := fmt.Sprintf(" SESSION HUB %s  %s  %s  %s  %s  %s ", ver, session, workspace, executor, branch, state)
+	if banner := m.remoteBanner(); banner != "" {
+		text += banner
+	}
 	if m.isUpdating {
 		text += "  ⏳ UPDATING... "
 	} else if m.availableUpdate != nil {
@@ -2135,10 +2357,22 @@ func (m Model) renderTop() string {
 	if start, _, ok := m.voiceButtonBounds(); ok {
 		text = truncate(text, start)
 		button := m.voiceButtonStyle().Render(m.voiceButtonLabel())
-		return topStyle.Width(start).Render(text) + button
+		return m.topBarStyle().Width(start).Render(text) + button
 	}
 	text = truncate(text, max(0, m.width))
-	return topStyle.Width(max(0, m.width)).Render(text)
+	return m.topBarStyle().Width(max(0, m.width)).Render(text)
+}
+
+func (m Model) topBarStyle() lipgloss.Style {
+	if m.remoteController != nil {
+		return topStyle.Background(lipgloss.Color("#1D6A4F"))
+	}
+	if m.app != nil {
+		if status := m.app.RemoteHostStatus(); status.Active {
+			return topStyle.Background(lipgloss.Color("#A25724"))
+		}
+	}
+	return topStyle
 }
 
 func (m Model) voiceButtonStyle() lipgloss.Style {
@@ -2157,7 +2391,15 @@ func (m Model) renderCenter() string {
 	// you leave with f12, the Hub's normal section content should be
 	// back, even though the (possibly finished) process is still tracked
 	// in m.activeTerminal for the status bar/top bar.
-	if m.focus && m.activeTerminal != nil {
+	if m.focus && m.remoteController != nil && m.activeInstance.ID != "" {
+		content, _ := m.remoteController.Snapshot(m.activeInstance.ID)
+		if content == "" {
+			content = mutedStyle.Render("Connecting to remote terminal...")
+		}
+		m.viewport.SetWidth(width)
+		m.viewport.SetHeight(height)
+		m.viewport.SetContent(content)
+	} else if m.focus && m.activeTerminal != nil {
 		m.viewport.SetWidth(width)
 		m.viewport.SetHeight(height)
 		content := m.activeTerminal.SnapshotScrolled(m.scrollOffset, height)
@@ -2492,11 +2734,28 @@ func (m Model) emptyContent(width, height int) string {
 	case "Logs":
 		body.WriteString("Audit logs retain state transitions, terminal events, automation effects, approvals, errors, and metrics.\n\nSecret environment values are redacted.")
 	case "Remote":
-		address := m.app.RemoteHostAddress()
-		if address == "" {
-			address = "stopped"
+		if m.remoteController != nil {
+			body.WriteString(keyStyle.Render("REMOTE CONTROL ACTIVE") + "\n\n")
+			body.WriteString(fmt.Sprintf("You are controlling %s over %s. Its sessions and CLI tabs are now shown throughout the Hub.\n\n", m.remoteDevice.Name, m.remoteDevice.Network))
+			body.WriteString(mutedStyle.Render("The controlled SessionHub is amber and shows an explicit control notice. Only this pair is connected; other discovered devices remain available."))
+			body.WriteString("\n\n" + keyStyle.Render("[d Return to local environment]"))
+			break
 		}
-		body.WriteString("Remote Mode binds only to an explicitly selected Tailscale address.\n\nOne remote controller may own a PTY; all other clients observe or request control.\n\nHost: " + address + "\n\nPress n to start the Host.")
+		body.WriteString(mutedStyle.Render("Online SessionHubs are discovered automatically on your local network and Tailscale. Remote control is always a one-to-one connection.\n\n"))
+		devices := m.app.RemoteDevices()
+		if len(devices) == 0 {
+			body.WriteString("No other SessionHub is online yet. Open SessionHub on another computer in the same LAN or tailnet.\n\n")
+			body.WriteString(mutedStyle.Render("Discovery refreshes automatically."))
+		} else {
+			for i, device := range devices {
+				prefix, style := "  ", sideItemStyle
+				if i == m.selected {
+					prefix, style = "› ", sideActiveStyle
+				}
+				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render("● "+device.Name), mutedStyle.Render("online • "+device.Network+" • "+device.Address)))
+			}
+			body.WriteString("\n" + keyStyle.Render("Enter Connect") + mutedStyle.Render(" • only one controller can connect to a SessionHub at a time"))
+		}
 	case "Settings":
 		ver := ""
 		if m.app != nil {

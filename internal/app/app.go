@@ -35,6 +35,7 @@ type App struct {
 	closeOnce           sync.Once
 	remoteMu            sync.Mutex
 	remoteHost          *remote.Host
+	remoteDiscovery     *remote.Discovery
 	recovered           int64
 }
 
@@ -67,6 +68,13 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		Automation: automationEngine, AutomationScheduler: automationScheduler,
 		Voice: voice.NewManager(paths.Tools),
 		ctx:   ctx, cancel: cancel, recovered: recovered,
+	}
+	// Remote Mode is a peer feature: every open SessionHub hosts its own
+	// terminal endpoint and advertises it only on the local LAN/tailnet.
+	// Failure to bind discovery must not prevent the normal local app from
+	// starting (for example, another process may temporarily own the UDP port).
+	if err := a.StartAutomaticRemote(); err != nil {
+		_ = repository.Log(context.Background(), domain.LogEntry{Level: "warn", Kind: "remote", Message: "automatic remote discovery unavailable: " + err.Error()})
 	}
 	go executors.Run()
 	automationScheduler.Start()

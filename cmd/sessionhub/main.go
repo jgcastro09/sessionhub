@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version   = "0.3.28"
+	version   = "0.3.29"
 	commit    = "none"
 	buildDate = "unknown"
 )
@@ -29,7 +29,7 @@ func main() {
 func run() error {
 	showVersion := flag.Bool("version", false, "print version and build metadata")
 	dataDir := flag.String("data-dir", "", "override the Session Hub data directory")
-	remoteHost := flag.String("remote-host", "", "start Remote Mode on a selected Tailscale IP:port")
+	remoteHost := flag.String("remote-host", "", "deprecated: Remote Mode starts and discovers peers automatically")
 	flag.Parse()
 	if *showVersion {
 		fmt.Printf("sessionhub %s (%s, %s)\n", version, commit, buildDate)
@@ -51,10 +51,7 @@ func run() error {
 		return err
 	}
 	if *remoteHost != "" {
-		if err := application.StartRemoteHost(*remoteHost); err != nil {
-			_ = application.Close()
-			return err
-		}
+		fmt.Fprintln(os.Stderr, "sessionhub: --remote-host is no longer needed; Remote Mode starts automatically")
 	}
 	enableConsoleMouseInput()
 	program := tea.NewProgram(ui.New(application))

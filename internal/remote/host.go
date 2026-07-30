@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
@@ -20,6 +21,7 @@ import (
 type Backend interface {
 	RemoteSessions(context.Context) ([]domain.Session, error)
 	RemoteExecutors(context.Context) ([]domain.ExecutorConfig, error)
+	RemoteStartTerminal(context.Context, string, string, int, int) (domain.Instance, error)
 	RemoteTerminal(string) (*terminal.Session, bool)
 	RemoteMetrics(context.Context, string) (domain.Metric, error)
 	RemoteLogs(context.Context, string, int) ([]domain.LogEntry, error)
@@ -35,22 +37,21 @@ type Host struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
+	info     Device
+	mu       sync.RWMutex
+	active   *peer
 }
 
-func Listen(ctx context.Context, address string, backend Backend) (*Host, error) {
+func Listen(ctx context.Context, address string, backend Backend, info Device) (*Host, error) {
 	if backend == nil {
 		return nil, fmt.Errorf("remote backend is required")
 	}
-	validated, err := ValidateListenAddress(address)
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return nil, err
-	}
-	listener, err := net.Listen("tcp", validated.String())
-	if err != nil {
-		return nil, fmt.Errorf("listen on Tailscale address %s: %w", validated, err)
+		return nil, fmt.Errorf("listen for Remote Mode on %s: %w", address, err)
 	}
 	hostCtx, cancel := context.WithCancel(ctx)
-	host := &Host{listener: listener, backend: backend, ctx: hostCtx, cancel: cancel}
+	host := &Host{listener: listener, backend: backend, ctx: hostCtx, cancel: cancel, info: info}
 	host.wg.Add(1)
 	go host.accept()
 	return host, nil
@@ -69,15 +70,23 @@ func (h *Host) accept() {
 			continue
 		}
 		remote, err := netip.ParseAddrPort(connection.RemoteAddr().String())
-		if err != nil || !IsTailscaleIP(remote.Addr().Unmap()) {
+		if err != nil || !isTrustedRemoteAddress(remote.Addr().Unmap()) {
+			_ = connection.Close()
+			continue
+		}
+		peerCtx, peerCancel := context.WithCancel(h.ctx)
+		candidate := &peer{id: connection.RemoteAddr().String(), conn: connection, backend: h.backend, ctx: peerCtx, cancel: peerCancel, host: h}
+		if !h.claim(candidate) {
+			_ = WriteFrame(connection, Frame{Type: "busy", Error: "this SessionHub is already being controlled by another device"})
+			peerCancel()
 			_ = connection.Close()
 			continue
 		}
 		h.wg.Add(1)
-		go func() {
+		go func(p *peer) {
 			defer h.wg.Done()
-			h.serve(connection)
-		}()
+			h.serve(p)
+		}(candidate)
 	}
 }
 
@@ -90,28 +99,26 @@ type peer struct {
 	sequence uint64
 	ctx      context.Context
 	cancel   context.CancelFunc
+	host     *Host
+	name     string
 }
 
-func (h *Host) serve(connection net.Conn) {
-	ctx, cancel := context.WithCancel(h.ctx)
-	peer := &peer{
-		id: connection.RemoteAddr().String(), conn: connection,
-		backend: h.backend, ctx: ctx, cancel: cancel,
-	}
+func (h *Host) serve(peer *peer) {
 	defer func() {
-		cancel()
+		peer.cancel()
 		peer.releaseObservedControl()
-		_ = connection.Close()
+		h.release(peer)
+		_ = peer.conn.Close()
 	}()
 	if err := peer.write(Frame{
 		Type: "hello", Payload: payload(map[string]any{
-			"protocol": protocolVersion, "controller": peer.id,
+			"protocol": protocolVersion, "host": h.info,
 		}),
 	}); err != nil {
 		return
 	}
 	go peer.stream()
-	reader := bufio.NewReader(connection)
+	reader := bufio.NewReader(peer.conn)
 	for {
 		frame, err := ReadFrame(reader)
 		if err != nil {
@@ -141,6 +148,16 @@ func (p *peer) handle(frame Frame) Frame {
 	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
 	defer cancel()
 	switch frame.Type {
+	case "identify":
+		var request struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(frame.Payload, &request)
+		if request.Name != "" {
+			p.name = request.Name
+			p.host.setControllerName(p, request.Name)
+		}
+		return Frame{Type: "identified"}
 	case "list_sessions":
 		items, err := p.backend.RemoteSessions(ctx)
 		return response("sessions", items, err)
@@ -150,6 +167,28 @@ func (p *peer) handle(frame Frame) Frame {
 			items[i] = items[i].Redacted()
 		}
 		return response("executors", items, err)
+	case "start_terminal":
+		var request struct {
+			SessionID  string `json:"session_id"`
+			ExecutorID string `json:"executor_id"`
+			Width      int    `json:"width"`
+			Height     int    `json:"height"`
+		}
+		if err := json.Unmarshal(frame.Payload, &request); err != nil {
+			return Frame{Type: "error", Error: err.Error()}
+		}
+		if request.Width < 2 {
+			request.Width = 80
+		}
+		if request.Height < 2 {
+			request.Height = 24
+		}
+		instance, err := p.backend.RemoteStartTerminal(ctx, request.SessionID, request.ExecutorID, request.Width, request.Height)
+		if err != nil {
+			return Frame{Type: "error", Error: err.Error()}
+		}
+		p.observed = instance.ID
+		return Frame{Type: "terminal_started", InstanceID: instance.ID, Payload: payload(instance)}
 	case "open_terminal":
 		if _, ok := p.backend.RemoteTerminal(frame.InstanceID); !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
@@ -161,7 +200,15 @@ func (p *peer) handle(frame Frame) Frame {
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
-		if err := session.Acquire(terminal.Owner{Kind: "remote", ID: p.id}); err != nil {
+		owner := terminal.Owner{Kind: "remote", ID: p.id}
+		err := session.Acquire(owner)
+		// A person may have left a local tab focused before walking away. A
+		// Remote Mode connection explicitly transfers that local lease, but it
+		// never steals an automation or another remote controller's lease.
+		if err != nil && session.Owner().Kind == "local" {
+			err = session.Transfer(session.Owner(), owner)
+		}
+		if err != nil {
 			return Frame{Type: "control_denied", InstanceID: frame.InstanceID, Error: err.Error()}
 		}
 		p.observed = frame.InstanceID
@@ -192,6 +239,37 @@ func (p *peer) handle(frame Frame) Frame {
 			return Frame{Type: "input_rejected", Sequence: frame.Sequence, Error: err.Error()}
 		}
 		return Frame{Type: "input_ack", InstanceID: frame.InstanceID, Sequence: frame.Sequence}
+	case "terminal_key":
+		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		if !ok {
+			return Frame{Type: "error", Error: "terminal is not active"}
+		}
+		var request struct {
+			Key     uv.Key `json:"key"`
+			Release bool   `json:"release"`
+		}
+		if err := json.Unmarshal(frame.Payload, &request); err != nil {
+			return Frame{Type: "error", Error: err.Error()}
+		}
+		var err error
+		if request.Release {
+			err = session.SendKey(terminal.Owner{Kind: "remote", ID: p.id}, uv.KeyReleaseEvent(request.Key))
+		} else {
+			err = session.SendKey(terminal.Owner{Kind: "remote", ID: p.id}, uv.KeyPressEvent(request.Key))
+		}
+		return response("key_ack", nil, err)
+	case "terminal_paste":
+		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		if !ok {
+			return Frame{Type: "error", Error: "terminal is not active"}
+		}
+		var request struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(frame.Payload, &request); err != nil {
+			return Frame{Type: "error", Error: err.Error()}
+		}
+		return response("paste_ack", nil, session.Paste(terminal.Owner{Kind: "remote", ID: p.id}, request.Text))
 	case "resize":
 		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
@@ -260,6 +338,52 @@ func (p *peer) handle(frame Frame) Frame {
 		return response("work_canceled", nil, p.backend.RemoteCancelWork(ctx, request.WorkID))
 	default:
 		return Frame{Type: "error", Error: fmt.Sprintf("unsupported remote request %q", frame.Type)}
+	}
+}
+
+// Status is intentionally small: it is rendered by the controlled host so
+// the person at that machine can see that a remote peer currently owns it.
+type Status struct {
+	Active     bool
+	Controller string
+}
+
+func (h *Host) Status() Status {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.active == nil {
+		return Status{}
+	}
+	name := h.active.name
+	if name == "" {
+		name = h.active.id
+	}
+	return Status{Active: true, Controller: name}
+}
+
+func (h *Host) claim(candidate *peer) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.active != nil {
+		return false
+	}
+	h.active = candidate
+	return true
+}
+
+func (h *Host) release(candidate *peer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.active == candidate {
+		h.active = nil
+	}
+}
+
+func (h *Host) setControllerName(candidate *peer, name string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.active == candidate {
+		h.active.name = name
 	}
 }
 
