@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-07-30 19:18:37 -03:00
+
+### Fixed
+
+- Automation now activates an inactive executor tab through the same lazy PTY startup flow as clicking that tab in the topbar, then sends the prompt to that exact instance. The UI now discovers and attaches to an automation-activated tab instead of launching a second executor when the operator later selects it.
+
 ## [0.3.18] - 2026-07-30 19:12:12 -03:00
 
 ### Fixed

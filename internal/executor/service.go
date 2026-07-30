@@ -145,18 +145,46 @@ func (s *Service) handleEvent(event terminal.Event) {
 // live terminal for the same session/executor is retained; otherwise Start
 // creates it with the session workspace and normal PTY manager.
 func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string, width, height int) (*terminal.Session, domain.Instance, error) {
+	if live, instance, ok := s.FindActive(ctx, sessionID, executorID); ok {
+		return live, instance, nil
+	}
+	return s.Start(ctx, sessionID, executorID, width, height)
+}
+
+// FindActive returns the live PTY backing a session/executor tab, including
+// one activated by Automation before the UI attached it to tabInstances.
+func (s *Service) FindActive(ctx context.Context, sessionID, executorID string) (*terminal.Session, domain.Instance, bool) {
 	s.mu.RLock()
 	for _, instance := range s.instances {
 		if instance.SessionID == sessionID && instance.ExecutorID == executorID &&
 			(instance.State == domain.StateRunning || instance.State == domain.StateWaiting) {
 			if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
 				s.mu.RUnlock()
-				return live, instance, nil
+				return live, instance, true
 			}
 		}
 	}
 	s.mu.RUnlock()
-	return s.Start(ctx, sessionID, executorID, width, height)
+	instances, err := s.store.ListInstances(ctx, sessionID)
+	if err != nil {
+		return nil, domain.Instance{}, false
+	}
+	for _, instance := range instances {
+		if instance.ExecutorID != executorID {
+			continue
+		}
+		if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
+			cfg, err := s.store.GetExecutor(ctx, executorID)
+			if err != nil {
+				return nil, domain.Instance{}, false
+			}
+			s.mu.Lock()
+			s.instances[instance.ID], s.configs[instance.ID] = instance, cfg
+			s.mu.Unlock()
+			return live, instance, true
+		}
+	}
+	return nil, domain.Instance{}, false
 }
 
 // ReuseOpenTerminal returns the exact CLI tab that is already open in this
@@ -215,7 +243,9 @@ func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, ses
 }
 
 func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
-	term, instance, err := s.ReuseOpenTerminal(ctx, sessionID, executorID)
+	// Activate a lazy tab through the same Start flow used by a topbar click
+	// when it is not already running, then reuse that exact PTY afterwards.
+	term, instance, err := s.StartOrReuse(ctx, sessionID, executorID, width, height)
 	if err != nil {
 		return WorkResult{}, err
 	}

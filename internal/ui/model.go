@@ -1692,6 +1692,21 @@ func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+	if live, instance, ok := m.app.Executors.FindActive(context.Background(), session.ID, cfg.ID); ok {
+		if m.tabInstances == nil {
+			m.tabInstances = make(map[string]string)
+		}
+		m.tabInstances[key] = instance.ID
+		localOwner := terminal.Owner{Kind: "local", ID: "operator"}
+		if live.Owner().Empty() {
+			_ = live.Acquire(localOwner)
+		}
+		m.activeTerminal, m.activeInstance = live, instance
+		m.focus, m.scrollOffset = true, 0
+		m.status = fmt.Sprintf("%q focused • f12 returns to Hub", cfg.Name)
+		m.resize()
+		return m, nil
+	}
 	width, height := m.terminalSize()
 	service := m.app.Executors
 	sessionID := session.ID

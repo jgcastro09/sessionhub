@@ -393,6 +393,7 @@ func (s *Scheduler) setRetrying(automationID string, step, attempt int, cause er
 	if item, ok := s.items[automationID]; ok {
 		item.CurrentStep, item.Status, item.LastRun.Status = step, StatusRunning, StatusRunning
 		item.Activity = "Waiting for terminal control…"
+		item.LiveOutput = ""
 		item.LastRun.RetryCount = attempt
 		item.LastRun.Error = fmt.Sprintf("Retrying step %d in %s: %v", step, automationRetryDelay, cause)
 		item.UpdatedAt = time.Now().UTC()
