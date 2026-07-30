@@ -145,10 +145,20 @@ func (s *Service) handleEvent(event terminal.Event) {
 // live terminal for the same session/executor is retained; otherwise Start
 // creates it with the session workspace and normal PTY manager.
 func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string, width, height int) (*terminal.Session, domain.Instance, error) {
+	term, instance, _, err := s.startOrReuse(ctx, sessionID, executorID, width, height)
+	return term, instance, err
+}
+
+// startOrReuse is the shared tab activation path plus whether this call had
+// to start the process. Automation uses that detail to wait for the newly
+// spawned CLI's first screen before it writes a prompt; the normal UI does
+// not need to wait because the person sees that screen as it renders.
+func (s *Service) startOrReuse(ctx context.Context, sessionID, executorID string, width, height int) (*terminal.Session, domain.Instance, bool, error) {
 	if live, instance, ok := s.FindActive(ctx, sessionID, executorID); ok {
-		return live, instance, nil
+		return live, instance, false, nil
 	}
-	return s.Start(ctx, sessionID, executorID, width, height)
+	term, instance, err := s.Start(ctx, sessionID, executorID, width, height)
+	return term, instance, err == nil, err
 }
 
 // FindActive returns the live PTY backing a session/executor tab, including
@@ -245,7 +255,7 @@ func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, ses
 func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
 	// Activate a lazy tab through the same Start flow used by a topbar click
 	// when it is not already running, then reuse that exact PTY afterwards.
-	term, instance, err := s.StartOrReuse(ctx, sessionID, executorID, width, height)
+	term, instance, started, err := s.startOrReuse(ctx, sessionID, executorID, width, height)
 	if err != nil {
 		return WorkResult{}, err
 	}
@@ -270,6 +280,18 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 			_ = term.Acquire(localOwner)
 		}
 	}()
+	if started {
+		// OpenCode and other TUIs can accept PTY bytes before their interactive
+		// input layer exists. Waiting for the terminal's own initial render is
+		// what makes this equivalent to selecting the lazy topbar tab first and
+		// only then typing into it.
+		if err := term.WaitForPromptReady(ctx); err != nil {
+			if ctx.Err() != nil {
+				_ = s.Stop(context.Background(), instance.ID)
+			}
+			return WorkResult{InstanceID: instance.ID}, err
+		}
+	}
 	if err := term.SendPrompt(owner, prompt); err != nil {
 		return WorkResult{InstanceID: instance.ID}, err
 	}

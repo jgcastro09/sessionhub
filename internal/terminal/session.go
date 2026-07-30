@@ -85,6 +85,16 @@ type Session struct {
 	closeOnce sync.Once
 	ioWG      sync.WaitGroup
 	historyWG sync.WaitGroup
+
+	// promptReady tracks the terminal's own output, rather than guessing how
+	// long a particular CLI takes to boot.  A freshly spawned TUI can ignore
+	// input while it is drawing its initial screen, so callers that need to
+	// submit a prompt programmatically can wait for that initial screen to
+	// settle first.
+	readyMu          sync.Mutex
+	outputGeneration uint64
+	lastOutputAt     time.Time
+	outputWake       chan struct{}
 }
 
 func Start(
@@ -163,6 +173,7 @@ func Start(
 		id: instanceID, cfg: cfg, ctx: ctx, cancel: cancel, pty: p, cmd: cmd,
 		emulator: emu, sink: sink, events: events,
 		historyWake: make(chan struct{}, 1),
+		outputWake:  make(chan struct{}, 1),
 		state:       domain.StateRunning, owner: Owner{Kind: "local", ID: "operator"},
 		width: width, height: height, waitDone: make(chan struct{}),
 	}
@@ -335,6 +346,7 @@ func (s *Session) readOutput() {
 			return
 		}
 		_, _ = s.emulator.Write(pending)
+		s.noteOutput()
 		s.record("output", pending)
 		s.emit(Event{InstanceID: s.id, Kind: EventOutput, Data: pending})
 	}
@@ -415,6 +427,81 @@ func (s *Session) State() domain.State {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.state
+}
+
+// WaitForPromptReady waits for a newly launched interactive CLI to produce
+// its initial terminal output and for that initial draw to become quiet. It
+// is deliberately output-driven: it does not assume a fixed startup duration
+// for OpenCode, Codex, Claude Code, or any other executor.
+func (s *Session) WaitForPromptReady(ctx context.Context) error {
+	const quietPeriod = 300 * time.Millisecond
+	for {
+		s.readyMu.Lock()
+		generation, lastOutput := s.outputGeneration, s.lastOutputAt
+		s.readyMu.Unlock()
+		if generation > 0 {
+			remaining := time.Until(lastOutput.Add(quietPeriod))
+			if remaining <= 0 {
+				return nil
+			}
+			timer := time.NewTimer(remaining)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return ctx.Err()
+			case <-s.ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return ErrNotRunning
+			case <-s.waitDone:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return ErrNotRunning
+			case <-s.outputWake:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+			case <-timer.C:
+			}
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-s.ctx.Done():
+			return ErrNotRunning
+		case <-s.waitDone:
+			return ErrNotRunning
+		case <-s.outputWake:
+		}
+	}
+}
+
+func (s *Session) noteOutput() {
+	s.readyMu.Lock()
+	s.outputGeneration++
+	s.lastOutputAt = time.Now()
+	s.readyMu.Unlock()
+	select {
+	case s.outputWake <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Session) Owner() Owner {

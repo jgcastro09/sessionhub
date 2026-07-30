@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.20] - 2026-07-30 19:25:08 -03:00
+
+### Fixed
+
+- Automation now waits for a newly activated CLI's own initial PTY render to settle before sending its prompt. This prevents OpenCode from receiving input during its startup screen, where the prompt was previously discarded. The Automation status now explicitly reports that it is opening the selected tab and waiting for readiness.
+
 ## [0.3.19] - 2026-07-30 19:18:37 -03:00
 
 ### Fixed

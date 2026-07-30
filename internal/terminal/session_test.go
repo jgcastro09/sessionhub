@@ -67,6 +67,31 @@ func TestPTYInteractiveUnicodeAndResize(t *testing.T) {
 	t.Fatalf("PTY snapshot did not contain expected output: %q", session.Snapshot())
 }
 
+func TestWaitForPromptReadyWaitsForInitialTerminalOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the shell fixture is POSIX-specific")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session, err := Start(ctx, "ready-test", domain.ExecutorConfig{
+		Name: "test", Command: "sh",
+		Args: []string{"-c", "sleep 0.1; printf 'READY\\n'; while IFS= read -r line; do printf 'ECHO:%s\\n' \"$line\"; done"},
+	}, 80, 24, 100, nil, make(chan Event, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close(time.Second)
+
+	readyCtx, readyCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer readyCancel()
+	if err := session.WaitForPromptReady(readyCtx); err != nil {
+		t.Fatalf("wait for initial terminal output: %v", err)
+	}
+	if !strings.Contains(session.Snapshot(), "READY") {
+		t.Fatalf("prompt readiness returned before initial screen rendered: %q", session.Snapshot())
+	}
+}
+
 func TestSnapshotScrolledShowsHistoryAboveLiveTail(t *testing.T) {
 	var cfg domain.ExecutorConfig
 	if runtime.GOOS == "windows" {
