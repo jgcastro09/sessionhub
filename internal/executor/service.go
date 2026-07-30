@@ -159,6 +159,47 @@ func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string
 	return s.Start(ctx, sessionID, executorID, width, height)
 }
 
+// ReuseOpenTerminal returns the exact CLI tab that is already open in this
+// Session Hub process. Automation deliberately uses this path instead of
+// StartOrReuse: scheduling a prompt must never create a second, unseen CLI
+// conversation while the operator expects the selected tab to receive it.
+func (s *Service) ReuseOpenTerminal(ctx context.Context, sessionID, executorID string) (*terminal.Session, domain.Instance, error) {
+	s.mu.RLock()
+	for _, instance := range s.instances {
+		if instance.SessionID == sessionID && instance.ExecutorID == executorID {
+			if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
+				s.mu.RUnlock()
+				return live, instance, nil
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	// A tab may have been restored from persisted instances before this
+	// Service recorded it in-memory. Resolve it through the existing store
+	// and terminal manager rather than launching another process.
+	instances, err := s.store.ListInstances(ctx, sessionID)
+	if err != nil {
+		return nil, domain.Instance{}, err
+	}
+	for _, instance := range instances {
+		if instance.ExecutorID != executorID {
+			continue
+		}
+		if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
+			cfg, err := s.store.GetExecutor(ctx, executorID)
+			if err != nil {
+				return nil, domain.Instance{}, err
+			}
+			s.mu.Lock()
+			s.instances[instance.ID], s.configs[instance.ID] = instance, cfg
+			s.mu.Unlock()
+			return live, instance, nil
+		}
+	}
+	return nil, domain.Instance{}, fmt.Errorf("no open CLI tab for executor %q in this session; open the selected tab first", executorID)
+}
+
 // RunAutomationStep is the sequential, in-process automation bridge. It
 // intentionally delegates process creation, PTY writes, terminal leases and
 // recognition to Service rather than reimplementing any of those concerns.
@@ -174,7 +215,7 @@ func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, ses
 }
 
 func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
-	term, instance, err := s.StartOrReuse(ctx, sessionID, executorID, width, height)
+	term, instance, err := s.ReuseOpenTerminal(ctx, sessionID, executorID)
 	if err != nil {
 		return WorkResult{}, err
 	}

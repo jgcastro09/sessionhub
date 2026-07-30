@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-07-30 19:12:12 -03:00
+
+### Fixed
+
+- Automation now targets only the selected Session's already-open CLI tab. It no longer starts a second hidden executor instance; if that tab is not open, the automation keeps retrying with a clear instruction to open the selected tab first.
+
 ## [0.3.17] - 2026-07-30 19:06:24 -03:00
 
 ### Fixed
