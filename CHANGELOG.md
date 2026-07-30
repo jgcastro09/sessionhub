@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-07-30 13:38:00 -03:00
+
+### Added
+
+- Factory Reset in the Settings tab: wipes every session, executor, login, log, and downloaded file, resetting the data directory back to a clean first-install state. Gated behind 3 steps so it can't be triggered by accident — `ctrl+r` to begin, a y/n confirm, then typing the exact phrase `"DELETE EVERYTHING"` — and the app quits after wiping so the next launch starts completely fresh.
+
 ## [0.1.18] - 2026-07-30 13:16:00 -03:00
 
 ### Fixed

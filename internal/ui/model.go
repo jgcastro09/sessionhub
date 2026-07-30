@@ -89,6 +89,14 @@ type updateMsg struct {
 	err     error
 }
 
+// factoryResetDoneMsg reports the outcome of wiping the entire data
+// directory (see submitForm's factoryResetForm case). A nil err means the
+// app is shutting down cleanly — the next launch starts from a fresh
+// install since ResolvePaths/store.Open recreate everything from scratch.
+type factoryResetDoneMsg struct {
+	err error
+}
+
 type formKind int
 
 const (
@@ -102,7 +110,14 @@ const (
 	scheduleForm
 	pipelineForm
 	priceForm
+	factoryResetForm
 )
+
+// factoryResetPhrase is the exact text the operator must type to actually
+// trigger a factory reset — a typo-proof last gate behind the y/n confirm,
+// since this action is unrecoverable (see submitForm's factoryResetForm
+// case).
+const factoryResetPhrase = "DELETE EVERYTHING"
 
 type formModel struct {
 	kind      formKind
@@ -453,6 +468,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastExpires = time.Now().Add(15 * time.Second)
 			m.status = fmt.Sprintf("Session Hub updated to %s • Restart app to apply", msg.version)
 		}
+	case factoryResetDoneMsg:
+		if msg.err != nil {
+			m.lastErr = fmt.Sprintf("Factory reset failed: %v", msg.err)
+			m.status = "Factory reset failed — some files may be left over"
+			return m, nil
+		}
+		return m, tea.Quit
 	case scannedMsg:
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
@@ -638,6 +660,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.toastMessage = "Checking for updates..."
 				m.toastExpires = time.Now().Add(5 * time.Second)
 				return m, m.checkUpdateCmd()
+			}
+		case "ctrl+r":
+			if sections[m.section] == "Settings" {
+				m.confirm = &confirmRequest{
+					kind: "factory-reset-warn",
+					message: fmt.Sprintf(
+						"step 1 of 3 done (ctrl+r) — step 2 of 3: this permanently deletes every "+
+							"session, executor, login, log, and downloaded file, wiping %s back to a "+
+							"clean install. This cannot be undone.\n\nContinue to the final confirmation?",
+						m.app.Paths.Root),
+				}
+				return m, nil
 			}
 		}
 	}
@@ -1201,6 +1235,9 @@ func (m Model) updateConfirm(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.toastExpires = time.Now().Add(30 * time.Second)
 				return m, m.performSelfUpdateCmd(rel)
 			}
+		case "factory-reset-warn":
+			m.form = newFactoryResetForm()
+			return m, nil
 		}
 		return m, nil
 	case "esc", "n", "N":
@@ -1586,6 +1623,9 @@ func (m Model) renderConfirmPanel() string {
 	title := "Confirm delete"
 	if m.confirm.kind == "update" {
 		title = "✨ Update Session Hub"
+	}
+	if m.confirm.kind == "factory-reset-warn" {
+		title = "⚠ FACTORY RESET"
 	}
 	b.WriteString(errorStyle.Render(title) + "\n\n")
 	b.WriteString(m.confirm.message + "\n\n")
@@ -2010,6 +2050,12 @@ func (m Model) emptyContent(width, height int) string {
 			}
 			body.WriteString("\n  Press 'u' or Enter to check for updates now.")
 		}
+
+		body.WriteString("\n\n" + titleStyle.Render("Factory Reset") + "\n")
+		body.WriteString("  Wipes every session, executor, login, log, and downloaded file, back to a\n")
+		body.WriteString("  clean first-install state. Cannot be undone.\n\n")
+		body.WriteString("  Press ctrl+r to begin (step 1 of 3) — a y/n confirm (step 2), then typing\n")
+		body.WriteString(fmt.Sprintf("  %q to confirm for real (step 3), still stand between you and the wipe.", factoryResetPhrase))
 	}
 	return contentStyle.Width(width).Height(height).Render(body.String())
 }
@@ -2303,6 +2349,15 @@ func newPriceForm() formModel {
 	return makeForm(priceForm, "New local price record",
 		[]string{"Model label", "Version/date", "Input micros/million", "Output micros/million", "Cache read micros/million", "Cache write micros/million", "Explicit zero cost"},
 		[]string{"manual model label", "2026-07-30", "0", "0", "0", "0", "false"})
+}
+
+// newFactoryResetForm builds step 3 of 3 for the factory reset flow: the
+// operator must type factoryResetPhrase exactly, submitForm rejects anything
+// else, so this last gate can't be crossed by a stray keypress.
+func newFactoryResetForm() formModel {
+	return makeForm(factoryResetForm,
+		fmt.Sprintf("⚠ FACTORY RESET — step 3 of 3: type %q to wipe everything", factoryResetPhrase),
+		[]string{"Confirmation phrase"}, []string{factoryResetPhrase})
 }
 
 func makeForm(kind formKind, title string, labels, placeholders []string) formModel {
@@ -2714,6 +2769,18 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			saved, err := m.app.Store.SavePrice(context.Background(), price)
 			return savedMsg{kind: "price", id: saved.ID, err: err}
 		}
+	case factoryResetForm:
+		if strings.TrimSpace(values[0]) != factoryResetPhrase {
+			m.form.err = fmt.Sprintf("phrase must match exactly: %q", factoryResetPhrase)
+			return m, nil
+		}
+		application := m.app
+		m.form = formModel{}
+		m.status = "Factory reset in progress — wiping everything..."
+		return m, func() tea.Msg {
+			_ = application.Close()
+			return factoryResetDoneMsg{err: os.RemoveAll(application.Paths.Root)}
+		}
 	}
 	return m, nil
 }
@@ -2868,6 +2935,8 @@ func (m Model) renderFormPanel() string {
 		hint = "ctrl+s checks, installs only if missing, then registers • esc cancel"
 	case sessionForm:
 		hint = "tab next • space toggles Executor, ↑↓ moves within the list • ctrl+s save • esc cancel"
+	case factoryResetForm:
+		hint = fmt.Sprintf("type %q exactly, then ctrl+s to WIPE EVERYTHING • esc cancels", factoryResetPhrase)
 	}
 	b.WriteString("\n" + mutedStyle.Render(hint))
 	return modalStyle.Width(min(86, max(40, m.width-8))).Render(b.String())

@@ -23,3 +23,16 @@ Command mode exposes Sessions, Executors, Queues, Pipelines, Automations,
 Metrics, Logs, Remote, and Settings. Destructive actions distinguish stopping
 a process, removing its session association, and deleting persisted history.
 They require separate confirmation.
+
+## Factory Reset
+
+The Settings tab has a Factory Reset that wipes the entire data directory —
+every session, executor, login, log, and downloaded file — back to a clean
+first-install state. It cannot be undone, so it's gated behind 3 steps:
+
+1. `ctrl+r` in the Settings tab.
+2. Confirm the y/n warning.
+3. Type the exact phrase `DELETE EVERYTHING` and press `ctrl+s`.
+
+Session Hub then quits; the next launch recreates the data directory from
+scratch, exactly like a fresh install.
