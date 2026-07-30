@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-07-30 12:51:00 -03:00
+
+### Changed
+
+- New sessions now require a workspace directory (no longer silently falls back to the current working directory), and leaving the session name blank auto-fills it with the workspace folder's base name.
+
 ## [0.1.16] - 2026-07-30 12:33:00 -03:00
 
 ### Changed

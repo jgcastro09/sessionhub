@@ -2054,14 +2054,14 @@ var sessionLabels = []string{"Name", "Workspace"}
 // session itself has no conversation "context" of its own.
 func newSessionForm(executors []domain.ExecutorConfig) formModel {
 	form := makeForm(sessionForm, "New session", sessionLabels,
-		[]string{"Project work", "Absolute or relative directory"})
+		[]string{"Defaults to workspace folder name", "Absolute or relative directory (required)"})
 	form.executorChoices = executorChoicesFrom(executors, nil)
 	return form
 }
 
 func editSessionForm(session domain.Session, executors []domain.ExecutorConfig) formModel {
 	form := makeForm(sessionForm, "Edit session: "+session.Name, sessionLabels,
-		[]string{"Project work", "Absolute or relative directory"})
+		[]string{"Defaults to workspace folder name", "Absolute or relative directory (required)"})
 	form.editingID = session.ID
 	form.fields[0].SetValue(session.Name)
 	form.fields[1].SetValue(session.Workspace)
@@ -2482,7 +2482,8 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		name, workspace := strings.TrimSpace(values[0]), strings.TrimSpace(values[1])
 		workspace = strings.Trim(workspace, `"'`)
 		if workspace == "" {
-			workspace, _ = os.Getwd()
+			m.form.err = "workspace is required"
+			return m, nil
 		}
 		absolute, err := filepath.Abs(workspace)
 		if err != nil {
@@ -2493,6 +2494,9 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		if err != nil || !info.IsDir() {
 			m.form.err = "workspace must be an existing directory"
 			return m, nil
+		}
+		if name == "" {
+			name = filepath.Base(absolute)
 		}
 		var executorIDs []string
 		for _, choice := range m.form.executorChoices {
