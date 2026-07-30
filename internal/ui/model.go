@@ -812,6 +812,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) routeMouseClick(msg tea.MouseClickMsg) (bool, tea.Model, tea.Cmd) {
 	mouse := msg.Mouse()
 	x, y := mouse.X, mouse.Y
+	if m.voiceButtonAt(x, y) {
+		next, cmd := m.toggleDictation()
+		return true, next, cmd
+	}
 	if m.activeSession >= 0 && y == 1 {
 		if cfg, ok := m.tabAt(x, y); ok {
 			next, cmd := m.selectTab(cfg)
@@ -828,6 +832,33 @@ func (m Model) routeMouseClick(msg tea.MouseClickMsg) (bool, tea.Model, tea.Cmd)
 		return true, m, nil
 	}
 	return false, m, nil
+}
+
+// voiceButtonLabel is deliberately short: it is rendered in the top bar so
+// it stays visible even while a full-screen CLI owns the terminal viewport.
+func (m Model) voiceButtonLabel() string {
+	if m.recording {
+		return " ■ PARAR "
+	}
+	if m.voiceBusy {
+		return " ⏳ PREPARANDO "
+	}
+	return " 🎙 MICROFONE "
+}
+
+func (m Model) voiceButtonBounds() (start, end int, ok bool) {
+	buttonWidth := ansi.StringWidth(m.voiceButtonLabel())
+	// Keep enough room for the Session Hub identity in narrow terminals. The
+	// keyboard shortcut remains available when there is no room for a button.
+	if m.width < buttonWidth+20 {
+		return 0, 0, false
+	}
+	return m.width - buttonWidth, m.width, true
+}
+
+func (m Model) voiceButtonAt(x, y int) bool {
+	start, end, ok := m.voiceButtonBounds()
+	return ok && y == 0 && x >= start && x < end
 }
 
 func (m Model) terminalRelativeCoords(mouseX, mouseY int) (int, int, bool) {
@@ -1979,8 +2010,23 @@ func (m Model) renderTop() string {
 	// truncating it — left unbounded, a long session/workspace/branch combo
 	// would wrap the top bar onto a second line and silently shift every
 	// row below it (including the tab bar's hardcoded y==1 click target).
+	if start, _, ok := m.voiceButtonBounds(); ok {
+		text = truncate(text, start)
+		button := m.voiceButtonStyle().Render(m.voiceButtonLabel())
+		return topStyle.Width(start).Render(text) + button
+	}
 	text = truncate(text, max(0, m.width))
 	return topStyle.Width(max(0, m.width)).Render(text)
+}
+
+func (m Model) voiceButtonStyle() lipgloss.Style {
+	if m.recording {
+		return voiceButtonRecordingStyle
+	}
+	if m.voiceBusy {
+		return voiceButtonBusyStyle
+	}
+	return voiceButtonStyle
 }
 
 func (m Model) renderCenter() string {
@@ -3249,4 +3295,16 @@ var (
 			Foreground(lipgloss.Color("#F4F2FF")).
 			Background(accent).
 			Bold(true)
+	voiceButtonStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#5F5FD7")).
+				Bold(true)
+	voiceButtonRecordingStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#FFFFFF")).
+					Background(lipgloss.Color("#D74F62")).
+					Bold(true)
+	voiceButtonBusyStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#D8D4E8")).
+				Background(lipgloss.Color("#454052")).
+				Bold(true)
 )

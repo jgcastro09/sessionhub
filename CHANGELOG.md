@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-07-30 17:55:18 -03:00
+
+### Added
+
+- Added a visible microphone control to the top-right of the Session Hub interface. Click `🎙 MICROFONE` to start local live dictation; it changes to the red `■ PARAR` button while recording, and a second click stops it and transcribes the final words. It uses the same safe action path as F9 and stays outside the PTY viewport, so clicks never leak into the focused CLI.
+
 ## [0.3.11] - 2026-07-30 17:45:55 -03:00
 
 ### Changed

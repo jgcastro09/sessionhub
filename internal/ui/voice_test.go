@@ -36,3 +36,22 @@ func TestFormatVoiceProgress(t *testing.T) {
 		t.Fatalf("formatVoiceProgress() = %q, want %q", got, want)
 	}
 }
+
+func TestVoiceButtonBoundsAndState(t *testing.T) {
+	m := Model{width: 100}
+	start, end, ok := m.voiceButtonBounds()
+	if !ok || start >= end || !m.voiceButtonAt(start, 0) || m.voiceButtonAt(end, 0) {
+		t.Fatalf("invalid microphone button bounds: start=%d end=%d ok=%v", start, end, ok)
+	}
+	if got, want := m.voiceButtonLabel(), " 🎙 MICROFONE "; got != want {
+		t.Fatalf("idle microphone label = %q, want %q", got, want)
+	}
+	m.recording = true
+	if got, want := m.voiceButtonLabel(), " ■ PARAR "; got != want {
+		t.Fatalf("recording microphone label = %q, want %q", got, want)
+	}
+	m.width = 10
+	if _, _, ok := m.voiceButtonBounds(); ok {
+		t.Fatal("microphone button should be hidden in a narrow terminal")
+	}
+}

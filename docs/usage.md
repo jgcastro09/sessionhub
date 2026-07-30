@@ -40,9 +40,11 @@ scratch, exactly like a fresh install.
 
 ## Voice dictation
 
-Press `f9` while a CLI tab is focused to start recording from the default
-microphone. Text appears in that same tab progressively, about every two
-seconds, as you speak; press `f9` again to stop and capture the final words.
+Click the `🎙 MICROFONE` button in the top-right corner (or press `f9`) while
+a CLI tab is focused to start recording from the default microphone. The
+button becomes `■ PARAR` while it is capturing; click it again (or press F9)
+to stop and capture the final words. Text appears in that same tab
+progressively, about every two seconds, as you speak.
 Transcription is fully local and offline — the first press ever downloads a
 self-contained copy of [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
 and the more accurate multilingual Whisper **small** model (~465MB, one-time)
