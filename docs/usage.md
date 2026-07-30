@@ -10,6 +10,7 @@ Core keys:
 | Key | Action |
 | --- | --- |
 | `f12` | Leave terminal focus (the only key that does — everything else, including `esc`/`ctrl+g`/`ctrl+p`/`ctrl+b`/`ctrl+q`, is passed straight through to the focused CLI) |
+| `f9` | Toggle voice dictation while terminal-focused: first press records from the mic, second press transcribes locally (Whisper) and pastes the text into the focused CLI |
 | `enter` | Focus or activate the selected item |
 | `tab` / `shift+tab` | Change Hub section |
 | `ctrl+g` | Open Hub command mode (Hub mode only) |
@@ -36,3 +37,16 @@ first-install state. It cannot be undone, so it's gated behind 3 steps:
 
 Session Hub then quits; the next launch recreates the data directory from
 scratch, exactly like a fresh install.
+
+## Voice dictation
+
+Press `f9` while a CLI tab is focused to start recording from the default
+microphone; press `f9` again to stop, transcribe, and paste the text into
+that same tab. Transcription is fully local and offline — the first press
+ever downloads a self-contained copy of [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+and a multilingual model (~150MB, one-time) into `tools/whisper/` under
+Session Hub's data directory, then keeps its transcription server running
+in the background so later dictations don't reload the model. Nothing is
+sent to any cloud API. Recording currently requires Windows (WASAPI); other
+platforms show a clear "not supported yet" message instead of failing
+silently.

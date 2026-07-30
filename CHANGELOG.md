@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-30 14:34:00 -03:00
+
+### Added
+
+- Voice dictation: press `f9` while a CLI tab is focused to record from the microphone, press it again to transcribe locally and paste the text into that tab. Fully offline — the first use downloads a self-contained [whisper.cpp](https://github.com/ggml-org/whisper.cpp) server plus a multilingual model (~150MB, one-time, sha256-verified) into the data directory, then keeps the transcription server running in the background so later dictations don't reload the model. Nothing is sent to any cloud API.
+- Windows-only for now (WASAPI capture via the pure-Go `github.com/moutend/go-wca`/`github.com/go-ole/go-ole`, no cgo — the existing `CGO_ENABLED=0` cross-build for windows/darwin/linux stays intact; other platforms show a clear "not supported yet" message instead of failing silently).
+
 ## [0.1.22] - 2026-07-30 14:01:00 -03:00
 
 ### Changed

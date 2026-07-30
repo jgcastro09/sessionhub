@@ -17,8 +17,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/x/ansi"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jgcastro09/sessionhub/internal/app"
 	"github.com/jgcastro09/sessionhub/internal/automation"
 	"github.com/jgcastro09/sessionhub/internal/domain"
@@ -27,6 +27,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/id"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	updatecheck "github.com/jgcastro09/sessionhub/internal/update"
+	"github.com/jgcastro09/sessionhub/internal/voice"
 )
 
 var sections = []string{
@@ -87,6 +88,23 @@ type updateMsg struct {
 	release updatecheck.Release
 	newer   bool
 	err     error
+}
+
+// voiceReadyMsg reports whether the local Whisper transcription server is
+// installed and running (see toggleDictation) — the async result of
+// voice.Manager.Ensure, which may include a one-time multi-minute download
+// the first time dictation is ever used.
+type voiceReadyMsg struct {
+	err error
+}
+
+// voiceTranscribedMsg carries a finished transcription (see
+// toggleDictation) back to whichever terminal was focused when recording
+// started (target), even if focus moved on in the meantime.
+type voiceTranscribedMsg struct {
+	text   string
+	target *terminal.Session
+	err    error
 }
 
 // factoryResetDoneMsg reports the outcome of wiping the entire data
@@ -190,6 +208,16 @@ type Model struct {
 	tabInstances map[string]string
 	status       string
 	lastErr      string
+
+	// Voice dictation state (see toggleDictation): recording captures from
+	// the mic into recorder; recordingTerminal is fixed at the moment
+	// recording starts, so the transcript still lands in the right tab even
+	// if focus moves on before transcription finishes. voiceBusy covers the
+	// async install/transcribe gaps between key presses.
+	recording         bool
+	voiceBusy         bool
+	recorder          *voice.Recorder
+	recordingTerminal *terminal.Session
 
 	// Terminal mouse selection state
 	selecting    bool
@@ -468,6 +496,50 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastExpires = time.Now().Add(15 * time.Second)
 			m.status = fmt.Sprintf("Session Hub updated to %s • Restart app to apply", msg.version)
 		}
+	case voiceReadyMsg:
+		m.voiceBusy = false
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Voice setup failed: " + msg.err.Error()
+			return m, nil
+		}
+		if m.activeTerminal == nil {
+			m.status = "Voice transcription ready, but no CLI tab is focused"
+			return m, nil
+		}
+		recorder := voice.NewRecorder()
+		if err := recorder.Start(); err != nil {
+			m.lastErr = err.Error()
+			m.status = "Microphone error: " + err.Error()
+			return m, nil
+		}
+		m.recorder = recorder
+		m.recording = true
+		m.recordingTerminal = m.activeTerminal
+		m.status = "🎤 Recording... press F9 to stop and transcribe"
+		return m, nil
+	case voiceTranscribedMsg:
+		m.voiceBusy = false
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Transcription failed: " + msg.err.Error()
+			return m, nil
+		}
+		text := strings.TrimSpace(msg.text)
+		if text == "" {
+			m.status = "Heard nothing to transcribe"
+			return m, nil
+		}
+		if msg.target != nil {
+			owner := terminal.Owner{Kind: "local", ID: "operator"}
+			if err := msg.target.Paste(owner, text); err != nil {
+				m.lastErr = err.Error()
+				m.status = "Couldn't paste transcription: " + err.Error()
+				return m, nil
+			}
+		}
+		m.status = fmt.Sprintf("Pasted %d characters from voice dictation", len([]rune(text)))
+		return m, nil
 	case factoryResetDoneMsg:
 		if msg.err != nil {
 			m.lastErr = fmt.Sprintf("Factory reset failed: %v", msg.err)
@@ -909,6 +981,9 @@ func (m Model) updateTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 			_, height := m.terminalSize()
 			m.scrollBy(-height)
 			return m, nil, true
+		case "f9":
+			next, cmd := m.toggleDictation()
+			return next, cmd, true
 		}
 		// Any other key snaps back to the live tail, like a real terminal.
 		m.scrollOffset = 0
@@ -1043,6 +1118,44 @@ func (m Model) updateTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 		return m, nil, true
 	}
 	return m, nil, false
+}
+
+// toggleDictation is F9's handler: first press installs/starts the local
+// Whisper server if needed (async — the very first call may be a
+// multi-minute download) then starts recording; second press stops
+// recording and transcribes it, pasting the result into whichever terminal
+// was focused when recording began.
+func (m Model) toggleDictation() (Model, tea.Cmd) {
+	if m.voiceBusy {
+		m.status = "voice dictation is still working..."
+		return m, nil
+	}
+	if m.recording {
+		m.recording = false
+		wav, err := m.recorder.Stop()
+		m.recorder = nil
+		if err != nil {
+			m.lastErr = err.Error()
+			m.status = "Recording failed: " + err.Error()
+			m.recordingTerminal = nil
+			return m, nil
+		}
+		m.voiceBusy = true
+		m.status = "Transcribing..."
+		target := m.recordingTerminal
+		m.recordingTerminal = nil
+		manager := m.app.Voice
+		return m, func() tea.Msg {
+			text, err := manager.Transcribe(context.Background(), wav)
+			return voiceTranscribedMsg{text: text, target: target, err: err}
+		}
+	}
+	m.voiceBusy = true
+	m.status = "Setting up local voice transcription (first time may take a few minutes to download)..."
+	manager := m.app.Voice
+	return m, func() tea.Msg {
+		return voiceReadyMsg{err: manager.Ensure(context.Background())}
+	}
 }
 
 // scrollBy moves the scrollback view by delta lines (positive = further
@@ -1986,7 +2099,7 @@ func (m Model) emptyContent(width, height int) string {
 					cmdName += " " + argsStr
 				}
 				displayPath := shortenPath(cfg.Command)
-				
+
 				body.WriteString(fmt.Sprintf("%s%s%s\n", prefix, itemTitleStyle.Render(cfg.Name), status))
 				if displayPath != "" && displayPath != cmdName {
 					body.WriteString(fmt.Sprintf("    %s %s  %s\n\n",

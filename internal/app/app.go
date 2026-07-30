@@ -16,6 +16,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/store"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
+	"github.com/jgcastro09/sessionhub/internal/voice"
 )
 
 type App struct {
@@ -27,6 +28,7 @@ type App struct {
 	Context    *contexthub.Service
 	Metrics    *metrics.Calculator
 	Automation *automation.Engine
+	Voice      *voice.Manager
 	ctx        context.Context
 	cancel     context.CancelFunc
 	closeOnce  sync.Once
@@ -56,6 +58,7 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		Terminals: terminals, Executors: executors,
 		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
 		Automation: automationEngine,
+		Voice:      voice.NewManager(paths.Tools),
 		ctx:        ctx, cancel: cancel, recovered: recovered,
 	}
 	go executors.Run()
@@ -85,7 +88,7 @@ func (a *App) Close() error {
 	a.closeOnce.Do(func() {
 		a.cancel()
 		a.Automation.Wait()
-		result = errors.Join(a.StopRemoteHost(), a.Terminals.Close(), a.Store.Close())
+		result = errors.Join(a.StopRemoteHost(), a.Terminals.Close(), a.Voice.Close(), a.Store.Close())
 	})
 	return result
 }
