@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -37,6 +38,9 @@ type Recorder struct {
 	stopCh chan struct{}
 	result chan recordResult
 	ready  chan error
+	mu     sync.RWMutex
+	pcm    []byte
+	format *wca.WAVEFORMATEX
 }
 
 type recordResult struct {
@@ -59,6 +63,10 @@ func (r *Recorder) Start() error {
 	r.stopCh = make(chan struct{})
 	r.result = make(chan recordResult, 1)
 	r.ready = make(chan error, 1)
+	r.mu.Lock()
+	r.pcm = nil
+	r.format = nil
+	r.mu.Unlock()
 	go r.captureLoop()
 	return <-r.ready
 }
@@ -71,6 +79,21 @@ func (r *Recorder) Stop() ([]byte, error) {
 	close(r.stopCh)
 	res := <-r.result
 	return res.wav, res.err
+}
+
+// Snapshot wraps everything captured so far in a WAV without stopping the
+// WASAPI stream, enabling incremental local transcription while dictation is
+// still active.
+func (r *Recorder) Snapshot() ([]byte, error) {
+	r.mu.RLock()
+	pcm := append([]byte(nil), r.pcm...)
+	format := r.format
+	r.mu.RUnlock()
+	if format == nil {
+		return nil, errors.New("recorder is not ready yet")
+	}
+	result := r.encode(pcm, format)
+	return result.wav, result.err
 }
 
 func (r *Recorder) captureLoop() {
@@ -113,6 +136,9 @@ func (r *Recorder) captureLoop() {
 		r.ready <- fmt.Errorf("read microphone format: %w", err)
 		return
 	}
+	r.mu.Lock()
+	r.format = mixFormat
+	r.mu.Unlock()
 
 	const bufferDuration = wca.REFERENCE_TIME(3 * time.Second / 100) // 100ns units
 	if err := client.Initialize(wca.AUDCLNT_SHAREMODE_SHARED, 0, bufferDuration, 0, mixFormat, nil); err != nil {
@@ -135,19 +161,18 @@ func (r *Recorder) captureLoop() {
 
 	r.ready <- nil
 
-	pcm := make([]byte, 0, 1<<20)
 	deadline := time.Now().Add(maxRecordingDuration)
 	blockAlign := uint32(mixFormat.NBlockAlign)
 
 	for {
 		select {
 		case <-r.stopCh:
-			r.result <- r.encode(pcm, mixFormat)
+			r.result <- r.SnapshotResult()
 			return
 		default:
 		}
 		if time.Now().After(deadline) {
-			r.result <- r.encode(pcm, mixFormat)
+			r.result <- r.SnapshotResult()
 			return
 		}
 
@@ -170,7 +195,9 @@ func (r *Recorder) captureLoop() {
 			if flags&wca.AUDCLNT_BUFFERFLAGS_SILENT == 0 && framesAvailable > 0 {
 				byteLen := framesAvailable * blockAlign
 				chunk := unsafe.Slice(data, byteLen)
-				pcm = append(pcm, chunk...)
+				r.mu.Lock()
+				r.pcm = append(r.pcm, chunk...)
+				r.mu.Unlock()
 			}
 			if err := capture.ReleaseBuffer(framesAvailable); err != nil {
 				r.result <- recordResult{err: fmt.Errorf("release capture buffer: %w", err)}
@@ -182,6 +209,11 @@ func (r *Recorder) captureLoop() {
 			}
 		}
 	}
+}
+
+func (r *Recorder) SnapshotResult() recordResult {
+	wav, err := r.Snapshot()
+	return recordResult{wav: wav, err: err}
 }
 
 // encode wraps captured PCM in a standard RIFF/WAVE header. WASAPI shared

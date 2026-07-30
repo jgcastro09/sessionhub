@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-07-30 17:32:48 -03:00
+
+### Added
+
+- Voice dictation now appears progressively in the focused CLI while you speak instead of waiting for F9 to stop. Every two seconds, Session Hub safely snapshots the growing local WAV, asks the already-running local whisper.cpp server for the transcript so far, and pastes only the new words. F9 still performs one final pass for the tail of the recording, without duplicating already inserted text. This works on both macOS and Windows; no audio leaves the machine.
+
 ## [0.3.8] - 2026-07-30 16:54:51 -03:00
 
 ### Fixed

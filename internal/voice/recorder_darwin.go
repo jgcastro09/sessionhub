@@ -4,6 +4,7 @@ package voice
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -94,4 +95,55 @@ func (r *Recorder) Stop() ([]byte, error) {
 		return nil, errors.New("no audio captured — check this terminal app has microphone access in System Settings > Privacy & Security > Microphone")
 	}
 	return wav, nil
+}
+
+// Snapshot returns the portion of the WAV that has been written so far
+// without stopping the microphone. AVCaptureAudioFileOutput writes audio to
+// disk while recording, but only fixes the RIFF and data sizes when recording
+// stops; patch those two lengths in this private copy so whisper-server can
+// transcribe it as a standalone WAV.
+func (r *Recorder) Snapshot() ([]byte, error) {
+	if r.cmd == nil || r.wavPath == "" {
+		return nil, errors.New("recorder was not started")
+	}
+	wav, err := os.ReadFile(r.wavPath)
+	if err != nil {
+		return nil, fmt.Errorf("read live recorded audio: %w", err)
+	}
+	if err := finalizeLiveWAV(wav); err != nil {
+		return nil, err
+	}
+	return wav, nil
+}
+
+// finalizeLiveWAV makes an in-progress RIFF/WAVE file self-contained. It
+// intentionally walks chunks instead of assuming a 44-byte WAV header:
+// AVFoundation writes a JUNK reservation and an extensible fmt chunk before
+// its data chunk on macOS.
+func finalizeLiveWAV(wav []byte) error {
+	if len(wav) < 12 || string(wav[:4]) != "RIFF" || string(wav[8:12]) != "WAVE" {
+		return errors.New("live recording is not a RIFF/WAVE file yet")
+	}
+	binary.LittleEndian.PutUint32(wav[4:8], uint32(len(wav)-8))
+
+	for offset := 12; offset+8 <= len(wav); {
+		chunkSize := int(binary.LittleEndian.Uint32(wav[offset+4 : offset+8]))
+		dataOffset := offset + 8
+		if dataOffset > len(wav) {
+			break
+		}
+		if string(wav[offset:offset+4]) == "data" {
+			binary.LittleEndian.PutUint32(wav[offset+4:offset+8], uint32(len(wav)-dataOffset))
+			return nil
+		}
+		next := dataOffset + chunkSize
+		if chunkSize%2 != 0 {
+			next++
+		}
+		if next > len(wav) {
+			break
+		}
+		offset = next
+	}
+	return errors.New("live recording has no complete data chunk yet")
 }

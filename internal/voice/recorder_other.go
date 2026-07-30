@@ -19,3 +19,5 @@ func NewRecorder(recorderExe string) *Recorder { return &Recorder{} }
 func (r *Recorder) Start() error { return ErrUnsupportedPlatform }
 
 func (r *Recorder) Stop() ([]byte, error) { return nil, ErrUnsupportedPlatform }
+
+func (r *Recorder) Snapshot() ([]byte, error) { return nil, ErrUnsupportedPlatform }

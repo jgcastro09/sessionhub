@@ -35,6 +35,8 @@ var sections = []string{
 	"Metrics", "Logs", "Remote", "Settings",
 }
 
+const voicePartialInterval = 2 * time.Second
+
 type dataMsg struct {
 	sessions  []domain.Session
 	executors []domain.ExecutorConfig
@@ -102,9 +104,19 @@ type voiceReadyMsg struct {
 // toggleDictation) back to whichever terminal was focused when recording
 // started (target), even if focus moved on in the meantime.
 type voiceTranscribedMsg struct {
-	text   string
-	target *terminal.Session
-	err    error
+	text     string
+	previous string
+	target   *terminal.Session
+	err      error
+}
+
+// voicePartialMsg is one incremental, best-effort pass over the audio
+// captured so far. Its recordingID prevents a slow request from a previous
+// dictation being pasted into a later one.
+type voicePartialMsg struct {
+	recordingID uint64
+	text        string
+	err         error
 }
 
 // factoryResetDoneMsg reports the outcome of wiping the entire data
@@ -212,10 +224,14 @@ type Model struct {
 	// Voice dictation state (see toggleDictation): recording captures from
 	// the mic into recorder; recordingTerminal is fixed at the moment
 	// recording starts, so the transcript still lands in the right tab even
-	// if focus moves on before transcription finishes. voiceBusy covers the
-	// async install/transcribe gaps between key presses.
+	// if focus moves on before transcription finishes. While recording, a
+	// small WAV snapshot is transcribed every voicePartialInterval and only
+	// its new words are pasted into the terminal.
 	recording         bool
 	voiceBusy         bool
+	partialInFlight   bool
+	recordingID       uint64
+	dictatedText      string
 	recorder          *voice.Recorder
 	recordingTerminal *terminal.Session
 
@@ -515,9 +531,34 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.recorder = recorder
 		m.recording = true
+		m.recordingID++
+		m.partialInFlight = true
+		m.dictatedText = ""
 		m.recordingTerminal = m.activeTerminal
-		m.status = "🎤 Recording... press F9 to stop and transcribe"
-		return m, nil
+		m.status = "🎤 Recording... text will appear as you speak • F9 stops"
+		return m, m.transcribePartialCmd(m.recordingID, recorder)
+	case voicePartialMsg:
+		if !m.recording || msg.recordingID != m.recordingID {
+			return m, nil
+		}
+		m.partialInFlight = false
+		if msg.err == nil {
+			text := strings.TrimSpace(msg.text)
+			if delta := voiceTranscriptDelta(m.dictatedText, text); delta != "" && m.recordingTerminal != nil {
+				owner := terminal.Owner{Kind: "local", ID: "operator"}
+				if err := m.recordingTerminal.Paste(owner, delta); err != nil {
+					m.lastErr = err.Error()
+					m.status = "Couldn't paste live transcription: " + err.Error()
+				} else {
+					m.status = fmt.Sprintf("🎤 Recording... pasted %d live characters • F9 stops", len([]rune(delta)))
+				}
+			}
+			if text != "" {
+				m.dictatedText = text
+			}
+		}
+		m.partialInFlight = true
+		return m, m.transcribePartialCmd(m.recordingID, m.recorder)
 	case voiceTranscribedMsg:
 		m.voiceBusy = false
 		if msg.err != nil {
@@ -525,20 +566,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Transcription failed: " + msg.err.Error()
 			return m, nil
 		}
-		text := strings.TrimSpace(msg.text)
-		if text == "" {
-			m.status = "Heard nothing to transcribe"
+		delta := voiceTranscriptDelta(msg.previous, strings.TrimSpace(msg.text))
+		if delta == "" {
+			m.status = "Live voice dictation complete"
 			return m, nil
 		}
 		if msg.target != nil {
 			owner := terminal.Owner{Kind: "local", ID: "operator"}
-			if err := msg.target.Paste(owner, text); err != nil {
+			if err := msg.target.Paste(owner, delta); err != nil {
 				m.lastErr = err.Error()
 				m.status = "Couldn't paste transcription: " + err.Error()
 				return m, nil
 			}
 		}
-		m.status = fmt.Sprintf("Pasted %d characters from voice dictation", len([]rune(text)))
+		m.status = fmt.Sprintf("Live voice dictation complete • pasted final %d characters", len([]rune(delta)))
 		return m, nil
 	case factoryResetDoneMsg:
 		if msg.err != nil {
@@ -1122,16 +1163,18 @@ func (m Model) updateTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 
 // toggleDictation is F9's handler: first press installs/starts the local
 // Whisper server if needed (async — the very first call may be a
-// multi-minute download) then starts recording; second press stops
-// recording and transcribes it, pasting the result into whichever terminal
-// was focused when recording began.
+// multi-minute download), starts recording, and begins incremental local
+// transcription. The second press stops recording and performs one final
+// pass for words that arrived after the most recent live snapshot.
 func (m Model) toggleDictation() (Model, tea.Cmd) {
-	if m.voiceBusy {
+	if m.voiceBusy && !m.recording {
 		m.status = "voice dictation is still working..."
 		return m, nil
 	}
 	if m.recording {
 		m.recording = false
+		m.recordingID++ // invalidate an in-flight live-transcription request
+		m.partialInFlight = false
 		wav, err := m.recorder.Stop()
 		m.recorder = nil
 		if err != nil {
@@ -1143,11 +1186,12 @@ func (m Model) toggleDictation() (Model, tea.Cmd) {
 		m.voiceBusy = true
 		m.status = "Transcribing..."
 		target := m.recordingTerminal
+		previous := m.dictatedText
 		m.recordingTerminal = nil
 		manager := m.app.Voice
 		return m, func() tea.Msg {
 			text, err := manager.Transcribe(context.Background(), wav)
-			return voiceTranscribedMsg{text: text, target: target, err: err}
+			return voiceTranscribedMsg{text: text, previous: previous, target: target, err: err}
 		}
 	}
 	m.voiceBusy = true
@@ -1156,6 +1200,43 @@ func (m Model) toggleDictation() (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return voiceReadyMsg{err: manager.Ensure(context.Background())}
 	}
+}
+
+// transcribePartialCmd waits just long enough to collect a useful phrase,
+// then sends the growing WAV to the already-running local whisper-server.
+// Requests are chained from voicePartialMsg so only one inference runs at a
+// time; this avoids competing model requests and preserves transcript order.
+func (m Model) transcribePartialCmd(recordingID uint64, recorder *voice.Recorder) tea.Cmd {
+	manager := m.app.Voice
+	return func() tea.Msg {
+		timer := time.NewTimer(voicePartialInterval)
+		defer timer.Stop()
+		<-timer.C
+		wav, err := recorder.Snapshot()
+		if err != nil {
+			return voicePartialMsg{recordingID: recordingID, err: err}
+		}
+		text, err := manager.Transcribe(context.Background(), wav)
+		return voicePartialMsg{recordingID: recordingID, text: text, err: err}
+	}
+}
+
+// voiceTranscriptDelta returns only the words beyond the previous full
+// inference. Whisper can revise punctuation or spelling in an earlier live
+// pass; those already-pasted characters cannot safely be edited inside an
+// arbitrary CLI, so use word position to avoid duplicate text and append
+// only the newly heard tail.
+func voiceTranscriptDelta(previous, current string) string {
+	previousWords := strings.Fields(strings.TrimSpace(previous))
+	currentWords := strings.Fields(strings.TrimSpace(current))
+	if len(currentWords) <= len(previousWords) {
+		return ""
+	}
+	delta := strings.Join(currentWords[len(previousWords):], " ")
+	if len(previousWords) > 0 {
+		return " " + delta
+	}
+	return delta
 }
 
 // scrollBy moves the scrollback view by delta lines (positive = further

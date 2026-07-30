@@ -41,9 +41,10 @@ scratch, exactly like a fresh install.
 ## Voice dictation
 
 Press `f9` while a CLI tab is focused to start recording from the default
-microphone; press `f9` again to stop, transcribe, and paste the text into
-that same tab. Transcription is fully local and offline — the first press
-ever downloads a self-contained copy of [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+microphone. Text appears in that same tab progressively, about every two
+seconds, as you speak; press `f9` again to stop and capture the final words.
+Transcription is fully local and offline — the first press ever downloads a
+self-contained copy of [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
 and a multilingual model (~150MB, one-time) into `tools/` under Session
 Hub's data directory, then keeps its transcription server running in the
 background so later dictations don't reload the model. Nothing is sent to
