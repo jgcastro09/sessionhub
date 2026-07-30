@@ -33,7 +33,7 @@ const (
 	// tag and printed the real checksum (see that job's "Package" step) —
 	// left blank beforehand so EnsureInstalled fails loudly with a clear
 	// reason instead of silently skipping verification.
-	macosVoiceAssetSHA256 = ""
+	macosVoiceAssetSHA256 = "2ab0b426232cde1d4f2d42ec64cf12c96cc5eef49f2886b9f1abf1e350f820d4"
 
 	maxArchiveBytes = 64 << 20
 )

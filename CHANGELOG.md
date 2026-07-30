@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-30 15:10:00 -03:00
+
+### Fixed
+
+- Pinned the real sha256 for `sessionhub-voice-darwin.tar.gz` into `internal/voice/install_darwin.go`, now that the `macos-voice-tools` CI job has actually run (fixed in v0.3.1) and published it against the `v0.3.1` tag. Verified independently: downloaded the real release asset, confirmed its checksum matches, and confirmed the archive contains everything expected (`whisper-server`, `whisper-cli`, all required `.dylib`s, and `sessionhub-voice-recorder`). macOS voice dictation should now actually work end-to-end rather than failing with the "checksum isn't pinned yet" message.
+
 ## [0.3.1] - 2026-07-30 15:03:00 -03:00
 
 ### Fixed
