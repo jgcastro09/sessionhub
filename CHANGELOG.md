@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.26] - 2026-07-30 20:12:38 -03:00
+
+### Added
+
+- Automation now sends a preconfigured SessionHub-only instruction around the saved user task: it identifies the run as an automation, asks the executor to work autonomously, and requires an unambiguous final completion marker. The marker is recognized immediately by the scheduler but is removed from the saved History output; existing five-second idle completion remains the fallback for executors that do not emit it.
+
 ## [0.3.25] - 2026-07-30 20:07:41 -03:00
 
 ### Fixed

@@ -30,10 +30,13 @@ type activeWork struct {
 	ID         string
 	InstanceID string
 	Prompt     string
-	Output     []byte
-	StartedAt  time.Time
-	LastOutput time.Time
-	Deadline   time.Time
+	// CompletionToken is an Automation-only terminal marker. It is omitted
+	// for normal queues/pipelines, which retain their configured rules.
+	CompletionToken string
+	Output          []byte
+	StartedAt       time.Time
+	LastOutput      time.Time
+	Deadline        time.Time
 	// done is set by the simple Automation scheduler. Queue and pipeline
 	// callers continue using the persisted-work resolution path below.
 	done chan WorkResult
@@ -49,6 +52,12 @@ const automationStartupDelay = 5 * time.Second
 // the step once it has observed output and the PTY has been quiet long enough
 // for the response to settle.
 const automationCompletionQuiet = 5 * time.Second
+
+// AutomationCompletionToken is emitted by the executor only after it has
+// completed the task. The instruction deliberately describes the token in
+// pieces, so OpenCode's echo of the submitted prompt cannot accidentally
+// satisfy the terminal recognition rule before the work begins.
+const AutomationCompletionToken = "SESSIONHUB_AUTOMATION_COMPLETE"
 
 // WorkResult is the bounded completion evidence returned to the simple
 // Automation scheduler. It deliberately exposes a preview rather than a
@@ -272,17 +281,17 @@ func (s *Service) ReuseOpenTerminal(ctx context.Context, sessionID, executorID s
 // intentionally delegates process creation, PTY writes, terminal leases and
 // recognition to Service rather than reimplementing any of those concerns.
 func (s *Service) RunAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int) (WorkResult, error) {
-	return s.runAutomationStep(ctx, workID, sessionID, executorID, prompt, width, height, nil)
+	return s.runAutomationStep(ctx, workID, sessionID, executorID, prompt, "", width, height, nil)
 }
 
 // RunAutomationStepWithProgress is RunAutomationStep plus best-effort live
 // PTY feedback for the Automation UI. It does not expose a second terminal
 // control path or change recognition semantics.
 func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
-	return s.runAutomationStep(ctx, workID, sessionID, executorID, prompt, width, height, progress)
+	return s.runAutomationStep(ctx, workID, sessionID, executorID, automationPrompt(prompt), AutomationCompletionToken, width, height, progress)
 }
 
-func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
+func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt, completionToken string, width, height int, progress AutomationProgress) (WorkResult, error) {
 	// Activate a lazy tab through the same Start flow used by a topbar click
 	// when it is not already running, then reuse that exact PTY afterwards.
 	term, instance, started, err := s.startOrReuse(ctx, sessionID, executorID, width, height)
@@ -355,7 +364,7 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 	done := make(chan WorkResult, 1)
 	s.mu.Lock()
 	config := s.configs[instance.ID]
-	work := &activeWork{ID: workID, InstanceID: instance.ID, Prompt: prompt, StartedAt: now, LastOutput: now, done: done}
+	work := &activeWork{ID: workID, InstanceID: instance.ID, Prompt: prompt, CompletionToken: completionToken, StartedAt: now, LastOutput: now, done: done}
 	if config.Timeout > 0 {
 		work.Deadline = now.Add(config.Timeout)
 	}
@@ -390,6 +399,19 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 			}
 		}
 	}
+}
+
+// automationPrompt is preconfigured SessionHub protocol, not a part of the
+// user's saved Automation prompt. It explains the automated context and asks
+// the CLI for an unambiguous final marker after — and only after — its actual
+// work is complete.
+func automationPrompt(userPrompt string) string {
+	return "SessionHub automation notice:\n" +
+		"You are executing a scheduled automation inside SessionHub. Work autonomously on the task below in the current workspace. " +
+		"Do not finish early or ask for an operator unless the task is genuinely blocked. " +
+		"When the task is completely finished, add one final line made by joining `SESSIONHUB`, `_AUTOMATION`, and `_COMPLETE` with no spaces. " +
+		"Do not write that final line before completion.\n\n" +
+		"User task:\n" + userPrompt
 }
 
 func (s *Service) Start(
@@ -518,7 +540,15 @@ func (s *Service) handleOutput(instanceID string, data []byte) {
 	if len(work.Output) > 4<<20 {
 		work.Output = append([]byte(nil), work.Output[len(work.Output)-(4<<20):]...)
 	}
-	recognition := RecognizeOutput(config.Rules, string(work.Output))
+	var recognition Recognition
+	if work.CompletionToken != "" && strings.Contains(string(work.Output), work.CompletionToken) {
+		recognition = Recognition{
+			Matched: true, RuleID: "automation_completion_token", Outcome: domain.StateSucceeded,
+			Reason: "executor confirmed automation completion",
+		}
+	} else {
+		recognition = RecognizeOutput(config.Rules, string(work.Output))
+	}
 	s.mu.Unlock()
 	if recognition.Matched {
 		s.finishWork(instanceID, recognition)

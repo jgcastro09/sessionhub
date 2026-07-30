@@ -86,3 +86,31 @@ func TestRulelessAutomationCompletesAfterSettledOutput(t *testing.T) {
 		t.Fatal("ruleless automation did not complete after settled output")
 	}
 }
+
+func TestAutomationCompletionTokenFinishesWorkImmediately(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "svc.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	svc := New(ctx, st, terminal.NewManager(ctx, nil, 100))
+	instanceID := "inst-automation-token"
+	done := make(chan WorkResult, 1)
+	svc.instances[instanceID] = domain.Instance{ID: instanceID, SessionID: "s1", ExecutorID: "e1"}
+	svc.configs[instanceID] = domain.ExecutorConfig{ID: "e1"}
+	svc.work[instanceID] = &activeWork{
+		ID: "work-token", InstanceID: instanceID, Prompt: "build it",
+		CompletionToken: AutomationCompletionToken, StartedAt: time.Now(), LastOutput: time.Now(), done: done,
+	}
+
+	svc.handleOutput(instanceID, []byte("Task complete\n"+AutomationCompletionToken))
+	select {
+	case result := <-done:
+		if result.Outcome != domain.StateSucceeded || result.Reason != "executor confirmed automation completion" {
+			t.Fatalf("unexpected completion result: %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("automation completion token did not resolve the work")
+	}
+}

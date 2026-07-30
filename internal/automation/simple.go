@@ -423,6 +423,7 @@ func (s *Scheduler) setLiveOutput(automationID, output string) {
 func SanitizeTerminalOutput(value string) string {
 	value = stripTerminalControlSequences(value)
 	value = ansi.Strip(value)
+	value = strings.ReplaceAll(value, executor.AutomationCompletionToken, "")
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	value = strings.ReplaceAll(value, "\r", "\n")
 	lines := strings.Split(value, "\n")
