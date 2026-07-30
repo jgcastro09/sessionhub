@@ -67,6 +67,23 @@ func TestSchedulerKeepsBoundedLiveOutput(t *testing.T) {
 	s.Close()
 }
 
+func TestSchedulerSanitizesTerminalColorsBeforeSavingHistory(t *testing.T) {
+	s, err := NewScheduler(context.Background(), t.TempDir(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.items["a"] = SimpleAutomation{ID: "a", Status: StatusRunning}
+	s.setLiveOutput("a", "\x1b[48;5;0mblack background\x1b[0m\r\nanswer")
+	item, ok := s.Get("a")
+	if !ok {
+		t.Fatal("automation missing")
+	}
+	if strings.Contains(item.LiveOutput, "\x1b") || item.LiveOutput != "black background\nanswer" {
+		t.Fatalf("terminal output was not converted to safe plain text: %q", item.LiveOutput)
+	}
+	s.Close()
+}
+
 func TestSchedulerStartupMarksPastOnceAsMissed(t *testing.T) {
 	root := t.TempDir()
 	s, err := NewScheduler(context.Background(), root, nil, nil)

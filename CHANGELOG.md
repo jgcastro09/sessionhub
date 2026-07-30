@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.24] - 2026-07-30 20:00:59 -03:00
+
+### Fixed
+
+- Automation no longer renders raw terminal snapshots in its list, preventing OpenCode ANSI background sequences from drawing a black panel over the screen. Live and final executor output is normalized to plain text and is available through the `History / Details` modal, together with the run metadata, errors, and bounded response preview.
+
 ## [0.3.23] - 2026-07-30 19:47:05 -03:00
 
 ### Fixed

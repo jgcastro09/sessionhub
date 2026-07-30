@@ -2470,10 +2470,7 @@ func (m Model) emptyContent(width, height int) string {
 						body.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(item.Activity)))
 					}
 					if item.LiveOutput != "" {
-						body.WriteString("    " + titleStyle.Render("Live terminal output") + "\n")
-						for _, line := range strings.Split(item.LiveOutput, "\n") {
-							body.WriteString("      " + truncate(line, max(20, width-18)) + "\n")
-						}
+						body.WriteString("    " + mutedStyle.Render("Live output is available in History / Details.") + "\n")
 					}
 				} else {
 					body.WriteString(fmt.Sprintf("    Status: %s  •  Last run: %s\n", item.Status, last))
@@ -2484,7 +2481,7 @@ func (m Model) emptyContent(width, height int) string {
 		body.WriteString("\n" + titleStyle.Render("Actions") + "\n")
 		body.WriteString("  " + keyStyle.Render("[n New Automation]") + "  " +
 			keyStyle.Render("[r Run Now]") + "  " + keyStyle.Render("[e Edit]") + "  " +
-			keyStyle.Render("[c Cancel]") + "  " + keyStyle.Render("[l Last Run Details]") + "  " +
+			keyStyle.Render("[c Cancel]") + "  " + keyStyle.Render("[l History / Details]") + "  " +
 			keyStyle.Render("[d Delete]"))
 	case "Metrics":
 		body.WriteString(fmt.Sprintf("Input Tokens     %d\nOutput Tokens    %d\nTotal Tokens     %d\nCache Read       %d\nCache Write      %d\nDuration         %s\n\nCusto equivalente estimado em API: US$ %.6f",
@@ -2882,6 +2879,9 @@ func automationDetailsForm(item automation.SimpleAutomation) formModel {
 	}
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("Status: %s\nTrigger: %s\nStarted: %s\nFinished: %s\nDuration: %s\n", last.Status, last.Trigger, started, finished, duration))
+	if item.LiveOutput != "" {
+		b.WriteString("\nLive terminal output:\n" + automation.SanitizeTerminalOutput(item.LiveOutput) + "\n")
+	}
 	if last.FailedStepID != "" {
 		b.WriteString("Failed step: " + last.FailedStepID + "\n")
 	}
@@ -2894,7 +2894,7 @@ func automationDetailsForm(item automation.SimpleAutomation) formModel {
 			b.WriteString(fmt.Sprintf("\nStep %d:\n%s\n", i+1, truncate(preview, 900)))
 		}
 	}
-	return formModel{kind: automationDetailsView, title: "Last Run Details: " + item.Name, details: b.String()}
+	return formModel{kind: automationDetailsView, title: "Automation History: " + item.Name, details: b.String()}
 }
 
 func weekdayName(day time.Weekday) string {

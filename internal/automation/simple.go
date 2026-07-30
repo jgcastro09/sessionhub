@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/id"
 	"github.com/jgcastro09/sessionhub/internal/store"
@@ -305,8 +306,8 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 			result, err := s.executors.RunAutomationStepWithProgress(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36,
 				func(_ string, output string) { s.setLiveOutput(automationID, output) })
 			if err == nil {
-				if result.Output != "" {
-					previews = append(previews, result.Output)
+				if output := SanitizeTerminalOutput(result.Output); output != "" {
+					previews = append(previews, output)
 				}
 				break
 			}
@@ -407,12 +408,33 @@ func (s *Scheduler) setLiveOutput(automationID, output string) {
 	s.mu.Lock()
 	if item, ok := s.items[automationID]; ok {
 		item.Activity = "Prompt sent • waiting for executor completion…"
-		item.LiveOutput = outputPreviewString(output, 900)
+		item.LiveOutput = outputPreviewString(SanitizeTerminalOutput(output), 900)
 		item.UpdatedAt = time.Now().UTC()
 		s.items[automationID] = item
 		_ = s.persistLocked()
 	}
 	s.mu.Unlock()
+}
+
+// SanitizeTerminalOutput converts a rendered PTY snapshot into safe plain
+// text for Automation history. Terminal snapshots contain ANSI color and
+// background sequences; rendering those sequences inside the Hub UI can
+// paint an unrelated black panel over the Automation list.
+func SanitizeTerminalOutput(value string) string {
+	value = ansi.Strip(value)
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	lines := strings.Split(value, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " \t")
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func outputPreviewString(value string, maxBytes int) string {
