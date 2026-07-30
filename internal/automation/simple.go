@@ -306,7 +306,7 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 			result, err := s.executors.RunAutomationStepWithProgress(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36,
 				func(_ string, output string) { s.setLiveOutput(automationID, output) })
 			if err == nil {
-				if output := SanitizeTerminalOutput(result.Output); output != "" {
+				if output := automationOutputPreview(result.Screen, result.Output); output != "" {
 					previews = append(previews, output)
 				}
 				break
@@ -503,6 +503,17 @@ func outputPreviewString(value string, maxBytes int) string {
 		return value
 	}
 	return value[len(value)-maxBytes:]
+}
+
+// automationOutputPreview prefers the terminal's rendered screen at the end
+// of a full-screen CLI run. Raw PTY redraw bytes are a fallback only: their
+// tail can contain just colour cells and footer chrome after an answer has
+// already appeared on screen.
+func automationOutputPreview(screen, raw string) string {
+	if screen = SanitizeTerminalOutput(screen); screen != "" {
+		return outputPreviewString(screen, 1800)
+	}
+	return outputPreviewString(SanitizeTerminalOutput(raw), 1800)
 }
 
 func (s *Scheduler) normalize(now time.Time) error {

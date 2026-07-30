@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.27] - 2026-07-30 20:21:38 -03:00
+
+### Fixed
+
+- Automation History now captures the terminal emulator's rendered completion screen before saving its bounded output preview. This preserves the assistant's final text from full-screen CLIs such as OpenCode instead of saving only the last raw redraw/footer cells; raw PTY output remains a fallback.
+
 ## [0.3.26] - 2026-07-30 20:12:38 -03:00
 
 ### Added

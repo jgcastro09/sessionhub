@@ -67,6 +67,10 @@ type WorkResult struct {
 	Outcome    domain.State
 	Reason     string
 	Output     string
+	// Screen is the terminal emulator's rendered screen at completion. It is
+	// preferable to raw PTY bytes for full-screen TUIs, whose last raw redraw
+	// is often just visual chrome rather than the assistant's answer.
+	Screen string
 }
 
 // AutomationProgress receives a bounded live terminal snapshot after the
@@ -615,7 +619,11 @@ func (s *Service) finishWork(instanceID string, recognition Recognition) {
 		"output":           string(work.Output),
 	})
 	if work.done != nil {
-		work.done <- WorkResult{InstanceID: instanceID, Outcome: outcome, Reason: recognition.Reason, Output: outputPreview(work.Output)}
+		screen := ""
+		if live, ok := s.terminals.Get(instanceID); ok {
+			screen = live.Snapshot()
+		}
+		work.done <- WorkResult{InstanceID: instanceID, Outcome: outcome, Reason: recognition.Reason, Output: outputPreview(work.Output), Screen: screen}
 	} else {
 		err := s.store.ResolveRecognizedWork(context.Background(), work.ID, outcome,
 			recognition.RuleID, result, recognition.Reason)

@@ -84,6 +84,13 @@ func TestSchedulerSanitizesTerminalColorsBeforeSavingHistory(t *testing.T) {
 	s.Close()
 }
 
+func TestAutomationOutputPreviewPrefersRenderedScreen(t *testing.T) {
+	preview := automationOutputPreview("\x1b[38;2;255;255;255mFinal answer: Kanban created\x1b[0m", "\x1b[48;2;10;10;10m████ terminal footer")
+	if preview != "Final answer: Kanban created" {
+		t.Fatalf("preview should use the readable final screen, got %q", preview)
+	}
+}
+
 func TestSchedulerStartupMarksPastOnceAsMissed(t *testing.T) {
 	root := t.TempDir()
 	s, err := NewScheduler(context.Background(), root, nil, nil)
