@@ -30,3 +30,4 @@ Thumbs.db
 .env.*
 !.env.example
 config.local.*
+AGENTS.md
