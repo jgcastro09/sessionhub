@@ -6,7 +6,11 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.5] - 2026-07-30 11:10:00 -03:00
+## [0.1.6] - 2026-07-30 11:18:00 -03:00
+
+### Changed
+
+- Updated NPM package name to `@jgcastro09/sessionhub` for user-scoped NPM publishing.
 
 ### Changed
 
@@ -47,7 +51,8 @@ All notable changes to Session Hub are documented here. The format follows
 - Git workspace summaries, release update checks, and the NPM binary installer.
 - Cross-platform CI and reproducible release configuration.
 
-[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/jgcastro09/sessionhub/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/jgcastro09/sessionhub/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/jgcastro09/sessionhub/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/jgcastro09/sessionhub/compare/v0.1.2...v0.1.3

@@ -1,6 +1,6 @@
 {
-  "name": "sessionhub",
-  "version": "0.1.5",
+  "name": "@jgcastro09/sessionhub",
+  "version": "0.1.6",
   "description": "Terminal-native hub for real PTY AI CLI sessions",
   "author": "João Cunha <jgcastro09>",
   "license": "MIT",
