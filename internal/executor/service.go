@@ -274,12 +274,23 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 	if err := term.Acquire(owner); err != nil {
 		return WorkResult{InstanceID: instance.ID}, err
 	}
-	defer func() {
+	automationOwnsTerminal := true
+	restoreOperatorControl := func() {
+		if !automationOwnsTerminal {
+			return
+		}
 		_ = term.Release(owner)
+		automationOwnsTerminal = false
 		if tookLocalLease {
 			_ = term.Acquire(localOwner)
 		}
-	}()
+	}
+	// Control is only exclusive while the automation initializes the CLI and
+	// writes its prompt. Once that write succeeds, terminal output can be
+	// observed without a lease, so return the selected tab to the operator
+	// immediately instead of blocking normal Session Hub interaction for the
+	// entire duration of the executor response.
+	defer restoreOperatorControl()
 	if started {
 		// OpenCode and other TUIs can accept PTY bytes before their interactive
 		// input layer exists. Waiting for the terminal's own initial render is
@@ -295,6 +306,7 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 	if err := term.SendPrompt(owner, prompt); err != nil {
 		return WorkResult{InstanceID: instance.ID}, err
 	}
+	restoreOperatorControl()
 	now := time.Now().UTC()
 	done := make(chan WorkResult, 1)
 	s.mu.Lock()

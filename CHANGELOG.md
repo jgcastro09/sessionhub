@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.21] - 2026-07-30 19:31:46 -03:00
+
+### Fixed
+
+- Automation now releases the selected CLI back to the local operator immediately after its prompt is written. It continues observing the existing PTY output for completion without blocking clicks, typing, or normal workflow in that tab.
+
 ## [0.3.20] - 2026-07-30 19:25:08 -03:00
 
 ### Fixed
