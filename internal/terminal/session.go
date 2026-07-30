@@ -1,0 +1,485 @@
+package terminal
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	pty "github.com/aymanbagabas/go-pty"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
+	"github.com/nodestage/sessionhub/internal/domain"
+)
+
+var (
+	ErrControlBusy = errors.New("terminal control is owned by another actor")
+	ErrNotRunning  = errors.New("terminal is not running")
+)
+
+type HistorySink interface {
+	AppendTerminal(context.Context, string, string, []byte) error
+}
+
+type EventKind string
+
+const (
+	EventOutput EventKind = "output"
+	EventState  EventKind = "state"
+	EventError  EventKind = "error"
+)
+
+type Event struct {
+	InstanceID string
+	Kind       EventKind
+	State      domain.State
+	Err        error
+	Data       []byte
+	ExitCode   *int
+}
+
+type Owner struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+func (o Owner) Equal(other Owner) bool { return o.Kind == other.Kind && o.ID == other.ID }
+func (o Owner) Empty() bool            { return o.Kind == "" && o.ID == "" }
+
+type historyRecord struct {
+	direction string
+	data      []byte
+}
+
+type Session struct {
+	id            string
+	cfg           domain.ExecutorConfig
+	ctx           context.Context
+	cancel        context.CancelFunc
+	pty           pty.Pty
+	cmd           *pty.Cmd
+	emulator      *vt.SafeEmulator
+	sink          HistorySink
+	events        chan<- Event
+	historyMu     sync.Mutex
+	historyQueue  []historyRecord
+	historyWake   chan struct{}
+	historyClosed bool
+
+	mu        sync.RWMutex
+	state     domain.State
+	owner     Owner
+	width     int
+	height    int
+	exitCode  *int
+	lastErr   error
+	waitDone  chan struct{}
+	closeOnce sync.Once
+	ioWG      sync.WaitGroup
+	historyWG sync.WaitGroup
+}
+
+func Start(
+	parent context.Context,
+	instanceID string,
+	cfg domain.ExecutorConfig,
+	width, height, scrollback int,
+	sink HistorySink,
+	events chan<- Event,
+) (*Session, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if width < 2 || height < 2 {
+		return nil, fmt.Errorf("terminal dimensions must be at least 2x2")
+	}
+	if cfg.WorkingDir != "" {
+		info, err := os.Stat(cfg.WorkingDir)
+		if err != nil {
+			return nil, fmt.Errorf("open executor working directory %q: %w", cfg.WorkingDir, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("executor working directory %q is not a directory", cfg.WorkingDir)
+		}
+	}
+	command, args := commandLine(cfg)
+	resolvedCommand, err := exec.LookPath(command)
+	if err != nil {
+		return nil, fmt.Errorf("find executor command %q: %w", command, err)
+	}
+	command = resolvedCommand
+	p, err := pty.New()
+	if err != nil {
+		return nil, fmt.Errorf("create pseudoterminal: %w", err)
+	}
+	if err := p.Resize(width, height); err != nil {
+		_ = p.Close()
+		return nil, fmt.Errorf("size pseudoterminal to %dx%d: %w", width, height, err)
+	}
+	ctx, cancel := context.WithCancel(parent)
+	cmd := p.CommandContext(ctx, command, args...)
+	cmd.Dir = cfg.WorkingDir
+	cmd.Env = mergedEnvironment(cfg.Environment)
+
+	if err := cmd.Start(); err != nil {
+		cancel()
+		_ = p.Close()
+		return nil, fmt.Errorf("start executor %q in pseudoterminal: %w", cfg.Name, err)
+	}
+
+	emu := vt.NewSafeEmulator(width, height)
+	emu.SetScrollbackSize(scrollback)
+	s := &Session{
+		id: instanceID, cfg: cfg, ctx: ctx, cancel: cancel, pty: p, cmd: cmd,
+		emulator: emu, sink: sink, events: events,
+		historyWake: make(chan struct{}, 1),
+		state:       domain.StateRunning, owner: Owner{Kind: "local", ID: "operator"},
+		width: width, height: height, waitDone: make(chan struct{}),
+	}
+	s.historyWG.Add(1)
+	go func() {
+		defer s.historyWG.Done()
+		s.persistHistory()
+	}()
+	s.ioWG.Add(2)
+	go func() {
+		defer s.ioWG.Done()
+		s.readOutput()
+	}()
+	go func() {
+		defer s.ioWG.Done()
+		s.copyTerminalReplies()
+	}()
+	go s.wait()
+	s.emit(Event{InstanceID: instanceID, Kind: EventState, State: domain.StateRunning})
+	return s, nil
+}
+
+func commandLine(cfg domain.ExecutorConfig) (string, []string) {
+	if strings.TrimSpace(cfg.Shell) == "" {
+		return cfg.Command, append([]string(nil), cfg.Args...)
+	}
+	line := quoteCommand(cfg.Command, cfg.Args)
+	base := strings.ToLower(filepath.Base(cfg.Shell))
+	switch base {
+	case "cmd", "cmd.exe":
+		return cfg.Shell, []string{"/d", "/s", "/c", line}
+	case "powershell", "powershell.exe", "pwsh", "pwsh.exe":
+		return cfg.Shell, []string{"-NoLogo", "-NoProfile", "-Command", line}
+	default:
+		return cfg.Shell, []string{"-lc", line}
+	}
+}
+
+func quoteCommand(command string, args []string) string {
+	all := append([]string{command}, args...)
+	for i, value := range all {
+		if runtime.GOOS == "windows" {
+			all[i] = `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+		} else {
+			all[i] = "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+		}
+	}
+	return strings.Join(all, " ")
+}
+
+func mergedEnvironment(configured []domain.SecretEnv) []string {
+	values := make(map[string]string, len(os.Environ())+len(configured))
+	keys := make(map[string]string, len(values))
+	for _, item := range os.Environ() {
+		name, value, ok := strings.Cut(item, "=")
+		if !ok {
+			continue
+		}
+		canonical := name
+		if runtime.GOOS == "windows" {
+			canonical = strings.ToUpper(name)
+		}
+		keys[canonical] = name
+		values[canonical] = value
+	}
+	for _, item := range configured {
+		canonical := item.Name
+		if runtime.GOOS == "windows" {
+			canonical = strings.ToUpper(item.Name)
+		}
+		keys[canonical] = item.Name
+		values[canonical] = item.Value
+	}
+	if _, ok := values["TERM"]; !ok {
+		keys["TERM"] = "TERM"
+		values["TERM"] = "xterm-256color"
+	}
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names))
+	for _, canonical := range names {
+		out = append(out, keys[canonical]+"="+values[canonical])
+	}
+	return out
+}
+
+func (s *Session) persistHistory() {
+	for {
+		s.historyMu.Lock()
+		batch := s.historyQueue
+		s.historyQueue = nil
+		closed := s.historyClosed
+		s.historyMu.Unlock()
+		for _, record := range batch {
+			if s.sink == nil {
+				continue
+			}
+			if err := s.sink.AppendTerminal(context.Background(), s.id, record.direction, record.data); err != nil {
+				s.emit(Event{InstanceID: s.id, Kind: EventError, Err: err})
+			}
+		}
+		if closed && len(batch) == 0 {
+			return
+		}
+		<-s.historyWake
+	}
+}
+
+func (s *Session) record(direction string, data []byte) {
+	copyData := append([]byte(nil), data...)
+	s.historyMu.Lock()
+	if s.historyClosed {
+		s.historyMu.Unlock()
+		return
+	}
+	s.historyQueue = append(s.historyQueue, historyRecord{direction: direction, data: copyData})
+	s.historyMu.Unlock()
+	select {
+	case s.historyWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Session) readOutput() {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := s.pty.Read(buf)
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			_, _ = s.emulator.Write(chunk)
+			s.record("output", chunk)
+			s.emit(Event{InstanceID: s.id, Kind: EventOutput, Data: chunk})
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) && s.ctx.Err() == nil {
+				s.emit(Event{InstanceID: s.id, Kind: EventError, Err: fmt.Errorf("read PTY output: %w", err)})
+			}
+			return
+		}
+	}
+}
+
+func (s *Session) copyTerminalReplies() {
+	_, err := io.Copy(s.pty, s.emulator)
+	if err != nil && !errors.Is(err, os.ErrClosed) && s.ctx.Err() == nil {
+		s.emit(Event{InstanceID: s.id, Kind: EventError, Err: fmt.Errorf("forward terminal input: %w", err)})
+	}
+}
+
+func (s *Session) wait() {
+	err := s.cmd.Wait()
+	s.mu.Lock()
+	nowState := domain.StateFinished
+	if err != nil && s.ctx.Err() == nil {
+		nowState = domain.StateError
+		s.lastErr = err
+	}
+	if s.cmd.ProcessState != nil {
+		code := s.cmd.ProcessState.ExitCode()
+		s.exitCode = &code
+		if code != 0 && s.ctx.Err() == nil {
+			nowState = domain.StateError
+		}
+	}
+	if s.ctx.Err() != nil {
+		nowState = domain.StateInterrupted
+	}
+	s.state = nowState
+	s.mu.Unlock()
+	s.emit(Event{InstanceID: s.id, Kind: EventState, State: nowState, Err: err, ExitCode: s.exitCode})
+	close(s.waitDone)
+}
+
+func (s *Session) emit(event Event) {
+	if s.events == nil {
+		return
+	}
+	select {
+	case s.events <- event:
+	default:
+	}
+}
+
+func (s *Session) ID() string { return s.id }
+
+func (s *Session) State() domain.State {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.state
+}
+
+func (s *Session) Owner() Owner {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.owner
+}
+
+func (s *Session) Acquire(owner Owner) error {
+	if owner.Empty() {
+		return fmt.Errorf("control owner is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.owner.Empty() && !s.owner.Equal(owner) {
+		return fmt.Errorf("%w: %s/%s", ErrControlBusy, s.owner.Kind, s.owner.ID)
+	}
+	s.owner = owner
+	return nil
+}
+
+func (s *Session) Transfer(from, to Owner) error {
+	if to.Empty() {
+		return fmt.Errorf("new control owner is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.owner.Equal(from) {
+		return fmt.Errorf("%w: %s/%s", ErrControlBusy, s.owner.Kind, s.owner.ID)
+	}
+	s.owner = to
+	return nil
+}
+
+func (s *Session) Release(owner Owner) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.owner.Equal(owner) {
+		return fmt.Errorf("%w: %s/%s", ErrControlBusy, s.owner.Kind, s.owner.ID)
+	}
+	s.owner = Owner{}
+	return nil
+}
+
+func (s *Session) checkWrite(owner Owner) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.state != domain.StateRunning && s.state != domain.StateWaiting {
+		return ErrNotRunning
+	}
+	if !s.owner.Equal(owner) {
+		return fmt.Errorf("%w: %s/%s", ErrControlBusy, s.owner.Kind, s.owner.ID)
+	}
+	return nil
+}
+
+func (s *Session) SendKey(owner Owner, key uv.KeyEvent) error {
+	if err := s.checkWrite(owner); err != nil {
+		return err
+	}
+	s.emulator.SendKey(key)
+	return nil
+}
+
+func (s *Session) SendMouse(owner Owner, mouse uv.MouseEvent) error {
+	if err := s.checkWrite(owner); err != nil {
+		return err
+	}
+	s.emulator.SendMouse(mouse)
+	return nil
+}
+
+func (s *Session) Paste(owner Owner, text string) error {
+	if err := s.checkWrite(owner); err != nil {
+		return err
+	}
+	s.emulator.Paste(text)
+	s.record("input", []byte(text))
+	return nil
+}
+
+func (s *Session) Write(owner Owner, data []byte) error {
+	if err := s.checkWrite(owner); err != nil {
+		return err
+	}
+	if _, err := s.pty.Write(data); err != nil {
+		return fmt.Errorf("write terminal input: %w", err)
+	}
+	s.record("input", data)
+	return nil
+}
+
+func (s *Session) SendPrompt(owner Owner, prompt string) error {
+	if err := s.checkWrite(owner); err != nil {
+		return err
+	}
+	text := prompt + s.cfg.PromptSuffix
+	s.emulator.SendText(text)
+	s.record("input", []byte(text))
+	return nil
+}
+
+func (s *Session) Resize(width, height int) error {
+	if width < 2 || height < 2 {
+		return nil
+	}
+	s.mu.Lock()
+	s.width, s.height = width, height
+	s.mu.Unlock()
+	s.emulator.Resize(width, height)
+	if err := s.pty.Resize(width, height); err != nil {
+		return fmt.Errorf("resize PTY to %dx%d: %w", width, height, err)
+	}
+	return nil
+}
+
+func (s *Session) Snapshot() string   { return s.emulator.Render() }
+func (s *Session) IsAltScreen() bool  { return s.emulator.IsAltScreen() }
+func (s *Session) ScrollbackLen() int { return s.emulator.ScrollbackLen() }
+
+func (s *Session) Close(grace time.Duration) error {
+	var closeErr error
+	s.closeOnce.Do(func() {
+		s.cancel()
+		select {
+		case <-s.waitDone:
+		case <-time.After(grace):
+			if s.cmd.Process != nil {
+				_ = s.cmd.Process.Kill()
+			}
+			<-s.waitDone
+		}
+		if err := s.emulator.Close(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		}
+		if err := s.pty.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+			closeErr = errors.Join(closeErr, err)
+		}
+		s.ioWG.Wait()
+		s.historyMu.Lock()
+		s.historyClosed = true
+		s.historyMu.Unlock()
+		select {
+		case s.historyWake <- struct{}{}:
+		default:
+		}
+		s.historyWG.Wait()
+	})
+	return closeErr
+}

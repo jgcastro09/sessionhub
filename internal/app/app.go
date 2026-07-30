@@ -1,0 +1,91 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/nodestage/sessionhub/internal/automation"
+	"github.com/nodestage/sessionhub/internal/config"
+	contexthub "github.com/nodestage/sessionhub/internal/context"
+	"github.com/nodestage/sessionhub/internal/domain"
+	"github.com/nodestage/sessionhub/internal/executor"
+	"github.com/nodestage/sessionhub/internal/metrics"
+	"github.com/nodestage/sessionhub/internal/remote"
+	"github.com/nodestage/sessionhub/internal/store"
+	"github.com/nodestage/sessionhub/internal/terminal"
+)
+
+type App struct {
+	Version    string
+	Paths      config.Paths
+	Store      *store.Store
+	Terminals  *terminal.Manager
+	Executors  *executor.Service
+	Context    *contexthub.Service
+	Metrics    *metrics.Calculator
+	Automation *automation.Engine
+	ctx        context.Context
+	cancel     context.CancelFunc
+	closeOnce  sync.Once
+	remoteMu   sync.Mutex
+	remoteHost *remote.Host
+	recovered  int64
+}
+
+func New(parent context.Context, paths config.Paths, version string) (*App, error) {
+	ctx, cancel := context.WithCancel(parent)
+	repository, err := store.Open(ctx, paths.Database)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	recovered, err := repository.Recover(ctx)
+	if err != nil {
+		_ = repository.Close()
+		cancel()
+		return nil, fmt.Errorf("recover interrupted work: %w", err)
+	}
+	terminals := terminal.NewManager(ctx, repository, 10_000)
+	executors := executor.New(ctx, repository, terminals)
+	automationEngine := automation.NewEngine(repository, executors, 4)
+	a := &App{
+		Version: version, Paths: paths, Store: repository,
+		Terminals: terminals, Executors: executors,
+		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
+		Automation: automationEngine,
+		ctx:        ctx, cancel: cancel, recovered: recovered,
+	}
+	go executors.Run()
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				if err := automationEngine.ProcessSchedules(ctx, now); err != nil {
+					_ = repository.Log(context.Background(), domain.LogEntry{
+						Level: "error", Kind: "scheduler", Message: err.Error(),
+					})
+				}
+			}
+		}
+	}()
+	return a, nil
+}
+
+func (a *App) RecoveredCount() int64 { return a.recovered }
+
+func (a *App) Close() error {
+	var result error
+	a.closeOnce.Do(func() {
+		a.cancel()
+		a.Automation.Wait()
+		result = errors.Join(a.StopRemoteHost(), a.Terminals.Close(), a.Store.Close())
+	})
+	return result
+}
