@@ -7,15 +7,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/automation"
-	"github.com/nodestage/sessionhub/internal/config"
-	contexthub "github.com/nodestage/sessionhub/internal/context"
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/executor"
-	"github.com/nodestage/sessionhub/internal/metrics"
-	"github.com/nodestage/sessionhub/internal/remote"
-	"github.com/nodestage/sessionhub/internal/store"
-	"github.com/nodestage/sessionhub/internal/terminal"
+	"github.com/jgcastro09/sessionhub/internal/automation"
+	"github.com/jgcastro09/sessionhub/internal/config"
+	contexthub "github.com/jgcastro09/sessionhub/internal/context"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/executor"
+	"github.com/jgcastro09/sessionhub/internal/metrics"
+	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/store"
+	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
 
 type App struct {

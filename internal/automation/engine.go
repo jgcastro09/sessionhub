@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/store"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/store"
 )
 
 type PromptDispatcher interface {

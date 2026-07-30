@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/id"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/id"
 )
 
 func (s *Store) Enqueue(ctx context.Context, item domain.QueueItem) (domain.QueueItem, error) {

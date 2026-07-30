@@ -8,13 +8,13 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/nodestage/sessionhub/internal/app"
-	"github.com/nodestage/sessionhub/internal/config"
-	"github.com/nodestage/sessionhub/internal/ui"
+	"github.com/jgcastro09/sessionhub/internal/app"
+	"github.com/jgcastro09/sessionhub/internal/config"
+	"github.com/jgcastro09/sessionhub/internal/ui"
 )
 
 var (
-	version   = "0.1.0"
+	version   = "0.1.1"
 	commit    = "none"
 	buildDate = "unknown"
 )
@@ -56,6 +56,7 @@ func run() error {
 			return err
 		}
 	}
+	enableConsoleMouseInput()
 	program := tea.NewProgram(ui.New(application))
 	_, runErr := program.Run()
 	closeErr := application.Close()

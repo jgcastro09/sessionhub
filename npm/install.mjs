@@ -9,7 +9,7 @@ const packageRoot = dirname(fileURLToPath(import.meta.url));
 const packageJSON = JSON.parse(await (await import("node:fs/promises")).readFile(join(packageRoot, "package.json"), "utf8"));
 const version = packageJSON.version;
 const asset = assetName(version);
-const releaseBase = `https://github.com/nodestage/sessionhub/releases/download/v${version}`;
+const releaseBase = `https://github.com/jgcastro09/sessionhub/releases/download/v${version}`;
 
 async function download(url, maximum) {
   const response = await fetch(url, {

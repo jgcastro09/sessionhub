@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
 func NextOccurrence(schedule domain.Schedule, after time.Time) (time.Time, error) {

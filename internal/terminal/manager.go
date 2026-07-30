@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
 type Manager struct {
@@ -30,6 +30,10 @@ func NewManager(ctx context.Context, sink HistorySink, scrollback int) *Manager 
 
 func (m *Manager) Events() <-chan Event { return m.events }
 
+// Start launches cfg.Command as-is: for an executor installed through
+// SessionHub, Command is already the absolute path inside its own managed
+// folder (see internal/executor.EnsureInstallDirs) — nothing here searches
+// a shared folder or falls back to the OS PATH on its behalf.
 func (m *Manager) Start(instanceID string, cfg domain.ExecutorConfig, width, height int) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

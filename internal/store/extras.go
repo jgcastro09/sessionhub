@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/id"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/id"
 )
 
 func (s *Store) SavePrice(ctx context.Context, price domain.Price) (domain.Price, error) {

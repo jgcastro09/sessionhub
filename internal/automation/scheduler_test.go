@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
 func TestNextDailyOccurrence(t *testing.T) {

@@ -27,7 +27,7 @@ detect, authenticate, or embed provider-specific CLIs.
 Go 1.25 or newer is required.
 
 ```sh
-go install github.com/nodestage/sessionhub/cmd/sessionhub@latest
+go install github.com/jgcastro09/sessionhub/cmd/sessionhub@latest
 sessionhub
 ```
 

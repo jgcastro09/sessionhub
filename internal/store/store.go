@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/id"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/id"
 	_ "modernc.org/sqlite"
 )
 
@@ -39,6 +39,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite database: %w", err)
 	}
+	// WAL mode (enabled below) lets SQLite itself serialize writers via its
+	// own file lock + busy_timeout, so the Go-level pool doesn't need to
+	// funnel everything through a single connection. A cap of 1 here starved
+	// latency-sensitive calls (e.g. starting a second terminal) behind a busy
+	// terminal's continuous history-write traffic (each active PTY can emit
+	// dozens of writes/sec via AppendTerminal), since a lone connection can
+	// never be free for a competing query while that traffic keeps flowing.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if _, err = db.ExecContext(ctx, `
@@ -176,15 +183,34 @@ func (s *Store) ListExecutors(ctx context.Context) ([]domain.ExecutorConfig, err
 	return out, rows.Err()
 }
 
+// DeleteExecutor removes an executor along with the instances and queue
+// items that reference it (terminal_history cascades from instances).
+// Executors are swappable configuration, not history: deleting one is not
+// expected to be blocked by runs that already happened.
 func (s *Store) DeleteExecutor(ctx context.Context, executorID string) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM executors WHERE id=?`, executorID)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("delete executor: %w", err)
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM queue_items WHERE executor_id=?`, executorID); err != nil {
+		return fmt.Errorf("delete executor: clear queue items: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM instances WHERE executor_id=?`, executorID); err != nil {
+		return fmt.Errorf("delete executor: clear instances: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM executors WHERE id=?`, executorID)
+	if err != nil {
+		return fmt.Errorf("delete executor: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete executor: %w", err)
+	}
+	if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *Store) SaveSession(ctx context.Context, session domain.Session) (domain.Session, error) {
@@ -256,6 +282,25 @@ FROM sessions WHERE id=?`, sessionID).Scan(&v.ID, &v.Name, &v.Workspace,
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	return v, nil
+}
+
+// DeleteSession removes a session. Every other table that scopes to a
+// session (instances, contexts, checkpoints, queue_items, schedules,
+// pipelines, approvals, automation_runs, watchers, reports) references
+// sessions(id) ON DELETE CASCADE, so this cleans up transitively.
+func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id=?`, sessionID)
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) CreateInstance(ctx context.Context, v domain.Instance) (domain.Instance, error) {

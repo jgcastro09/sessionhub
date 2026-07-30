@@ -1,4 +1,4 @@
-module github.com/nodestage/sessionhub
+module github.com/jgcastro09/sessionhub
 
 go 1.25.0
 

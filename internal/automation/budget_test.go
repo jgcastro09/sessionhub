@@ -3,7 +3,7 @@ package automation
 import (
 	"testing"
 
-	"github.com/nodestage/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
 func TestBudgetStopsAtLimit(t *testing.T) {

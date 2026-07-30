@@ -17,7 +17,7 @@ import (
 	pty "github.com/aymanbagabas/go-pty"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
-	"github.com/nodestage/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
 var (
@@ -131,7 +131,25 @@ func Start(
 	// forced termination, and persisted final state deterministic.
 	cmd := p.Command(command, args...)
 	cmd.Dir = cfg.WorkingDir
-	cmd.Env = mergedEnvironment(cfg.Environment)
+	// Every executor installed through SessionHub (cfg.InstallDir set) runs
+	// with HOME/USERPROFILE redirected to its own config/ folder. Most CLIs
+	// resolve their login/session state relative to the home directory
+	// (some, like Codex, also expose a dedicated var such as CODEX_HOME —
+	// set that too, in the executor's own Environment field, for extra
+	// precision); this is the one mechanism that isolates login state for
+	// any CLI regardless of whether it has a dedicated override variable.
+	// Manually-registered executors (no InstallDir) are left alone, since
+	// those deliberately point at something already installed globally.
+	isolatedHome := ""
+	if cfg.InstallDir != "" {
+		isolatedHome = filepath.Join(cfg.InstallDir, "config")
+		if err := os.MkdirAll(isolatedHome, 0o700); err != nil {
+			cancel()
+			_ = p.Close()
+			return nil, fmt.Errorf("prepare isolated config dir for %q: %w", cfg.Name, err)
+		}
+	}
+	cmd.Env = mergedEnvironment(cfg.Environment, isolatedHome)
 
 	if err := cmd.Start(); err != nil {
 		cancel()
@@ -195,8 +213,12 @@ func quoteCommand(command string, args []string) string {
 	return strings.Join(all, " ")
 }
 
-func mergedEnvironment(configured []domain.SecretEnv) []string {
-	values := make(map[string]string, len(os.Environ())+len(configured))
+// mergedEnvironment builds the child process's environment: the OS
+// environment, then (if isolatedHome is set) HOME/USERPROFILE redirected to
+// the executor's own isolated config folder, then the executor's explicit
+// Environment entries — each layer able to override the one before it.
+func mergedEnvironment(configured []domain.SecretEnv, isolatedHome string) []string {
+	values := make(map[string]string, len(os.Environ())+len(configured)+2)
 	keys := make(map[string]string, len(values))
 	for _, item := range os.Environ() {
 		name, value, ok := strings.Cut(item, "=")
@@ -209,6 +231,12 @@ func mergedEnvironment(configured []domain.SecretEnv) []string {
 		}
 		keys[canonical] = name
 		values[canonical] = value
+	}
+	if isolatedHome != "" {
+		for _, name := range []string{"HOME", "USERPROFILE"} {
+			keys[name] = name
+			values[name] = isolatedHome
+		}
 	}
 	for _, item := range configured {
 		canonical := item.Name
@@ -456,6 +484,55 @@ func (s *Session) Resize(width, height int) error {
 func (s *Session) Snapshot() string   { return s.emulator.Render() }
 func (s *Session) IsAltScreen() bool  { return s.emulator.IsAltScreen() }
 func (s *Session) ScrollbackLen() int { return s.emulator.ScrollbackLen() }
+
+// SnapshotScrolled renders a height-row window ending offset lines back
+// from the live tail. offset<=0 is identical to Snapshot(); the caller is
+// expected to clamp offset to [0, ScrollbackLen()]. Lines below the
+// scrollback boundary come from the live screen, so the result always
+// tails into whatever's currently on screen once scrolled back far enough.
+func (s *Session) SnapshotScrolled(offset, height int) string {
+	if offset <= 0 {
+		return s.emulator.Render()
+	}
+	screenHeight := s.emulator.Height()
+	if height <= 0 {
+		height = screenHeight
+	}
+	sb := s.emulator.Scrollback()
+	sbLen := sb.Len()
+	total := sbLen + screenHeight
+	end := total - offset
+	if end > total {
+		end = total
+	}
+	if end < 0 {
+		end = 0
+	}
+	start := end - height
+	if start < 0 {
+		start = 0
+	}
+	lines := make([]string, 0, end-start)
+	sbEnd := end
+	if sbEnd > sbLen {
+		sbEnd = sbLen
+	}
+	for i := start; i < sbEnd; i++ {
+		lines = append(lines, sb.Line(i).Render())
+	}
+	if end > sbLen {
+		screenLines := strings.Split(s.emulator.Render(), "\n")
+		screenStart := start - sbLen
+		if screenStart < 0 {
+			screenStart = 0
+		}
+		screenEnd := end - sbLen
+		for i := screenStart; i < screenEnd && i < len(screenLines); i++ {
+			lines = append(lines, screenLines[i])
+		}
+	}
+	return strings.Join(lines, "\n")
+}
 
 func (s *Session) Close(grace time.Duration) error {
 	var closeErr error

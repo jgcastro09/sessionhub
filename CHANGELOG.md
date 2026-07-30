@@ -6,6 +6,15 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-30 10:45:00 -03:00
+
+### Changed
+
+- Updated project repository and ownership to João Cunha (`github.com/jgcastro09/sessionhub`).
+- Added application version display to the UI topbar header.
+- Added project AGENTS.md with mandatory rules for versioning, changelog, UTC-3 timestamping, compilation, and topbar version display.
+- Updated NPM package configuration and license attribution to João Cunha.
+
 ## [0.1.0] - 2026-07-30
 
 ### Added
@@ -22,5 +31,6 @@ All notable changes to Session Hub are documented here. The format follows
 - Git workspace summaries, release update checks, and the NPM binary installer.
 - Cross-platform CI and reproducible release configuration.
 
-[Unreleased]: https://github.com/nodestage/sessionhub/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/nodestage/sessionhub/releases/tag/v0.1.0
+[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jgcastro09/sessionhub/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/jgcastro09/sessionhub/releases/tag/v0.1.0

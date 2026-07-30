@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/terminal"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
 
 func TestTUIStartsInRealPTYAndQuits(t *testing.T) {

@@ -56,9 +56,19 @@ func (r RecognitionRule) Validate() error {
 }
 
 type ExecutorConfig struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Command       string            `json:"command"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
+	// InstallDir is the absolute path to this executor's own managed folder
+	// (executors/<slug>/{bin,config,runtime}/manifest.json) when it was
+	// installed through SessionHub's "add a CLI" flow. Empty for executors
+	// registered manually against something already on disk elsewhere.
+	InstallDir string `json:"install_dir,omitempty"`
+	// BinaryName is the bare command name (e.g. "codex") as it was before
+	// being resolved to an absolute path inside InstallDir. Kept so an
+	// "update the CLI" run can re-resolve Command afterward without
+	// guessing a name back out of the resolved path.
+	BinaryName    string            `json:"binary_name,omitempty"`
 	Args          []string          `json:"args"`
 	WorkingDir    string            `json:"working_dir,omitempty"`
 	Environment   []SecretEnv       `json:"environment,omitempty"`
@@ -134,6 +144,33 @@ func (s Session) Validate() error {
 		return fmt.Errorf("session workspace is required")
 	}
 	return nil
+}
+
+// sessionSettings is the shape persisted in Session.Settings. A session
+// carries no conversation "context" of its own — it's just a workspace plus
+// which CLIs (Executors) are grouped together as tabs under it.
+type sessionSettings struct {
+	ExecutorIDs []string `json:"executor_ids,omitempty"`
+}
+
+// ExecutorIDs returns the Executors grouped under this session (one tab
+// each), in the order they were assigned.
+func (s Session) ExecutorIDs() []string {
+	if len(s.Settings) == 0 {
+		return nil
+	}
+	var settings sessionSettings
+	_ = json.Unmarshal(s.Settings, &settings)
+	return settings.ExecutorIDs
+}
+
+// SetExecutorIDs replaces the Executors grouped under this session.
+func (s *Session) SetExecutorIDs(ids []string) {
+	data, err := json.Marshal(sessionSettings{ExecutorIDs: ids})
+	if err != nil {
+		return
+	}
+	s.Settings = data
 }
 
 type Instance struct {

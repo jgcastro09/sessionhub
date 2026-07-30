@@ -1,16 +1,17 @@
 {
   "name": "sessionhub",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Terminal-native hub for real PTY AI CLI sessions",
+  "author": "João Cunha <jgcastro09>",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nodestage/sessionhub.git"
+    "url": "git+https://github.com/jgcastro09/sessionhub.git"
   },
-  "homepage": "https://github.com/nodestage/sessionhub#readme",
+  "homepage": "https://github.com/jgcastro09/sessionhub#readme",
   "bugs": {
-    "url": "https://github.com/nodestage/sessionhub/issues"
+    "url": "https://github.com/jgcastro09/sessionhub/issues"
   },
   "os": ["win32", "darwin", "linux"],
   "cpu": ["x64", "arm64"],

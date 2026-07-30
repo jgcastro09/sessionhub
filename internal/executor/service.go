@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/id"
-	"github.com/nodestage/sessionhub/internal/metrics"
-	"github.com/nodestage/sessionhub/internal/store"
-	"github.com/nodestage/sessionhub/internal/terminal"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/id"
+	"github.com/jgcastro09/sessionhub/internal/metrics"
+	"github.com/jgcastro09/sessionhub/internal/store"
+	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
 
 type Service struct {
@@ -87,10 +87,13 @@ func (s *Service) handleEvent(event terminal.Event) {
 		s.handleOutput(event.InstanceID, event.Data)
 	}
 	if event.Kind == terminal.EventState && event.ExitCode != nil {
-		s.mu.RLock()
+		// s.mu.Lock() (a write lock) is already held from the top of this
+		// function — sync.RWMutex isn't reentrant, so re-acquiring it here
+		// (even as RLock) would deadlock this goroutine forever, permanently
+		// freezing Service.Run()'s event loop while still holding the lock
+		// Start() needs to register any future instance.
 		_, hasWork := s.work[event.InstanceID]
 		config := s.configs[event.InstanceID]
-		s.mu.RUnlock()
 		if hasWork {
 			recognition := RecognizeExit(config.Rules, *event.ExitCode)
 			if recognition.Matched {

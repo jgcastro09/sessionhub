@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nodestage/sessionhub/internal/domain"
-	"github.com/nodestage/sessionhub/internal/remote"
-	"github.com/nodestage/sessionhub/internal/terminal"
+	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
 
 func (a *App) StartRemoteHost(address string) error {
