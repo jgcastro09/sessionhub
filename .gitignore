@@ -1,0 +1,31 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.sessionhub/
+
+# Node
+/npm/node_modules/
+/npm/bin/
+*.tgz
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets and overrides
+.env
+.env.*
+!.env.example
+config.local.*
