@@ -1,0 +1,34 @@
+{
+  "name": "sessionhub",
+  "version": "0.1.0",
+  "description": "Terminal-native hub for real PTY AI CLI sessions",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nodestage/sessionhub.git"
+  },
+  "homepage": "https://github.com/nodestage/sessionhub#readme",
+  "bugs": {
+    "url": "https://github.com/nodestage/sessionhub/issues"
+  },
+  "os": ["win32", "darwin", "linux"],
+  "cpu": ["x64", "arm64"],
+  "bin": {
+    "sessionhub": "bin/sessionhub.js"
+  },
+  "files": [
+    "bin/sessionhub.js",
+    "install.mjs",
+    "lib/*.mjs",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node install.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
