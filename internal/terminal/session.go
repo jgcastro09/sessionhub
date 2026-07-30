@@ -125,7 +125,11 @@ func Start(
 		return nil, fmt.Errorf("size pseudoterminal to %dx%d: %w", width, height, err)
 	}
 	ctx, cancel := context.WithCancel(parent)
-	cmd := p.CommandContext(ctx, command, args...)
+	// Process lifetime is owned explicitly by Session.Close. Using the PTY
+	// library's CommandContext starts a second waiter on Windows ConPTY, which
+	// races its public Wait path. A single owner also makes graceful interrupt,
+	// forced termination, and persisted final state deterministic.
+	cmd := p.Command(command, args...)
 	cmd.Dir = cfg.WorkingDir
 	cmd.Env = mergedEnvironment(cfg.Environment)
 
@@ -456,6 +460,7 @@ func (s *Session) ScrollbackLen() int { return s.emulator.ScrollbackLen() }
 func (s *Session) Close(grace time.Duration) error {
 	var closeErr error
 	s.closeOnce.Do(func() {
+		_, _ = s.pty.Write([]byte{0x03})
 		s.cancel()
 		select {
 		case <-s.waitDone:
