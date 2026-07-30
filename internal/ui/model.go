@@ -1956,6 +1956,14 @@ func (m Model) renderTabs() string {
 				running = true
 			}
 		}
+		// Automation can activate a lazy tab while the user is elsewhere in
+		// the Hub, so there is no startedMsg to populate tabInstances in this
+		// UI model. Ask the executor service's in-memory PTY registry as well;
+		// this keeps the online dot truthful without running database work on
+		// every screen refresh.
+		if !running && m.app != nil && m.app.Executors != nil && m.app.Executors.IsActive(session.ID, cfg.ID) {
+			marker, running = "●", true
+		}
 		label := tabLabel(i, marker, cfg.Name)
 		style := tabStyle
 		if m.focus && running && m.tabInstances[key] == m.activeInstance.ID {

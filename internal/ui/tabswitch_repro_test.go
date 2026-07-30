@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -138,5 +139,55 @@ func TestAltDigitSwitchesBetweenTwoTabs(t *testing.T) {
 
 	if n := len(application.Terminals.List()); n != 2 {
 		t.Fatalf("expected exactly 2 live terminals, got %d", n)
+	}
+}
+
+// TestRenderTabsMarksAutomationActivatedTerminalOnline verifies the UI state
+// that the Automation scheduler needs: it starts a lazy PTY directly through
+// executor.Service, so no startedMsg ever reaches this Bubble Tea model. The
+// corresponding topbar dot must nevertheless become filled immediately.
+func TestRenderTabsMarksAutomationActivatedTerminalOnline(t *testing.T) {
+	root := t.TempDir()
+	paths := config.Paths{
+		Root: root, Database: filepath.Join(root, "test.db"),
+		Logs: filepath.Join(root, "logs"), Downloads: filepath.Join(root, "updates"),
+		Executors: filepath.Join(root, "executors"),
+	}
+	for _, dir := range []string{paths.Logs, paths.Downloads, paths.Executors} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	application, err := app.New(ctx, paths, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	command, args := "sleep", []string{"60"}
+	if runtime.GOOS == "windows" {
+		command, args = "cmd.exe", []string{"/d", "/c", "ping -n 60 127.0.0.1 >NUL"}
+	}
+	cfg := domain.ExecutorConfig{ID: "exec_auto", Name: "Automation CLI", Command: command, Args: args}
+	if err := application.Store.SaveExecutor(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	session := domain.Session{Name: "automation", Workspace: root}
+	session.SetExecutorIDs([]string{cfg.ID})
+	session, err = application.Store.SaveSession(ctx, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	model := New(application)
+	model.width, model.height = 120, 40
+	model.sessions, model.executors, model.activeSession = []domain.Session{session}, []domain.ExecutorConfig{cfg}, 0
+	if _, _, err := application.Executors.Start(ctx, session.ID, cfg.ID, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	if got := model.renderTabs(); !strings.Contains(got, "● Automation CLI") {
+		t.Fatalf("automation-started terminal should show an online dot, got %q", got)
 	}
 }

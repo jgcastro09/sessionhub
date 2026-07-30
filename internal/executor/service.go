@@ -197,6 +197,25 @@ func (s *Service) FindActive(ctx context.Context, sessionID, executorID string) 
 	return nil, domain.Instance{}, false
 }
 
+// IsActive reports whether this process currently owns a live PTY for the
+// session/executor pair. It is intentionally memory-only and cheap enough
+// for the 60fps UI tab bar: unlike FindActive it never queries persistence or
+// changes service state. Automation registers an instance through Start, so
+// this makes an automation-started lazy tab visibly online immediately.
+func (s *Service) IsActive(sessionID, executorID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, instance := range s.instances {
+		if instance.SessionID != sessionID || instance.ExecutorID != executorID {
+			continue
+		}
+		if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
+			return true
+		}
+	}
+	return false
+}
+
 // ReuseOpenTerminal returns the exact CLI tab that is already open in this
 // Session Hub process. Automation deliberately uses this path instead of
 // StartOrReuse: scheduling a prompt must never create a second, unseen CLI

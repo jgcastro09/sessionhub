@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.22] - 2026-07-30 19:40:33 -03:00
+
+### Fixed
+
+- The topbar now marks a CLI tab online as soon as Automation activates its PTY, even before the UI has focused that tab. The indicator queries the existing in-memory executor registry, so it remains accurate without unnecessary database work during terminal redraws.
+
 ## [0.3.21] - 2026-07-30 19:31:46 -03:00
 
 ### Fixed
