@@ -2440,6 +2440,9 @@ func (m Model) emptyContent(width, height int) string {
 						executorName = m.executorName(item.Steps[item.CurrentStep-1].ExecutorID)
 					}
 					body.WriteString(fmt.Sprintf("    %s\n", keyStyle.Render(fmt.Sprintf("Running step %d of %d • Executor: %s", item.CurrentStep, len(item.Steps), executorName))))
+					if item.LastRun.Error != "" {
+						body.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(truncate(item.LastRun.Error, max(20, width-12)))))
+					}
 				} else {
 					body.WriteString(fmt.Sprintf("    Status: %s  •  Last run: %s\n", item.Status, last))
 				}

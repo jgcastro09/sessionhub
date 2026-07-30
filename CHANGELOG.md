@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-07-30 18:39:44 -03:00
+
+### Fixed
+
+- Automation no longer fails an occurrence immediately when its executor PTY is temporarily owned by the local operator. It remains running, records the current cause in the list, and retries the current step every 10 seconds until it succeeds or the user cancels it. Missing sessions or executors remain explicit terminal failures.
+
 ## [0.3.14] - 2026-07-30 18:28:24 -03:00
 
 ### Changed

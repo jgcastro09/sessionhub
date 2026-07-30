@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,6 +28,26 @@ func TestNextSimpleOccurrenceNeverBackfills(t *testing.T) {
 	if next != nil {
 		t.Fatalf("past one-time occurrence = %v, want nil", next)
 	}
+}
+
+func TestSchedulerMarksTransientFailureForRetry(t *testing.T) {
+	s, err := NewScheduler(context.Background(), t.TempDir(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.items["a"] = SimpleAutomation{ID: "a", Status: StatusRunning}
+	s.setRetrying("a", 1, 3, context.DeadlineExceeded)
+	item, ok := s.Get("a")
+	if !ok {
+		t.Fatal("automation missing")
+	}
+	if item.Status != StatusRunning || item.CurrentStep != 1 || item.LastRun.Status != StatusRunning || item.LastRun.RetryCount != 3 {
+		t.Fatalf("unexpected retry state: %#v", item)
+	}
+	if !strings.Contains(item.LastRun.Error, "Retrying step 1") {
+		t.Fatalf("retry cause not shown: %q", item.LastRun.Error)
+	}
+	s.Close()
 }
 
 func TestSchedulerStartupMarksPastOnceAsMissed(t *testing.T) {

@@ -55,10 +55,13 @@ type LastRun struct {
 	FinishedAt    *time.Time   `json:"finishedAt,omitempty"`
 	Status        SimpleStatus `json:"status,omitempty"`
 	Trigger       string       `json:"trigger,omitempty"`
+	RetryCount    int          `json:"retryCount,omitempty"`
 	FailedStepID  string       `json:"failedStepId,omitempty"`
 	Error         string       `json:"error,omitempty"`
 	OutputPreview []string     `json:"outputPreview,omitempty"`
 }
+
+const automationRetryDelay = 10 * time.Second
 
 type SimpleAutomation struct {
 	ID          string         `json:"id"`
@@ -295,13 +298,41 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 			failedStep, runErr = step.ID, fmt.Errorf("executor %q was not found: %w", step.ExecutorID, err)
 			break
 		}
-		s.setCurrentStep(automationID, i+1)
-		result, err := s.executors.RunAutomationStep(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36)
-		if result.Output != "" {
-			previews = append(previews, result.Output)
+		for attempt := 1; ; attempt++ {
+			s.setCurrentStep(automationID, i+1)
+			result, err := s.executors.RunAutomationStep(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36)
+			if err == nil {
+				if result.Output != "" {
+					previews = append(previews, result.Output)
+				}
+				break
+			}
+			if ctx.Err() != nil {
+				failedStep, runErr = step.ID, fmt.Errorf("step %d (%s): %w", i+1, step.ExecutorID, err)
+				break
+			}
+			// A PTY can temporarily be held by the local operator (or be in
+			// the middle of starting). Keep this occurrence alive and retry
+			// rather than silently deferring it to the next day. Cancel always
+			// interrupts this wait through the same execution context.
+			s.setRetrying(automationID, i+1, attempt, err)
+			timer := time.NewTimer(automationRetryDelay)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				failedStep, runErr = step.ID, fmt.Errorf("step %d (%s): %w", i+1, step.ExecutorID, ctx.Err())
+			case <-timer.C:
+			}
+			if runErr != nil {
+				break
+			}
 		}
-		if err != nil {
-			failedStep, runErr = step.ID, fmt.Errorf("step %d (%s): %w", i+1, step.ExecutorID, err)
+		if runErr != nil {
 			break
 		}
 	}
@@ -347,6 +378,19 @@ func (s *Scheduler) setCurrentStep(automationID string, step int) {
 	s.mu.Lock()
 	if item, ok := s.items[automationID]; ok {
 		item.CurrentStep = step
+		s.items[automationID] = item
+		_ = s.persistLocked()
+	}
+	s.mu.Unlock()
+}
+
+func (s *Scheduler) setRetrying(automationID string, step, attempt int, cause error) {
+	s.mu.Lock()
+	if item, ok := s.items[automationID]; ok {
+		item.CurrentStep, item.Status, item.LastRun.Status = step, StatusRunning, StatusRunning
+		item.LastRun.RetryCount = attempt
+		item.LastRun.Error = fmt.Sprintf("Retrying step %d in %s: %v", step, automationRetryDelay, cause)
+		item.UpdatedAt = time.Now().UTC()
 		s.items[automationID] = item
 		_ = s.persistLocked()
 	}
