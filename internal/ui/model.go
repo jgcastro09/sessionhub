@@ -189,9 +189,10 @@ type Model struct {
 	toastExpires time.Time
 
 	// Auto-updater state
-	availableUpdate *updatecheck.Release
-	isUpdating      bool
-	lastUpdateCheck time.Time
+	availableUpdate  *updatecheck.Release
+	isUpdating       bool
+	isCheckingUpdate bool
+	lastUpdateCheck  time.Time
 }
 
 // pendingRegistration tracks an Executor config waiting to be saved once a
@@ -426,16 +427,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tick()
 	case updateMsg:
 		m.lastUpdateCheck = time.Now()
+		m.isCheckingUpdate = false
 		if msg.err != nil {
-			if m.section == 1 {
-				m.lastErr = msg.err.Error()
-			}
+			m.lastErr = fmt.Sprintf("Update check failed: %v", msg.err)
+			m.status = "Update check failed"
 		} else if msg.newer {
 			m.availableUpdate = &msg.release
 			m.toastMessage = fmt.Sprintf("✨ Update %s is available! Press 'u' to update", msg.release.TagName)
 			m.toastExpires = time.Now().Add(12 * time.Second)
 			m.status = fmt.Sprintf("Update %s available • Press 'u' to update now • %s", msg.release.TagName, msg.release.HTMLURL)
 		} else {
+			m.availableUpdate = nil
 			m.status = "Session Hub is up to date"
 		}
 	case selfUpdateResultMsg:
@@ -626,21 +628,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			switch sections[m.section] {
-			case "Settings":
-				checker := updatecheck.NewChecker("jgcastro09", "sessionhub")
-				current := ""
-				if m.app != nil {
-					current = m.app.Version
-				}
-				return m, func() tea.Msg {
-					release, err := checker.Latest(context.Background())
-					return updateMsg{release: release, newer: updatecheck.IsNewer(current, release.TagName), err: err}
-				}
-			case "Executors":
+			if sections[m.section] == "Executors" {
 				if m.selected < len(m.executors) {
 					return m, m.updateExecutorCLI(m.executors[m.selected])
 				}
+			} else {
+				m.isCheckingUpdate = true
+				m.status = "Checking for updates..."
+				m.toastMessage = "Checking for updates..."
+				m.toastExpires = time.Now().Add(5 * time.Second)
+				return m, m.checkUpdateCmd()
 			}
 		}
 	}
@@ -1230,7 +1227,24 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 				"%q is registered. Add it to a session (Sessions: n or e) to open it as a tab, or ctrl+t here to validate it.",
 				m.executors[m.selected].Name)
 		}
-	default:
+	case "Settings":
+		if m.availableUpdate != nil {
+			currentVer := "unknown"
+			if m.app != nil {
+				currentVer = m.app.Version
+			}
+			m.confirm = &confirmRequest{
+				kind:    "update",
+				name:    m.availableUpdate.TagName,
+				message: fmt.Sprintf("Update Session Hub from %s to %s?", currentVer, m.availableUpdate.TagName),
+			}
+			return m, nil
+		}
+		m.isCheckingUpdate = true
+		m.status = "Checking for updates..."
+		m.toastMessage = "Checking for updates..."
+		m.toastExpires = time.Now().Add(5 * time.Second)
+		return m, m.checkUpdateCmd()
 		if m.activeTerminal != nil {
 			owner := terminal.Owner{Kind: "local", ID: "operator"}
 			if m.activeTerminal.Owner().Empty() {
@@ -1365,10 +1379,9 @@ func (m Model) render() string {
 	rows = append(rows, m.renderCenter(), m.renderBottom())
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	if m.form.kind != noForm {
-		content = m.renderForm()
-	}
-	if m.confirm != nil {
-		content = m.renderConfirm()
+		content = overlayModal(content, m.renderFormPanel(), m.width, m.height)
+	} else if m.confirm != nil {
+		content = overlayModal(content, m.renderConfirmPanel(), m.width, m.height)
 	}
 	if toast := m.renderToast(); toast != "" {
 		content = overlayToast(content, toast, m.width, m.height)
@@ -1568,7 +1581,7 @@ func (m Model) tabAt(x, y int) (domain.ExecutorConfig, bool) {
 	return domain.ExecutorConfig{}, false
 }
 
-func (m Model) renderConfirm() string {
+func (m Model) renderConfirmPanel() string {
 	var b strings.Builder
 	title := "Confirm delete"
 	if m.confirm.kind == "update" {
@@ -1577,8 +1590,61 @@ func (m Model) renderConfirm() string {
 	b.WriteString(errorStyle.Render(title) + "\n\n")
 	b.WriteString(m.confirm.message + "\n\n")
 	b.WriteString(mutedStyle.Render("y confirms • esc/n cancels"))
-	panel := modalStyle.Width(min(72, max(40, m.width-8))).Render(b.String())
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+	return modalStyle.Width(min(72, max(40, m.width-8))).Render(b.String())
+}
+
+func overlayModal(base string, modalPanel string, width, height int) string {
+	if modalPanel == "" {
+		return base
+	}
+	baseLines := strings.Split(base, "\n")
+	if len(baseLines) == 0 {
+		return base
+	}
+	for len(baseLines) < height {
+		baseLines = append(baseLines, strings.Repeat(" ", max(0, width)))
+	}
+
+	modalLines := strings.Split(modalPanel, "\n")
+	modalHeight := len(modalLines)
+	if modalHeight == 0 {
+		return base
+	}
+
+	topLimit := 1
+	bottomLimit := max(0, height-2)
+	if bottomLimit < topLimit {
+		topLimit = 0
+		bottomLimit = max(0, height-1)
+	}
+
+	availableRows := bottomLimit - topLimit + 1
+	startY := topLimit + (availableRows-modalHeight)/2
+	if startY < topLimit {
+		startY = topLimit
+	}
+
+	modalWidth := 0
+	for _, l := range modalLines {
+		if w := ansi.StringWidth(l); w > modalWidth {
+			modalWidth = w
+		}
+	}
+
+	startX := (width - modalWidth) / 2
+	if startX < 0 {
+		startX = 0
+	}
+
+	for i, mLine := range modalLines {
+		y := startY + i
+		if y > bottomLimit || y >= len(baseLines) {
+			break
+		}
+		baseLines[y] = overlayLine(baseLines[y], mLine, startX, width)
+	}
+
+	return strings.Join(baseLines, "\n")
 }
 
 func (m Model) renderTop() string {
@@ -1605,7 +1671,9 @@ func (m Model) renderTop() string {
 		ver = "v" + ver
 	}
 	text := fmt.Sprintf(" SESSION HUB %s  %s  %s  %s  %s  %s ", ver, session, workspace, executor, branch, state)
-	if m.availableUpdate != nil {
+	if m.isUpdating {
+		text += "  ⏳ UPDATING... "
+	} else if m.availableUpdate != nil {
 		text += fmt.Sprintf("  ✨ UPDATE %s AVAILABLE (press 'u') ", m.availableUpdate.TagName)
 	}
 	// Style.Width() word-wraps content that's too long rather than
@@ -1660,17 +1728,48 @@ type sidebarRow struct {
 }
 
 func (m Model) isInstanceLive(instance domain.Instance) bool {
+	if m.app == nil || m.app.Terminals == nil {
+		return false
+	}
 	if term, ok := m.app.Terminals.Get(instance.ID); ok {
 		return term.State() == domain.StateRunning
 	}
 	return false
 }
 
+func (m Model) findLiveTerminal(executorID string) (*terminal.Session, domain.Instance, bool) {
+	if m.app == nil || m.app.Terminals == nil {
+		return nil, domain.Instance{}, false
+	}
+	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
+		session := m.sessions[m.activeSession]
+		key := tabKeyFor(session.ID, executorID)
+		if instanceID, ok := m.tabInstances[key]; ok {
+			if term, alive := m.app.Terminals.Get(instanceID); alive && term.State() == domain.StateRunning {
+				for _, inst := range m.instances {
+					if inst.ID == instanceID {
+						return term, inst, true
+					}
+				}
+				return term, domain.Instance{ID: instanceID, SessionID: session.ID, ExecutorID: executorID, State: domain.StateRunning}, true
+			}
+		}
+	}
+	for _, instance := range m.instances {
+		if instance.ExecutorID == executorID {
+			if term, alive := m.app.Terminals.Get(instance.ID); alive && term.State() == domain.StateRunning {
+				return term, instance, true
+			}
+		}
+	}
+	return nil, domain.Instance{}, false
+}
+
 // sidebarLayout is the single source of truth for what appears in the
 // sidebar and in what order — renderSidebar draws it, sidebarRowAt maps a
 // clicked screen row back into it, so the two can never drift apart.
 func (m Model) sidebarLayout() []sidebarRow {
-	rows := make([]sidebarRow, 0, len(sections)+len(m.sessions)+len(m.executors)+len(m.instances)+6)
+	rows := make([]sidebarRow, 0, len(sections)+len(m.sessions)+len(m.executors)+4)
 	for i := range sections {
 		rows = append(rows, sidebarRow{kind: sidebarSection, index: i})
 	}
@@ -1681,12 +1780,6 @@ func (m Model) sidebarLayout() []sidebarRow {
 	rows = append(rows, sidebarRow{kind: sidebarSpacer}, sidebarRow{kind: sidebarHeader, label: "Executors"})
 	for i := range m.executors {
 		rows = append(rows, sidebarRow{kind: sidebarExecutorRow, index: i})
-	}
-	rows = append(rows, sidebarRow{kind: sidebarSpacer}, sidebarRow{kind: sidebarHeader, label: "Live terminals"})
-	for i, instance := range m.instances {
-		if m.isInstanceLive(instance) {
-			rows = append(rows, sidebarRow{kind: sidebarInstanceRow, index: i})
-		}
 	}
 	return rows
 }
@@ -1717,21 +1810,21 @@ func (m Model) renderSidebar() string {
 				prefix = "› "
 			}
 			cfg := m.executors[row.index]
+			_, _, live := m.findLiveTerminal(cfg.ID)
 			marker := ""
-			if cfg.InstallDir != "" {
+			if live {
+				marker = "● "
+			} else if cfg.InstallDir != "" {
 				marker = "○ "
 				if executorActivated(cfg) {
 					marker = "● "
 				}
 			}
 			b.WriteString(sideItemStyle.Render(prefix+marker+truncate(cfg.Name, 18)) + "\n")
-		case sidebarInstanceRow:
-			instance := m.instances[row.index]
-			marker := "● "
-			b.WriteString(sideItemStyle.Render(marker+truncate(m.executorName(instance.ExecutorID), 18)) + "\n")
 		}
 	}
-	return sidebarStyle.Width(25).Height(max(0, m.height-2)).Render(b.String())
+	_, height := m.terminalSize()
+	return sidebarStyle.Width(25).Height(height).Render(b.String())
 }
 
 // sidebarRowAt maps a clicked screen row to the sidebar entry it lands on,
@@ -1767,6 +1860,18 @@ func (m Model) clickSidebar(row sidebarRow) (tea.Model, tea.Cmd) {
 	case sidebarExecutorRow:
 		if row.index < len(m.executors) {
 			cfg := m.executors[row.index]
+			if term, instance, live := m.findLiveTerminal(cfg.ID); live {
+				localOwner := terminal.Owner{Kind: "local", ID: "operator"}
+				if term.Owner().Empty() {
+					_ = term.Acquire(localOwner)
+				}
+				m.activeTerminal, m.activeInstance = term, instance
+				m.focus = true
+				m.scrollOffset = 0
+				m.status = fmt.Sprintf("%q focused • esc / ctrl+g / ctrl+] returns to Hub", cfg.Name)
+				m.resize()
+				return m, nil
+			}
 			for i, name := range sections {
 				if name == "Executors" {
 					m.section = i
@@ -1776,27 +1881,6 @@ func (m Model) clickSidebar(row sidebarRow) (tea.Model, tea.Cmd) {
 			m.selected = row.index
 			if m.activeSession >= 0 {
 				return m.selectTab(cfg)
-			}
-		}
-	case sidebarInstanceRow:
-		if row.index < len(m.instances) {
-			instance := m.instances[row.index]
-			if live, ok := m.app.Terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
-				localOwner := terminal.Owner{Kind: "local", ID: "operator"}
-				if live.Owner().Empty() {
-					_ = live.Acquire(localOwner)
-				}
-				m.activeTerminal, m.activeInstance = live, instance
-				m.focus = true
-				m.scrollOffset = 0
-				m.status = fmt.Sprintf("%q focused • esc / ctrl+g / ctrl+] returns to Hub", m.executorName(instance.ExecutorID))
-				m.resize()
-			} else if m.activeSession >= 0 {
-				for _, cfg := range m.executors {
-					if cfg.ID == instance.ExecutorID {
-						return m.selectTab(cfg)
-					}
-				}
 			}
 		}
 	}
@@ -1809,38 +1893,73 @@ func (m Model) emptyContent(width, height int) string {
 	switch sections[m.section] {
 	case "Sessions":
 		if len(m.sessions) == 0 {
-			body.WriteString("No sessions yet.\n\nPress n to create one: a workspace plus which Executors (CLIs) it groups together as tabs.")
+			body.WriteString("No sessions configured yet.\n\nPress " + keyStyle.Render("n") + " to create a new session (workspace + grouped CLI tabs).")
 		} else {
 			for i, session := range m.sessions {
 				prefix := "  "
+				titleSt := sideItemStyle
 				if i == m.selected {
 					prefix = "› "
+					titleSt = sideActiveStyle
 				}
 				names := executorNamesForIDs(session.ExecutorIDs(), m.executors)
-				executorList := "no Executors yet"
+				executorList := "no Executors assigned"
 				if len(names) > 0 {
 					executorList = strings.Join(names, ", ")
 				}
-				body.WriteString(fmt.Sprintf("%s%s\n    %s\n    %s\n", prefix, session.Name, session.Workspace, executorList))
+				body.WriteString(fmt.Sprintf("%s%s\n", prefix, titleSt.Render(session.Name)))
+				body.WriteString(fmt.Sprintf("    %s %s\n    %s %s\n\n",
+					mutedStyle.Render("Workspace:"), shortenPath(session.Workspace),
+					mutedStyle.Render("Executors:"), executorList))
 			}
-			body.WriteString("\nEnter activates the selected session (shows its CLI tabs above — press 1-9 or click a tab to open it). e edits which Executors it groups, d deletes it (asks to confirm).")
+			body.WriteString("\n" + titleStyle.Render("Shortcuts") + "\n")
+			body.WriteString("  " + keyStyle.Render("Enter") + mutedStyle.Render(" Activate") + "   " +
+				keyStyle.Render("n") + mutedStyle.Render(" New Session") + "   " +
+				keyStyle.Render("e") + mutedStyle.Render(" Edit") + "   " +
+				keyStyle.Render("d") + mutedStyle.Render(" Delete"))
 		}
 	case "Executors":
 		if len(m.executors) == 0 {
-			body.WriteString("No Executors configured.\n\nPress i to add a CLI: pick Codex, Claude Code, OpenCode, Antigravity or Custom. Checks if it's already installed first, only runs the install command if missing, then registers it automatically. Press s to scan executors/ for CLIs already installed on disk but missing from this list.")
+			body.WriteString("No Executors registered.\n\nPress " + keyStyle.Render("i") + " to add a CLI (Codex, Claude Code, OpenCode, Antigravity, Custom) or " + keyStyle.Render("s") + " to scan disk.")
 		} else {
 			for i, cfg := range m.executors {
 				prefix := "  "
+				itemTitleStyle := sideItemStyle
 				if i == m.selected {
 					prefix = "› "
+					itemTitleStyle = sideActiveStyle
 				}
 				status := executorStatusLabel(cfg)
 				if status != "" {
 					status = "  " + status
 				}
-				body.WriteString(fmt.Sprintf("%s%s%s\n    %s %s\n", prefix, cfg.Name, status, cfg.Command, strings.Join(cfg.Args, " ")))
+				cmdName := filepath.Base(cfg.Command)
+				argsStr := strings.Join(cfg.Args, " ")
+				if argsStr != "" {
+					cmdName += " " + argsStr
+				}
+				displayPath := shortenPath(cfg.Command)
+				
+				body.WriteString(fmt.Sprintf("%s%s%s\n", prefix, itemTitleStyle.Render(cfg.Name), status))
+				if displayPath != "" && displayPath != cmdName {
+					body.WriteString(fmt.Sprintf("    %s %s  %s\n\n",
+						mutedStyle.Render("Command:"), keyStyle.Render(cmdName),
+						mutedStyle.Render("("+displayPath+")")))
+				} else {
+					body.WriteString(fmt.Sprintf("    %s %s\n\n",
+						mutedStyle.Render("Command:"), keyStyle.Render(cmdName)))
+				}
 			}
-			body.WriteString("\nThis is a registry, not where you work: e edits, d deletes (asks to confirm, also clears its past run history), i adds another CLI (checks before reinstalling — pick the same provider twice with different names for multiple accounts), u updates it (re-runs the install command, keeps the same login), x hard-resets its account/login (asks to confirm, keeps the CLI installed), s scans executors/ for ones already installed but not registered, n registers one manually, ctrl+t validates unsaved changes in a real PTY. To actually use a CLI, add it to a session (Sessions tab).")
+			body.WriteString("\n" + titleStyle.Render("Shortcuts") + "\n")
+			body.WriteString("  " + keyStyle.Render("i") + mutedStyle.Render(" Add CLI") + "   " +
+				keyStyle.Render("e") + mutedStyle.Render(" Edit") + "   " +
+				keyStyle.Render("u") + mutedStyle.Render(" Update") + "   " +
+				keyStyle.Render("x") + mutedStyle.Render(" Reset Login") + "   " +
+				keyStyle.Render("d") + mutedStyle.Render(" Delete") + "\n")
+			body.WriteString("  " + keyStyle.Render("s") + mutedStyle.Render(" Scan Disk") + "   " +
+				keyStyle.Render("n") + mutedStyle.Render(" Custom") + "   " +
+				keyStyle.Render("ctrl+t") + mutedStyle.Render(" Test PTY") + "   " +
+				mutedStyle.Render("(Add to a Session tab to use)"))
 		}
 	case "Queues":
 		body.WriteString("Prompt queues are persisted and idempotent.\n\nPress n to add an item. Completion requires an Executor rule or manual confirmation.")
@@ -1863,8 +1982,34 @@ func (m Model) emptyContent(width, height int) string {
 		}
 		body.WriteString("Remote Mode binds only to an explicitly selected Tailscale address.\n\nOne remote controller may own a PTY; all other clients observe or request control.\n\nHost: " + address + "\n\nPress n to start the Host.")
 	case "Settings":
-		body.WriteString(fmt.Sprintf("Session Hub %s\n\nData: %s\nDatabase: %s\nRecovered records on startup: %d\n\nNo provider accounts or Executors are bundled.",
-			m.app.Version, m.app.Paths.Root, m.app.Paths.Database, m.app.RecoveredCount()))
+		ver := ""
+		if m.app != nil {
+			ver = m.app.Version
+		}
+		if ver != "" && !strings.HasPrefix(ver, "v") {
+			ver = "v" + ver
+		}
+		body.WriteString(fmt.Sprintf("Session Hub %s\n\n", ver))
+		body.WriteString(fmt.Sprintf("Data Directory:     %s\n", m.app.Paths.Root))
+		body.WriteString(fmt.Sprintf("Database Path:      %s\n", m.app.Paths.Database))
+		body.WriteString(fmt.Sprintf("Recovered Records:  %d\n\n", m.app.RecoveredCount()))
+
+		body.WriteString(titleStyle.Render("Software Update") + "\n")
+		if m.isUpdating {
+			body.WriteString("  Status: ⏳ Downloading and applying update...\n")
+		} else if m.isCheckingUpdate {
+			body.WriteString("  Status: 🔍 Checking for updates on GitHub...\n")
+		} else if m.availableUpdate != nil {
+			body.WriteString(fmt.Sprintf("  Status: ✨ Update %s AVAILABLE!\n", m.availableUpdate.TagName))
+			body.WriteString(fmt.Sprintf("  Release URL: %s\n", m.availableUpdate.HTMLURL))
+			body.WriteString("\n  Press 'u' or Enter to install update now.")
+		} else {
+			body.WriteString("  Status: ✓ Session Hub is up to date\n")
+			if !m.lastUpdateCheck.IsZero() {
+				body.WriteString(fmt.Sprintf("  Last checked: %s\n", m.lastUpdateCheck.Format("15:04:05")))
+			}
+			body.WriteString("\n  Press 'u' or Enter to check for updates now.")
+		}
 	}
 	return contentStyle.Width(width).Height(height).Render(body.String())
 }
@@ -1874,6 +2019,11 @@ func (m Model) renderBottom() string {
 	if m.lastErr != "" {
 		message = "Error: " + m.lastErr
 	} else {
+		if m.isUpdating {
+			message = "Downloading and applying software update..."
+		} else if m.isCheckingUpdate {
+			message = "Checking for updates on GitHub..."
+		}
 		message += fmt.Sprintf("  •  tokens %d  •  US$ %.4f",
 			m.metrics.TotalTokens(), float64(m.metrics.CostMicrosUSD)/1_000_000)
 	}
@@ -1964,9 +2114,27 @@ func executorStatusLabel(cfg domain.ExecutorConfig) string {
 		return ""
 	}
 	if executorActivated(cfg) {
-		return "● activated"
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#50FA7B")).Render("● activated")
 	}
-	return "○ deactivated"
+	return mutedStyle.Render("○ deactivated")
+}
+
+func shortenPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		if strings.HasPrefix(path, home) {
+			path = "~" + strings.TrimPrefix(path, home)
+		}
+	}
+	path = filepath.ToSlash(path)
+	if len(path) > 55 {
+		runes := []rune(path)
+		return string(runes[:20]) + "..." + string(runes[len(runes)-30:])
+	}
+	return path
 }
 
 var executorCoreLabels = []string{
@@ -2312,6 +2480,7 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 	switch m.form.kind {
 	case sessionForm:
 		name, workspace := strings.TrimSpace(values[0]), strings.TrimSpace(values[1])
+		workspace = strings.Trim(workspace, `"'`)
 		if workspace == "" {
 			workspace, _ = os.Getwd()
 		}
@@ -2622,7 +2791,7 @@ func payloadJSON(value any) json.RawMessage {
 	return data
 }
 
-func (m Model) renderProviderPick() string {
+func (m Model) renderProviderPickPanel() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(m.form.title) + "\n\n")
 	for i, name := range m.form.providerNames {
@@ -2633,13 +2802,12 @@ func (m Model) renderProviderPick() string {
 		b.WriteString(style.Render(prefix+name) + "\n")
 	}
 	b.WriteString("\n" + mutedStyle.Render("↑↓ moves • enter picks • esc cancels"))
-	panel := modalStyle.Width(min(60, max(30, m.width-8))).Render(b.String())
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+	return modalStyle.Width(min(60, max(30, m.width-8))).Render(b.String())
 }
 
-func (m Model) renderForm() string {
+func (m Model) renderFormPanel() string {
 	if m.form.kind == providerPickForm {
-		return m.renderProviderPick()
+		return m.renderProviderPickPanel()
 	}
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(m.form.title) + "\n\n")
@@ -2698,8 +2866,7 @@ func (m Model) renderForm() string {
 		hint = "tab next • space toggles Executor, ↑↓ moves within the list • ctrl+s save • esc cancel"
 	}
 	b.WriteString("\n" + mutedStyle.Render(hint))
-	panel := modalStyle.Width(min(86, max(40, m.width-8))).Render(b.String())
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)
+	return modalStyle.Width(min(86, max(40, m.width-8))).Render(b.String())
 }
 
 func truncate(value string, width int) string {
@@ -2732,6 +2899,7 @@ var (
 	sideItemStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#A8A3BA"))
 	sideActiveStyle = lipgloss.NewStyle().Foreground(accent).Bold(true)
 	titleStyle      = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	keyStyle        = lipgloss.NewStyle().Foreground(accent).Bold(true)
 	mutedStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#777286"))
 	errorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B7A"))
 	contentStyle    = lipgloss.NewStyle().Padding(2, 3)

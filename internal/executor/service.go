@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,6 +126,11 @@ func (s *Service) Start(
 	cfg, err := s.store.GetExecutor(ctx, executorID)
 	if err != nil {
 		return nil, domain.Instance{}, err
+	}
+	if sessionID != "" {
+		if sess, err := s.store.GetSession(ctx, sessionID); err == nil && strings.TrimSpace(sess.Workspace) != "" {
+			cfg.WorkingDir = strings.TrimSpace(sess.Workspace)
+		}
 	}
 	instance, err := s.store.CreateInstance(ctx, domain.Instance{
 		ID: id.New("inst"), SessionID: sessionID, ExecutorID: executorID,

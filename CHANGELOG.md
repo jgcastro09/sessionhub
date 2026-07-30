@@ -6,6 +6,48 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-07-30 12:33:00 -03:00
+
+### Changed
+
+- Enhanced visual presentation of `keyStyle` keyboard shortcut legends and path formatting in `Executors` and `Sessions` tabs.
+
+## [0.1.15] - 2026-07-30 12:31:30 -03:00
+
+### Changed
+
+- Redesigned the `Executors` and `Sessions` TUI views: eliminated cramped layout and wall-of-text help paragraphs, introduced smart path shortening (`shortenPath`), green status badges (`● activated`), and structured keyboard shortcut toolbars.
+
+## [0.1.14] - 2026-07-30 12:25:30 -03:00
+
+### Changed
+
+- Consolidated redundant sidebar lists: removed the duplicate `Live terminals` section and unified live running terminal indicators and click-to-focus behavior into the single `Executors` list in the sidebar.
+
+## [0.1.13] - 2026-07-30 12:18:45 -03:00
+
+### Fixed
+
+- Fixed `renderSidebar` container height calculation: previously hardcoded to `m.height - 2`, which when an active session tab bar was rendered (`activeSession >= 0`), caused `renderCenter` height to overflow by 1 line and push `renderBottom()` status bar off the bottom of the screen. `renderSidebar` now uses the dynamic center height from `m.terminalSize()`, ensuring the bottom footer is always 100% visible on screen.
+
+## [0.1.12] - 2026-07-30 12:14:30 -03:00
+
+### Fixed
+
+- Fixed session working directory handling: when an Executor CLI tab is launched inside a session, `Service.Start` now automatically inherits the Session's `Workspace` as the PTY working directory (`cmd.Dir`).
+- Fixed path input parsing in session creation and edit forms to strip surrounding double and single quotes (`"'`).
+
+## [0.1.11] - 2026-07-30 12:10:30 -03:00
+
+### Fixed
+
+- Fixed TUI modal rendering where form and confirmation popups wiped out top header and bottom footer status bars. Modals are now rendered as overlays via `overlayModal`, keeping `renderTop()` and `renderBottom()` 100% persistent across all view states.
+- Fixed update flow status tracking (`isCheckingUpdate`, `isUpdating`, update available, up to date) to ensure errors and status updates are consistently captured and displayed in the bottom footer bar.
+
+### Added
+
+- Added an interactive **Software Update** section in the *Settings* tab displaying active version, check status, release URL, and keyboard trigger instructions (`u` / `Enter`).
+
 ## [0.1.10] - 2026-07-30 12:01:00 -03:00
 
 ### Fixed
