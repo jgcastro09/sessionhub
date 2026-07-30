@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-30 15:41:00 -03:00
+
+### Fixed
+
+- Pinned the real sha256 for the fixed `sessionhub-voice-darwin.tar.gz` (v0.3.3's CI run). Verified independently: downloaded the asset, confirmed the checksum, confirmed every symlink `whisper-server` actually needs is present (cross-checked against `otool -L`'s own `@rpath` dependency list from the CI log — all 6 of `libwhisper.1.dylib`, `libggml.0.dylib`, `libggml-cpu.0.dylib`, `libggml-blas.0.dylib`, `libggml-metal.0.dylib`, `libggml-base.0.dylib` resolve). macOS voice dictation should now actually start.
+
 ## [0.3.3] - 2026-07-30 15:34:00 -03:00
 
 ### Fixed

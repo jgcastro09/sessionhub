@@ -35,7 +35,7 @@ const (
 	// reason instead of silently skipping verification. (v0.3.1/v0.3.2's
 	// asset is broken — missing dylib symlinks, see extractTarGz's comment —
 	// so this intentionally does not reuse that checksum.)
-	macosVoiceAssetSHA256 = ""
+	macosVoiceAssetSHA256 = "a1ba532e37a80a7a4a78ba3781092dd89bb267feb661aaec907283ef38ced209"
 
 	maxArchiveBytes = 64 << 20
 )
