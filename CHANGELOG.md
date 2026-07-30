@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-07-30 16:26:00 -03:00
+
+### Fixed
+
+- Keyboard input inside a focused CLI could feel like it "didn't register, then the previous key fired instead of the new one" while the CLI was actively producing output — i.e. most of the time you're actually using a streaming AI agent — on both Windows and macOS. Root-caused with real, reproducible measurements (not guesswork): every PTY output chunk went through `record()`, which persists to SQLite with `PRAGMA synchronous = FULL` — a full disk fsync per call. A chatty child (any LLM CLI streaming tokens or redrawing) could turn into hundreds of synchronous fsyncs per second, which alone was slow enough to degrade the whole app's responsiveness; on top of that, `SafeEmulator` guards both `SendKey` (input) and `Write` (output) with the same lock, so that many `Write()` calls per second also had more chances to contend with a keystroke. `readOutput` now coalesces PTY reads over an 8ms window before writing/recording/emitting them, cutting call frequency (and fsync count) by roughly the batching factor. Added `TestSendKeyLatencyUnderHeavyOutput` and `TestViewLatencyUnderHeavyOutput`, which reproduce heavy sustained CLI output and assert both stay under 50ms, so this can't silently regress.
+- Separately, found and fixed real orphaned-process leaks on both platforms: `Session.Close` used to call plain `Process.Kill()`, which only terminates the single tracked PID, not any children it spawned (common for these CLIs, and for shell-wrapped executors). Over a long session with many tabs started/stopped, orphaned processes could accumulate and degrade overall machine performance — a plausible contributor to the same "impossible to work" symptom. Fixed with a `terminateProcessTree` helper (`taskkill /PID ... /T /F` on Windows, process-group `SIGKILL` on Unix — the same pattern already used in `internal/automation` for command-step subprocesses), verified by confirming no child processes are left behind after closing a session that had spawned some.
+
 ## [0.3.4] - 2026-07-30 15:41:00 -03:00
 
 ### Fixed

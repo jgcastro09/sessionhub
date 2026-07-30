@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
@@ -115,6 +116,73 @@ func TestSnapshotScrolledShowsHistoryAboveLiveTail(t *testing.T) {
 	}
 	if scrolled == live {
 		t.Fatalf("scrolled view should differ from the live tail")
+	}
+}
+
+// TestSendKeyLatencyUnderHeavyOutput guards against a real, severe bug:
+// SafeEmulator guards SendKey (input) and Write (output, called from
+// readOutput for every PTY read) with the same exclusive lock. A child
+// process producing continuous rapid output (very common for a streaming
+// AI CLI) could starve SendKey behind a constant stream of Write() calls,
+// making keystrokes feel like they don't register until several more keys
+// are pressed — reported as "impossible to work" on both Windows and macOS.
+// readOutput batches PTY reads over a short window before each Write() to
+// bound how often that lock gets re-acquired; this measures that the fix
+// actually keeps SendKey latency low while the child is chatty.
+func TestSendKeyLatencyUnderHeavyOutput(t *testing.T) {
+	// Bounded (not `while true`/`for /l %i in ()`) so the test can't hang
+	// forever if a kill signal is missed for some reason — small enough
+	// that even a full backlog left in the OS pty buffer after killing
+	// the process drains near-instantly, but still enough chatter to
+	// stress SendKey/render latency for the ~1s the test measures.
+	var cfg domain.ExecutorConfig
+	if runtime.GOOS == "windows" {
+		cfg = domain.ExecutorConfig{
+			Name: "chatty", Command: "cmd.exe",
+			Args: []string{"/d", "/q", "/c", "for /l %i in (1,1,300000) do @echo " + strings.Repeat("x", 120)},
+		}
+	} else {
+		cfg = domain.ExecutorConfig{
+			Name: "chatty", Command: "sh",
+			Args: []string{"-c", "i=0; while [ $i -lt 300000 ]; do printf '" + strings.Repeat("x", 120) + "\\n'; i=$((i+1)); done"},
+		}
+	}
+	history := &memoryHistory{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := make(chan Event, 4096)
+	session, err := Start(ctx, "chatty", cfg, 80, 24, 1000, history, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close(time.Second)
+
+	// Let output ramp up to a steady, heavy rate before measuring.
+	time.Sleep(300 * time.Millisecond)
+
+	owner := Owner{Kind: "local", ID: "operator"}
+	const n = 300
+	var total time.Duration
+	var max time.Duration
+	for i := 0; i < n; i++ {
+		key := uv.KeyPressEvent(uv.Key{Code: 'a'})
+		start := time.Now()
+		if err := session.SendKey(owner, key); err != nil {
+			t.Fatal(err)
+		}
+		elapsed := time.Since(start)
+		total += elapsed
+		if elapsed > max {
+			max = elapsed
+		}
+	}
+	avg := total / n
+	t.Logf("SendKey latency under heavy chatty output: avg=%v max=%v (n=%d)", avg, max, n)
+	// A responsive terminal should never make a single key send wait
+	// anywhere near human-perceptible time, even while the child is
+	// producing output as fast as it can.
+	if max > 50*time.Millisecond {
+		t.Errorf("SendKey latency too high under heavy output: max=%v (want < 50ms) — likely emulator lock contention with readOutput's Write calls", max)
 	}
 }
 

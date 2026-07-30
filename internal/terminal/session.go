@@ -299,21 +299,71 @@ func (s *Session) record(direction string, data []byte) {
 	}
 }
 
+// readOutput pumps PTY output into the emulator/history/event pipeline.
+// Reads are coalesced over a short window (flushInterval) rather than
+// acted on one at a time: a chatty child (any streaming AI CLI redrawing
+// or emitting tokens rapidly — the common case, not an edge case) can
+// otherwise turn into hundreds of tiny writes per second, each of which
+// both contends with SendKey for the emulator's shared lock and, more
+// severely, becomes its own fully-durable SQLite commit in record() below
+// (the store runs PRAGMA synchronous = FULL — see internal/store/store.go
+// — so every call is a disk fsync). That combination measurably degrades
+// the whole app's responsiveness while a CLI is actively streaming, which
+// is most of the time you're actually using one. 8ms of extra buffering
+// is far below human perception.
 func (s *Session) readOutput() {
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := s.pty.Read(buf)
-		if n > 0 {
-			chunk := append([]byte(nil), buf[:n]...)
-			_, _ = s.emulator.Write(chunk)
-			s.record("output", chunk)
-			s.emit(Event{InstanceID: s.id, Kind: EventOutput, Data: chunk})
-		}
-		if err != nil {
-			if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) && s.ctx.Err() == nil {
-				s.emit(Event{InstanceID: s.id, Kind: EventError, Err: fmt.Errorf("read PTY output: %w", err)})
+	raw := make(chan []byte, 64)
+	readErr := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := s.pty.Read(buf)
+			if n > 0 {
+				chunk := append([]byte(nil), buf[:n]...)
+				raw <- chunk
 			}
+			if err != nil {
+				readErr <- err
+				close(raw)
+				return
+			}
+		}
+	}()
+
+	flush := func(pending []byte) {
+		if len(pending) == 0 {
 			return
+		}
+		_, _ = s.emulator.Write(pending)
+		s.record("output", pending)
+		s.emit(Event{InstanceID: s.id, Kind: EventOutput, Data: pending})
+	}
+
+	const flushInterval = 8 * time.Millisecond
+	var pending []byte
+	var flushC <-chan time.Time
+	for {
+		select {
+		case chunk, ok := <-raw:
+			if !ok {
+				flush(pending)
+				err := <-readErr
+				if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) && s.ctx.Err() == nil {
+					s.emit(Event{InstanceID: s.id, Kind: EventError, Err: fmt.Errorf("read PTY output: %w", err)})
+				}
+				return
+			}
+			pending = append(pending, chunk...)
+			if flushC == nil {
+				// Arm the flush timer only while there's something to
+				// flush — an idle terminal blocks purely on <-raw instead
+				// of waking up on a timer forever.
+				flushC = time.After(flushInterval)
+			}
+		case <-flushC:
+			flush(pending)
+			pending = nil
+			flushC = nil
 		}
 	}
 }
@@ -542,9 +592,7 @@ func (s *Session) Close(grace time.Duration) error {
 		select {
 		case <-s.waitDone:
 		case <-time.After(grace):
-			if s.cmd.Process != nil {
-				_ = s.cmd.Process.Kill()
-			}
+			terminateProcessTree(s.cmd)
 			<-s.waitDone
 		}
 		if err := s.pty.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
