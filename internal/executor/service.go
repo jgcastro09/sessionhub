@@ -34,6 +34,8 @@ type activeWork struct {
 	// for normal queues/pipelines, which retain their configured rules.
 	CompletionToken string
 	Output          []byte
+	FirstOutput     time.Time
+	OutputEvents    int
 	StartedAt       time.Time
 	LastOutput      time.Time
 	Deadline        time.Time
@@ -540,7 +542,12 @@ func (s *Service) handleOutput(instanceID string, data []byte) {
 		return
 	}
 	work.Output = append(work.Output, data...)
-	work.LastOutput = time.Now().UTC()
+	now := time.Now().UTC()
+	if work.FirstOutput.IsZero() {
+		work.FirstOutput = now
+	}
+	work.OutputEvents++
+	work.LastOutput = now
 	if len(work.Output) > 4<<20 {
 		work.Output = append([]byte(nil), work.Output[len(work.Output)-(4<<20):]...)
 	}
@@ -587,7 +594,8 @@ func (s *Service) checkWork(now time.Time) {
 			s.finishWork(check.instanceID, recognition)
 			continue
 		}
-		if check.work.done != nil && len(check.config.Rules) == 0 && len(check.work.Output) > 0 &&
+		if check.work.done != nil && len(check.config.Rules) == 0 && check.work.OutputEvents >= 3 &&
+			!check.work.FirstOutput.IsZero() && check.work.LastOutput.Sub(check.work.FirstOutput) >= time.Second &&
 			now.Sub(check.work.LastOutput) >= automationCompletionQuiet {
 			s.finishWork(check.instanceID, Recognition{
 				Matched: true, RuleID: "automation_idle", Outcome: domain.StateSucceeded,

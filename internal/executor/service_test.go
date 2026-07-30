@@ -67,13 +67,15 @@ func TestRulelessAutomationCompletesAfterSettledOutput(t *testing.T) {
 	svc.instances[instanceID] = domain.Instance{ID: instanceID, SessionID: "s1", ExecutorID: "e1"}
 	svc.configs[instanceID] = domain.ExecutorConfig{ID: "e1"}
 	svc.work[instanceID] = &activeWork{
-		ID:         "work-1",
-		InstanceID: instanceID,
-		Prompt:     "build it",
-		Output:     []byte("the response is complete"),
-		StartedAt:  time.Now().Add(-10 * time.Second),
-		LastOutput: time.Now().Add(-automationCompletionQuiet - time.Second),
-		done:       done,
+		ID:           "work-1",
+		InstanceID:   instanceID,
+		Prompt:       "build it",
+		Output:       []byte("the response is complete"),
+		FirstOutput:  time.Now().Add(-automationCompletionQuiet - 2*time.Second),
+		OutputEvents: 3,
+		StartedAt:    time.Now().Add(-10 * time.Second),
+		LastOutput:   time.Now().Add(-automationCompletionQuiet - time.Second),
+		done:         done,
 	}
 
 	svc.checkWork(time.Now())

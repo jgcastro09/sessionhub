@@ -25,6 +25,11 @@ var (
 	ErrNotRunning  = errors.New("terminal is not running")
 )
 
+// promptSubmitDelay separates pasted prompt text from the physical Enter
+// key. Several full-screen CLIs accept an inline carriage return as editor
+// content, while a separately encoded KeyEnter reliably submits the prompt.
+const promptSubmitDelay = 150 * time.Millisecond
+
 type HistorySink interface {
 	AppendTerminal(context.Context, string, string, []byte) error
 }
@@ -598,9 +603,22 @@ func (s *Session) SendPrompt(owner Owner, prompt string) error {
 	if err := s.checkWrite(owner); err != nil {
 		return err
 	}
-	text := prompt + s.cfg.PromptSuffix
-	s.emulator.SendText(text)
-	s.record("input", []byte(text))
+	s.emulator.SendText(prompt)
+	s.record("input", []byte(prompt))
+	suffix := s.cfg.PromptSuffix
+	if suffix == "" {
+		suffix = "\r"
+	}
+	if suffix == "\r" || suffix == "\n" || suffix == "\r\n" {
+		time.Sleep(promptSubmitDelay)
+		s.emulator.SendKey(uv.KeyPressEvent{Code: uv.KeyEnter})
+		s.record("input", []byte("\r"))
+		return nil
+	}
+	// Preserve explicit custom suffixes for executors that require a
+	// non-standard submit sequence.
+	s.emulator.SendText(suffix)
+	s.record("input", []byte(suffix))
 	return nil
 }
 

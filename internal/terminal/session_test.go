@@ -92,6 +92,35 @@ func TestWaitForPromptReadyWaitsForInitialTerminalOutput(t *testing.T) {
 	}
 }
 
+func TestSendPromptUsesSeparatePhysicalEnterKey(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the shell fixture is POSIX-specific")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	history := &memoryHistory{}
+	session, err := Start(ctx, "prompt-submit-test", domain.ExecutorConfig{
+		Name: "test", Command: "sh",
+		Args: []string{"-c", "IFS= read -r line; sleep 0.3; printf 'RECEIVED:%s\\n' \"$line\""}, PromptSuffix: "\r",
+	}, 80, 24, 100, history, make(chan Event, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close(time.Second)
+	owner := Owner{Kind: "local", ID: "operator"}
+	if err := session.SendPrompt(owner, "automation task"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(session.Snapshot(), "RECEIVED:automation task") {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("physical Enter did not submit the prompt: %q", session.Snapshot())
+}
+
 func TestSnapshotScrolledShowsHistoryAboveLiveTail(t *testing.T) {
 	var cfg domain.ExecutorConfig
 	if runtime.GOOS == "windows" {

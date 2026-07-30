@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.28] - 2026-07-30 20:28:59 -03:00
+
+### Fixed
+
+- Automation now pastes a prompt and submits it with a separate physical Enter key after a short handoff delay. This makes Codex, Claude Code, and other full-screen CLIs execute the prompt instead of leaving it in their editor. Idle fallback completion now requires sustained terminal response activity, preventing an echoed but unsubmitted prompt from being marked completed.
+
 ## [0.3.27] - 2026-07-30 20:21:38 -03:00
 
 ### Fixed
