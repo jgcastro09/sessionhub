@@ -187,6 +187,11 @@ type Model struct {
 	// Toast popup notification state
 	toastMessage string
 	toastExpires time.Time
+
+	// Auto-updater state
+	availableUpdate *updatecheck.Release
+	isUpdating      bool
+	lastUpdateCheck time.Time
 }
 
 // pendingRegistration tracks an Executor config waiting to be saved once a
@@ -224,8 +229,39 @@ func New(application *app.App) Model {
 	}
 }
 
+type selfUpdateResultMsg struct {
+	version string
+	err     error
+}
+
+func (m Model) checkUpdateCmd() tea.Cmd {
+	if m.app == nil || m.app.Version == "" {
+		return nil
+	}
+	current := m.app.Version
+	return func() tea.Msg {
+		checker := updatecheck.NewChecker("jgcastro09", "sessionhub")
+		release, err := checker.Latest(context.Background())
+		if err != nil {
+			return updateMsg{err: err}
+		}
+		return updateMsg{
+			release: release,
+			newer:   updatecheck.IsNewer(current, release.TagName),
+		}
+	}
+}
+
+func (m Model) performSelfUpdateCmd(release updatecheck.Release) tea.Cmd {
+	return func() tea.Msg {
+		checker := updatecheck.NewChecker("jgcastro09", "sessionhub")
+		err := checker.ApplySelfUpdate(context.Background(), release)
+		return selfUpdateResultMsg{version: release.TagName, err: err}
+	}
+}
+
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.reload(), tick())
+	return tea.Batch(m.reload(), tick(), m.checkUpdateCmd())
 }
 
 // Redrawing the focused terminal every 50ms (20fps) could lag visibly
@@ -374,6 +410,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, m.reload()
 	case tickMsg:
+		if time.Since(m.lastUpdateCheck) > 30*time.Minute {
+			m.lastUpdateCheck = time.Now()
+			if cmd := m.checkUpdateCmd(); cmd != nil {
+				return m, tea.Batch(tick(), cmd)
+			}
+		}
 		if m.activeTerminal != nil {
 			_, height := m.terminalSize()
 			m.viewport.SetContent(m.activeTerminal.SnapshotScrolled(m.scrollOffset, height))
@@ -383,12 +425,31 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tick()
 	case updateMsg:
+		m.lastUpdateCheck = time.Now()
 		if msg.err != nil {
-			m.lastErr = msg.err.Error()
+			if m.section == 1 {
+				m.lastErr = msg.err.Error()
+			}
 		} else if msg.newer {
-			m.status = fmt.Sprintf("Update %s available • %s", msg.release.TagName, msg.release.HTMLURL)
+			m.availableUpdate = &msg.release
+			m.toastMessage = fmt.Sprintf("✨ Update %s is available! Press 'u' to update", msg.release.TagName)
+			m.toastExpires = time.Now().Add(12 * time.Second)
+			m.status = fmt.Sprintf("Update %s available • Press 'u' to update now • %s", msg.release.TagName, msg.release.HTMLURL)
 		} else {
 			m.status = "Session Hub is up to date"
+		}
+	case selfUpdateResultMsg:
+		m.isUpdating = false
+		if msg.err != nil {
+			m.lastErr = fmt.Sprintf("Update failed: %v", msg.err)
+			m.status = "Update failed"
+			m.toastMessage = fmt.Sprintf("❌ Update failed: %v", msg.err)
+			m.toastExpires = time.Now().Add(10 * time.Second)
+		} else {
+			m.availableUpdate = nil
+			m.toastMessage = fmt.Sprintf("🎉 Session Hub updated to %s! Restart app to apply.", msg.version)
+			m.toastExpires = time.Now().Add(15 * time.Second)
+			m.status = fmt.Sprintf("Session Hub updated to %s • Restart app to apply", msg.version)
 		}
 	case scannedMsg:
 		if msg.err != nil {
@@ -553,10 +614,25 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "u":
+			if m.availableUpdate != nil {
+				currentVer := "unknown"
+				if m.app != nil {
+					currentVer = m.app.Version
+				}
+				m.confirm = &confirmRequest{
+					kind:    "update",
+					name:    m.availableUpdate.TagName,
+					message: fmt.Sprintf("Update Session Hub from %s to %s?", currentVer, m.availableUpdate.TagName),
+				}
+				return m, nil
+			}
 			switch sections[m.section] {
 			case "Settings":
 				checker := updatecheck.NewChecker("jgcastro09", "sessionhub")
-				current := m.app.Version
+				current := ""
+				if m.app != nil {
+					current = m.app.Version
+				}
 				return m, func() tea.Msg {
 					release, err := checker.Latest(context.Background())
 					return updateMsg{release: release, newer: updatecheck.IsNewer(current, release.TagName), err: err}
@@ -1119,6 +1195,15 @@ func (m Model) updateConfirm(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return savedMsg{kind: "executor reset", id: req.id}
 			}
+		case "update":
+			if m.availableUpdate != nil {
+				rel := *m.availableUpdate
+				m.isUpdating = true
+				m.status = fmt.Sprintf("Downloading and applying update %s...", rel.TagName)
+				m.toastMessage = fmt.Sprintf("Downloading update %s...", rel.TagName)
+				m.toastExpires = time.Now().Add(30 * time.Second)
+				return m, m.performSelfUpdateCmd(rel)
+			}
 		}
 		return m, nil
 	case "esc", "n", "N":
@@ -1485,7 +1570,11 @@ func (m Model) tabAt(x, y int) (domain.ExecutorConfig, bool) {
 
 func (m Model) renderConfirm() string {
 	var b strings.Builder
-	b.WriteString(errorStyle.Render("Confirm delete") + "\n\n")
+	title := "Confirm delete"
+	if m.confirm.kind == "update" {
+		title = "✨ Update Session Hub"
+	}
+	b.WriteString(errorStyle.Render(title) + "\n\n")
 	b.WriteString(m.confirm.message + "\n\n")
 	b.WriteString(mutedStyle.Render("y confirms • esc/n cancels"))
 	panel := modalStyle.Width(min(72, max(40, m.width-8))).Render(b.String())
@@ -1516,6 +1605,9 @@ func (m Model) renderTop() string {
 		ver = "v" + ver
 	}
 	text := fmt.Sprintf(" SESSION HUB %s  %s  %s  %s  %s  %s ", ver, session, workspace, executor, branch, state)
+	if m.availableUpdate != nil {
+		text += fmt.Sprintf("  ✨ UPDATE %s AVAILABLE (press 'u') ", m.availableUpdate.TagName)
+	}
 	// Style.Width() word-wraps content that's too long rather than
 	// truncating it — left unbounded, a long session/workspace/branch combo
 	// would wrap the top bar onto a second line and silently shift every

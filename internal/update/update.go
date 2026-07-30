@@ -1,7 +1,9 @@
 package update
 
 import (
+	"archive/tar"
 	"bufio"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -183,4 +185,122 @@ func checksumFor(data []byte, name string) (string, error) {
 		return "", err
 	}
 	return "", fmt.Errorf("checksums.txt has no entry for %s", name)
+}
+
+// ApplySelfUpdate downloads, verifies, extracts, and replaces the running executable.
+func (c *Checker) ApplySelfUpdate(ctx context.Context, release Release) error {
+	tmpDir, err := os.MkdirTemp("", "sessionhub-update-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	archivePath, err := c.DownloadVerified(ctx, release, tmpDir)
+	if err != nil {
+		return fmt.Errorf("download update: %w", err)
+	}
+
+	extractedBinary, err := extractBinaryFromTarGz(archivePath, tmpDir)
+	if err != nil {
+		return fmt.Errorf("extract update binary: %w", err)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve current executable: %w", err)
+	}
+
+	execPath, err = filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return fmt.Errorf("eval symlinks: %w", err)
+	}
+
+	return replaceExecutable(execPath, extractedBinary)
+}
+
+func extractBinaryFromTarGz(archivePath, destDir string) (string, error) {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return "", err
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	expectedName := "sessionhub"
+	if runtime.GOOS == "windows" {
+		expectedName = "sessionhub.exe"
+	}
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+
+		baseName := filepath.Base(header.Name)
+		if baseName == expectedName || baseName == "sessionhub" || baseName == "sessionhub.exe" {
+			targetPath := filepath.Join(destDir, expectedName)
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+			if err != nil {
+				return "", err
+			}
+			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return "", err
+			}
+			outFile.Close()
+			return targetPath, nil
+		}
+	}
+	return "", fmt.Errorf("binary %s not found in update archive", expectedName)
+}
+
+func replaceExecutable(currentPath, newBinaryPath string) error {
+	if runtime.GOOS == "windows" {
+		oldPath := currentPath + ".old"
+		_ = os.Remove(oldPath)
+		if err := os.Rename(currentPath, oldPath); err != nil {
+			return fmt.Errorf("rename current executable to .old: %w", err)
+		}
+		if err := copyFileContents(newBinaryPath, currentPath); err != nil {
+			_ = os.Rename(oldPath, currentPath)
+			return fmt.Errorf("copy new binary: %w", err)
+		}
+		return nil
+	}
+
+	tempPath := currentPath + ".new"
+	if err := copyFileContents(newBinaryPath, tempPath); err != nil {
+		return fmt.Errorf("write new binary: %w", err)
+	}
+	_ = os.Chmod(tempPath, 0o755)
+	return os.Rename(tempPath, currentPath)
+}
+
+func copyFileContents(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }

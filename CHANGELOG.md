@@ -6,7 +6,11 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.7] - 2026-07-30 11:24:00 -03:00
+## [0.1.8] - 2026-07-30 11:30:00 -03:00
+
+### Added
+
+- In-TUI real-time background update checker and interactive self-updater system with SHA-256 verification and Windows `.old` binary replacement support.
 
 ### Added
 
@@ -55,7 +59,8 @@ All notable changes to Session Hub are documented here. The format follows
 - Git workspace summaries, release update checks, and the NPM binary installer.
 - Cross-platform CI and reproducible release configuration.
 
-[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/jgcastro09/sessionhub/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/jgcastro09/sessionhub/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/jgcastro09/sessionhub/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/jgcastro09/sessionhub/compare/v0.1.4...v0.1.5
