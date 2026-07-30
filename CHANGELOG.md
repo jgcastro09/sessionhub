@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-07-30 17:45:55 -03:00
+
+### Changed
+
+- Switched the default offline dictation model from Whisper `base` to the more accurate multilingual Whisper `small` model (`ggml-small.bin`, ~465MB). It remains SHA-256 verified and is downloaded only once into `~/.sessionhub/tools/whisper-models/`; existing `base` files are retained but no longer used by new dictation sessions.
+
 ## [0.3.10] - 2026-07-30 17:39:49 -03:00
 
 ### Added

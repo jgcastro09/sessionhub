@@ -29,13 +29,15 @@ import (
 	"path/filepath"
 )
 
-// ggml-base.bin (not ggml-base.en.bin) — multilingual, since dictation
-// isn't limited to English speakers. Shared across every platform.
+// ggml-small.bin (not ggml-small.en.bin) — the multilingual Whisper small
+// model is substantially more accurate than the former base default while
+// staying practical for local CLI dictation. It is shared across every
+// platform and tool version.
 const (
-	modelName     = "ggml-base.bin"
-	modelSHA256   = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+	modelName     = "ggml-small.bin"
+	modelSHA256   = "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
 	modelURL      = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" + modelName
-	maxModelBytes = 512 << 20 // ggml-base.bin is ~141MB
+	maxModelBytes = 512 << 20 // ggml-small.bin is ~465MB
 )
 
 // Installed reports the on-disk layout of the whisper.cpp server, its
@@ -142,7 +144,7 @@ func ensureModel(ctx context.Context, toolsRoot, legacyDir string, report Progre
 	}
 	// Versions before v0.3.10 kept the model alongside the platform tool
 	// binaries. Reuse it with a hard link when upgrading, so an existing
-	// verified 141MB model is never downloaded a second time.
+	// verified model is never downloaded a second time.
 	legacyPath := filepath.Join(legacyDir, modelName)
 	if info, err := os.Stat(legacyPath); err == nil && !info.IsDir() {
 		reportProgress(report, Progress{Stage: "Reusing installed Whisper model"})
