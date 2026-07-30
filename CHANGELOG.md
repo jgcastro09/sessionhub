@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-07-30 19:06:24 -03:00
+
+### Fixed
+
+- An automation now takes temporary control of the selected Session's already-open local CLI tab instead of waiting forever on the `local/operator` PTY lease. It sends the prompt through that same terminal, preserves remote and other automation ownership protections, and restores the local lease when the automation step ends.
+
 ## [0.3.16] - 2026-07-30 18:58:00 -03:00
 
 ### Added

@@ -179,10 +179,26 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 		return WorkResult{}, err
 	}
 	owner := terminal.Owner{Kind: "automation", ID: workID}
+	// An automation deliberately works in the session's already-open CLI
+	// tab. Hub mode can leave that tab leased to the local operator even
+	// though the person is looking at Automation, so hand that specific
+	// local lease to the automation rather than retrying forever. Remote and
+	// other automation leases remain protected by Acquire below.
+	localOwner := terminal.Owner{Kind: "local", ID: "operator"}
+	tookLocalLease := false
+	if term.Owner().Equal(localOwner) {
+		_ = term.Release(localOwner)
+		tookLocalLease = true
+	}
 	if err := term.Acquire(owner); err != nil {
 		return WorkResult{InstanceID: instance.ID}, err
 	}
-	defer term.Release(owner)
+	defer func() {
+		_ = term.Release(owner)
+		if tookLocalLease {
+			_ = term.Acquire(localOwner)
+		}
+	}()
 	if err := term.SendPrompt(owner, prompt); err != nil {
 		return WorkResult{InstanceID: instance.ID}, err
 	}
