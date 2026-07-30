@@ -465,13 +465,18 @@ func (s *Session) Close(grace time.Duration) error {
 			}
 			<-s.waitDone
 		}
-		if err := s.emulator.Close(); err != nil {
-			closeErr = errors.Join(closeErr, err)
-		}
 		if err := s.pty.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
 			closeErr = errors.Join(closeErr, err)
 		}
+		// The VT input bridge can be blocked reading an encoded key or terminal
+		// reply. Once the PTY is closed, one sentinel wakes that read; its write
+		// to the closed PTY fails and the bridge exits. Waiting for both I/O
+		// bridges before Emulator.Close avoids racing the upstream pipe fields.
+		s.emulator.SendText("\x00")
 		s.ioWG.Wait()
+		if err := s.emulator.Close(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		}
 		s.historyMu.Lock()
 		s.historyClosed = true
 		s.historyMu.Unlock()

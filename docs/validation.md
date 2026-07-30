@@ -6,7 +6,7 @@ Evidence for `v0.1.0`, recorded 2026-07-30:
 
 | Target | Build | Automated tests | Manual PTY |
 | --- | --- | --- | --- |
-| Windows amd64 | Passed locally with Go 1.26.5 | 22 Go tests, 3 NPM tests, vet, ConPTY interaction and nested TUI startup at 100×30 passed locally | Not executed in a human-operated terminal |
+| Windows amd64 | Passed locally with Go 1.26.5 | 24 Go tests, 3 NPM tests, vet, ConPTY interaction and nested TUI startup at 100×30 passed locally | Not executed in a human-operated terminal |
 | macOS amd64 | Cross-build passed locally | Not executed locally; CI configured | Not executed |
 | macOS arm64 | Cross-build passed locally | Not executed locally; CI configured | Not executed |
 | Linux amd64 | Cross-build passed locally | Not executed locally; CI configured | Not executed |
