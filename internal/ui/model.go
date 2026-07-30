@@ -404,9 +404,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				installDirs: msg.installDirs, installLine: msg.installLine,
 				installExtraDirs: msg.installExtraDirs,
 			}
-			m.status = fmt.Sprintf("installing %q • esc / ctrl+g / ctrl+] returns to Hub (auto-registers when it finishes)", msg.registerAfter.Name)
+			m.status = fmt.Sprintf("installing %q • f12 returns to Hub (auto-registers when it finishes)", msg.registerAfter.Name)
 		} else {
-			m.status = "terminal focused • esc / ctrl+g / ctrl+] returns to Hub"
+			m.status = "terminal focused • f12 returns to Hub"
 		}
 		m.resize()
 		return m, m.reload()
@@ -862,7 +862,7 @@ func (m Model) updateTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 			}
 		}
 		switch keyStr {
-		case "ctrl+]", "ctrl+g", "ctrl+p", "ctrl+b", "ctrl+q", "esc", "escape":
+		case "f12":
 			m.focus = false
 			m.lastErr = ""
 			m.status = "Hub mode • enter returns to terminal"
@@ -1105,10 +1105,10 @@ func (m Model) updateExecutorCLI(cfg domain.ExecutorConfig) tea.Cmd {
 // noteTerminalWriteErr distinguishes a benign "process already exited" write
 // (expected once an install/test/executor run finishes) from a real error,
 // so a stray keypress after completion doesn't paint a scary red banner over
-// the ctrl+] hint.
+// the f12 hint.
 func (m *Model) noteTerminalWriteErr(err error) {
 	if errors.Is(err, terminal.ErrNotRunning) {
-		m.status = "process finished • ctrl+] returns to Hub"
+		m.status = "process finished • f12 returns to Hub"
 		return
 	}
 	m.lastErr = err.Error()
@@ -1255,7 +1255,7 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 			}
 			m.focus = true
 			m.scrollOffset = 0
-			m.status = "terminal focused • ctrl+] returns to Hub"
+			m.status = "terminal focused • f12 returns to Hub"
 		}
 	}
 	return m, nil
@@ -1302,7 +1302,7 @@ func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
 			}
 			m.focus = true
 			m.scrollOffset = 0
-			m.status = fmt.Sprintf("%q focused • esc / ctrl+g / ctrl+] returns to Hub", cfg.Name)
+			m.status = fmt.Sprintf("%q focused • f12 returns to Hub", cfg.Name)
 			m.resize()
 			return m, nil
 		}
@@ -1687,7 +1687,7 @@ func (m Model) renderTop() string {
 func (m Model) renderCenter() string {
 	width, height := m.terminalSize()
 	// Only show the terminal snapshot while actually focused on it — once
-	// you leave with ctrl+], the Hub's normal section content should be
+	// you leave with f12, the Hub's normal section content should be
 	// back, even though the (possibly finished) process is still tracked
 	// in m.activeTerminal for the status bar/top bar.
 	if m.focus && m.activeTerminal != nil {
@@ -1868,7 +1868,7 @@ func (m Model) clickSidebar(row sidebarRow) (tea.Model, tea.Cmd) {
 				m.activeTerminal, m.activeInstance = term, instance
 				m.focus = true
 				m.scrollOffset = 0
-				m.status = fmt.Sprintf("%q focused • esc / ctrl+g / ctrl+] returns to Hub", cfg.Name)
+				m.status = fmt.Sprintf("%q focused • f12 returns to Hub", cfg.Name)
 				m.resize()
 				return m, nil
 			}
@@ -2370,9 +2370,9 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 				installDirs: msg.installDirs, installLine: msg.installLine,
 				installExtraDirs: msg.installExtraDirs,
 			}
-			m.status = fmt.Sprintf("installing %q • ctrl+] returns to Hub (auto-registers when it finishes)", msg.registerAfter.Name)
+			m.status = fmt.Sprintf("installing %q • f12 returns to Hub (auto-registers when it finishes)", msg.registerAfter.Name)
 		} else {
-			m.status = "test terminal focused • ctrl+] returns to Hub"
+			m.status = "test terminal focused • f12 returns to Hub"
 		}
 		m.resize()
 		return m, nil

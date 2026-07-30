@@ -6,7 +6,15 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.17] - 2026-07-30 12:51:00 -03:00
+## [0.1.18] - 2026-07-30 13:16:00 -03:00
+
+### Fixed
+
+- Terminal focus now locks down to a single exit shortcut, `f12`. Previously `esc`, `ctrl+g`, `ctrl+p`, `ctrl+b`, and `ctrl+q` also silently dropped focus back to the Hub, which collided with the focused CLI's own bindings (e.g. opencode's own `esc`/`ctrl+p`) — the Hub would grab the keystroke, focus would flip without warning, and the next `enter`/arrow key would land on the Hub's session list instead of the CLI, producing duplicated tab activations and seemingly "stuck" input. All keys except `f12` now pass straight through to the focused CLI, and `f12` was chosen so the exit shortcut never requires Shift regardless of keyboard layout.
+
+### Changed
+
+- `docs/usage.md` and `docs/configuration.md` updated to document the single `f12` focus-exit shortcut.
 
 ### Changed
 

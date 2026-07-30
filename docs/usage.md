@@ -9,14 +9,14 @@ Core keys:
 
 | Key | Action |
 | --- | --- |
-| `ctrl+g` | Open Hub command mode |
-| `ctrl+]` | Leave terminal focus |
+| `f12` | Leave terminal focus (the only key that does — everything else, including `esc`/`ctrl+g`/`ctrl+p`/`ctrl+b`/`ctrl+q`, is passed straight through to the focused CLI) |
 | `enter` | Focus or activate the selected item |
 | `tab` / `shift+tab` | Change Hub section |
-| `ctrl+p` | Open command palette |
-| `ctrl+b` | Toggle sidebar and resize PTY |
-| `ctrl+f` | Toggle terminal focus layout and resize PTY |
-| `ctrl+c` | Cancel the selected Hub operation; while terminal-focused it is passed to the CLI |
+| `ctrl+g` | Open Hub command mode (Hub mode only) |
+| `ctrl+p` | Open command palette (Hub mode only) |
+| `ctrl+b` | Toggle sidebar and resize PTY (Hub mode only) |
+| `ctrl+f` | Toggle terminal focus layout and resize PTY (Hub mode only) |
+| `ctrl+c` | Quit (Hub mode only); while terminal-focused it is passed to the CLI |
 | `q` | Quit from Hub mode |
 
 Command mode exposes Sessions, Executors, Queues, Pipelines, Automations,

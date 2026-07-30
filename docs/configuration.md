@@ -18,6 +18,6 @@ command result, manual confirmation, or timeout. Silence alone is never
 success. Ambiguous matches pause for confirmation and record all matching
 rules.
 
-The default Hub escape is `ctrl+]`. It is configurable and is only interpreted
-while the embedded terminal owns focus. Other keys are encoded and passed to
-the PTY.
+The Hub escape is `f12`, the only key interpreted by Session Hub while the
+embedded terminal owns focus — every other key (including keys the CLI itself
+uses, like `esc` or `ctrl+p`) is encoded and passed straight to the PTY.
