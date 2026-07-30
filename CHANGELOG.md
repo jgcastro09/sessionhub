@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-07-30 13:55:00 -03:00
+
+### Changed
+
+- Automatic update checks now run every 30 seconds instead of every 30 minutes. Note: GitHub's unauthenticated API rate limit is 60 requests/hour, so a session left open for more than ~30 minutes will start hitting "Update check failed" once that budget is spent for the hour.
+
 ## [0.1.20] - 2026-07-30 13:47:00 -03:00
 
 ### Fixed
