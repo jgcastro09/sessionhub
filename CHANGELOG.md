@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-07-30 17:02:00 -03:00
+
+### Fixed
+
+- macOS voice dictation could record successfully but fail when F9 stopped it with `exit status 3`. The native microphone helper blocked the main run loop with `dispatch_semaphore_wait` while it waited for AVFoundation's asynchronous WAV-finalization callback; when macOS scheduled that callback on the main run loop, it could never execute and the helper always hit its five-second timeout. It now keeps that run loop active both while recording and while waiting for the WAV to finish, so the callback can flush and confirm the file normally.
+
 ## [0.3.6] - 2026-07-30 16:30:00 -03:00
 
 ### Fixed

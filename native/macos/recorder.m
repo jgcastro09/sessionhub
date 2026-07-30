@@ -32,8 +32,8 @@ static void handleStopSignal(int sig) {
 }
 
 @interface RecordingDelegate : NSObject <AVCaptureFileOutputRecordingDelegate>
-@property(nonatomic) dispatch_semaphore_t doneSemaphore;
-@property(nonatomic) NSError *finishError;
+@property(nonatomic, strong) NSError *finishError;
+@property(nonatomic, assign) BOOL finished;
 @end
 
 @implementation RecordingDelegate
@@ -46,7 +46,7 @@ static void handleStopSignal(int sig) {
     (void)outputFileURL;
     (void)connections;
     self.finishError = error;
-    dispatch_semaphore_signal(self.doneSemaphore);
+    self.finished = YES;
 }
 
 @end
@@ -104,7 +104,6 @@ int main(int argc, const char *argv[]) {
         };
 
         RecordingDelegate *delegate = [[RecordingDelegate alloc] init];
-        delegate.doneSemaphore = dispatch_semaphore_create(0);
 
         [session startRunning];
         [fileOutput startRecordingToOutputFileURL:outputURL
@@ -116,20 +115,31 @@ int main(int argc, const char *argv[]) {
 
         // Signal handlers only set an async-signal-safe flag; the actual
         // Cocoa/AVFoundation calls to stop happen here on the main thread.
+        //
+        // Keep the main run loop alive while recording. AVCapture delivers
+        // the file-output completion callback asynchronously; sleeping the
+        // main thread here can starve that callback on macOS, making an
+        // otherwise valid recording hit the timeout below and exit with 3.
         while (!gStopRequested) {
-            usleep(50 * 1000);
+            [[NSRunLoop currentRunLoop] runUntilDate:
+                [NSDate dateWithTimeIntervalSinceNow:0.05]];
         }
 
         [fileOutput stopRecording];
 
-        // Give the delegate callback (delivered asynchronously) a bounded
-        // window to confirm the file was flushed before we exit and the Go
-        // side tries to read it.
-        long timedOut = dispatch_semaphore_wait(
-            delegate.doneSemaphore, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+        // Give the delegate callback (delivered asynchronously, often on the
+        // main run loop) a bounded window to confirm the file was flushed
+        // before we exit and the Go side tries to read it. Do not block that
+        // run loop with dispatch_semaphore_wait: doing so prevents the
+        // callback itself from running and guarantees the timeout.
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5.0];
+        while (!delegate.finished && [deadline timeIntervalSinceNow] > 0) {
+            [[NSRunLoop currentRunLoop] runUntilDate:
+                [NSDate dateWithTimeIntervalSinceNow:0.05]];
+        }
         [session stopRunning];
 
-        if (timedOut != 0) {
+        if (!delegate.finished) {
             fprintf(stderr, "timed out waiting for recording to finish flushing\n");
             return 3;
         }
