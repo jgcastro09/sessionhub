@@ -1,11 +1,12 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package voice
 
 import "errors"
 
 // ErrUnsupportedPlatform is returned by Recorder on platforms without a
-// capture backend yet (only Windows/WASAPI is implemented so far).
+// capture backend yet (Windows/WASAPI and macOS/AVFoundation are the ones
+// implemented so far).
 var ErrUnsupportedPlatform = errors.New("voice dictation isn't supported on this platform yet")
 
 // Recorder is a no-op stand-in outside Windows, keeping the package
@@ -13,7 +14,7 @@ var ErrUnsupportedPlatform = errors.New("voice dictation isn't supported on this
 // platforms without a capture backend yet.
 type Recorder struct{}
 
-func NewRecorder() *Recorder { return &Recorder{} }
+func NewRecorder(recorderExe string) *Recorder { return &Recorder{} }
 
 func (r *Recorder) Start() error { return ErrUnsupportedPlatform }
 

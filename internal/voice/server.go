@@ -21,10 +21,11 @@ import (
 type Manager struct {
 	toolsRoot string
 
-	mu       sync.Mutex
-	cmd      *exec.Cmd
-	baseURL  string
-	starting bool
+	mu        sync.Mutex
+	cmd       *exec.Cmd
+	baseURL   string
+	starting  bool
+	installed Installed
 }
 
 // NewManager returns a Manager that hasn't downloaded or started anything
@@ -88,8 +89,18 @@ func (m *Manager) Ensure(ctx context.Context) error {
 	m.mu.Lock()
 	m.cmd = cmd
 	m.baseURL = baseURL
+	m.installed = installed
 	m.mu.Unlock()
 	return nil
+}
+
+// RecorderExe returns the path to the platform's native recording helper
+// resolved by the last successful Ensure call (empty until then, and always
+// empty on platforms that record in-process instead — e.g. Windows/WASAPI).
+func (m *Manager) RecorderExe() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.installed.RecorderExe
 }
 
 // Transcribe posts a WAV recording to the running server and returns its

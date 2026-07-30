@@ -44,9 +44,18 @@ Press `f9` while a CLI tab is focused to start recording from the default
 microphone; press `f9` again to stop, transcribe, and paste the text into
 that same tab. Transcription is fully local and offline — the first press
 ever downloads a self-contained copy of [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-and a multilingual model (~150MB, one-time) into `tools/whisper/` under
-Session Hub's data directory, then keeps its transcription server running
-in the background so later dictations don't reload the model. Nothing is
-sent to any cloud API. Recording currently requires Windows (WASAPI); other
-platforms show a clear "not supported yet" message instead of failing
-silently.
+and a multilingual model (~150MB, one-time) into `tools/` under Session
+Hub's data directory, then keeps its transcription server running in the
+background so later dictations don't reload the model. Nothing is sent to
+any cloud API.
+
+Supported on **Windows** (WASAPI, in-process) and **macOS** (a small
+self-built native helper, since neither a pure-Go CoreAudio library nor an
+official whisper.cpp macOS binary exists — Session Hub builds and ships
+both itself). Linux isn't supported yet and shows a clear "not supported"
+message instead of failing silently.
+
+**On macOS**, the first time you use `f9` you'll need to grant microphone
+access to whichever terminal app you're running Session Hub from (System
+Settings → Privacy & Security → Microphone) — there's no way to trigger
+that prompt from a plain command-line tool ahead of time.

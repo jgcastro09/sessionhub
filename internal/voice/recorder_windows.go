@@ -45,8 +45,10 @@ type recordResult struct {
 }
 
 // NewRecorder returns an idle recorder; no audio device is touched until
-// Start is called.
-func NewRecorder() *Recorder {
+// Start is called. recorderExe is unused on Windows (capture happens
+// in-process via WASAPI) — the parameter exists so every platform's
+// NewRecorder shares one signature and callers don't need build tags.
+func NewRecorder(recorderExe string) *Recorder {
 	return &Recorder{}
 }
 

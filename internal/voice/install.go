@@ -1,15 +1,23 @@
 // Package voice provides local, offline voice-to-text dictation: recording
-// the default microphone (see recorder_windows.go/recorder_other.go) and
-// transcribing it with a self-installed copy of whisper.cpp (see
-// install.go/server.go) — no cloud API, and no assumption that the machine
-// already has ffmpeg, Python, or Whisper installed. Everything it needs is
-// downloaded once into the app's own data directory, the same philosophy
-// SessionHub already uses for installed CLI executors.
+// the default microphone (see recorder_windows.go/recorder_darwin.go/
+// recorder_other.go) and transcribing it with a self-installed copy of
+// whisper.cpp (see install.go/install_windows.go/install_darwin.go/
+// server.go) — no cloud API, and no assumption that the machine already has
+// ffmpeg, Python, or Whisper installed. Everything it needs is downloaded
+// once into the app's own data directory, the same philosophy SessionHub
+// already uses for installed CLI executors.
+//
+// Windows records in-process via WASAPI (github.com/moutend/go-wca, pure
+// Go) and downloads whisper.cpp's own official prebuilt zip. macOS has no
+// equivalent pure-Go CoreAudio library and whisper.cpp publishes no macOS
+// binary at all, so both are built from source in
+// .github/workflows/release.yml's macos-voice-tools job and shipped as a
+// SessionHub release asset instead; recorder_darwin.go shells out to the
+// resulting small native helper the same way both platforms shell out to
+// whisper-server.
 package voice
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,77 +26,30 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
-// Pinned so a future whisper.cpp/model release can't silently change what
-// gets downloaded and verified — bumping these is a deliberate code change.
+// ggml-base.bin (not ggml-base.en.bin) — multilingual, since dictation
+// isn't limited to English speakers. Shared across every platform.
 const (
-	whisperVersion     = "v1.9.1"
-	whisperAssetName   = "whisper-bin-x64.zip"
-	whisperAssetSHA256 = "7d8be46ecd31828e1eb7a2ecdd0d6b314feafd82163038ab6092594b0a063539"
-	whisperDownloadURL = "https://github.com/ggml-org/whisper.cpp/releases/download/" + whisperVersion + "/" + whisperAssetName
-
-	// ggml-base.bin (not ggml-base.en.bin) — multilingual, since dictation
-	// isn't limited to English speakers.
-	modelName   = "ggml-base.bin"
-	modelSHA256 = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
-	modelURL    = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" + modelName
+	modelName     = "ggml-base.bin"
+	modelSHA256   = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+	modelURL      = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" + modelName
+	maxModelBytes = 512 << 20 // ggml-base.bin is ~141MB
 )
 
-const (
-	maxArchiveBytes = 64 << 20  // whisper-bin-x64.zip is ~8MB
-	maxModelBytes   = 512 << 20 // ggml-base.bin is ~141MB
-)
-
-// Installed reports the on-disk layout for one pinned whisper.cpp version:
-// everything under toolsRoot/whisper/<version>/, sibling to how executors
-// get their own isolated folder under executors/<slug>/.
+// Installed reports the on-disk layout of the whisper.cpp server, its
+// model, and — macOS only — the native recorder helper (empty/unused on
+// Windows, which records in-process instead of shelling out).
 type Installed struct {
-	ServerExe string
-	ModelPath string
+	ServerExe   string
+	ModelPath   string
+	RecorderExe string
 }
 
-// EnsureInstalled downloads and verifies whisper.cpp + its model on first
-// use, or returns immediately if a previous run already did so.
-func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
-	dir := filepath.Join(toolsRoot, "whisper", whisperVersion)
-	installed := Installed{
-		ServerExe: filepath.Join(dir, "whisper-server.exe"),
-		ModelPath: filepath.Join(dir, modelName),
-	}
-	serverInfo, serverErr := os.Stat(installed.ServerExe)
-	modelInfo, modelErr := os.Stat(installed.ModelPath)
-	if serverErr == nil && !serverInfo.IsDir() && modelErr == nil && !modelInfo.IsDir() {
-		return installed, nil
-	}
-
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return Installed{}, fmt.Errorf("create whisper tools dir: %w", err)
-	}
-
-	archive, err := downloadVerified(ctx, whisperDownloadURL, whisperAssetSHA256, maxArchiveBytes)
-	if err != nil {
-		return Installed{}, fmt.Errorf("download whisper.cpp: %w", err)
-	}
-	if err := extractZip(archive, dir); err != nil {
-		return Installed{}, fmt.Errorf("extract whisper.cpp: %w", err)
-	}
-
-	model, err := downloadVerified(ctx, modelURL, modelSHA256, maxModelBytes)
-	if err != nil {
-		return Installed{}, fmt.Errorf("download whisper model: %w", err)
-	}
-	if err := os.WriteFile(installed.ModelPath, model, 0o600); err != nil {
-		return Installed{}, fmt.Errorf("write whisper model: %w", err)
-	}
-
-	if _, err := os.Stat(installed.ServerExe); err != nil {
-		return Installed{}, fmt.Errorf("whisper-server.exe missing after extract: %w", err)
-	}
-	return installed, nil
-}
-
+// downloadVerified GETs url, enforces a byte cap, and checks the result
+// against expectedSHA256 before returning it — the same shape as
+// internal/update/update.go's self-update downloader, just generic over any
+// URL instead of a GitHub release's own assets.
 func downloadVerified(ctx context.Context, url, expectedSHA256 string, maximum int64) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -118,43 +79,22 @@ func downloadVerified(ctx context.Context, url, expectedSHA256 string, maximum i
 	return data, nil
 }
 
-// extractZip flattens the archive's top-level "Release/" folder (whisper.cpp's
-// Windows release layout) directly into destDir, since whisper-server.exe
-// needs its sibling ggml*.dll files alongside it to run.
-func extractZip(archive []byte, destDir string) error {
-	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+// ensureModel downloads and verifies the shared multilingual Whisper model
+// into dir if it isn't already there. Called by every platform's
+// EnsureInstalled after it's made sure the whisper.cpp server itself
+// exists, so a missing model alone doesn't force re-downloading the
+// (much larger, platform-specific) server too.
+func ensureModel(ctx context.Context, dir string) (string, error) {
+	modelPath := filepath.Join(dir, modelName)
+	if info, err := os.Stat(modelPath); err == nil && !info.IsDir() {
+		return modelPath, nil
+	}
+	model, err := downloadVerified(ctx, modelURL, modelSHA256, maxModelBytes)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("download whisper model: %w", err)
 	}
-	for _, file := range reader.File {
-		name := file.Name
-		if idx := strings.IndexByte(name, '/'); idx >= 0 {
-			name = name[idx+1:]
-		}
-		if name == "" || file.FileInfo().IsDir() {
-			continue
-		}
-		targetPath := filepath.Join(destDir, filepath.Base(name))
-		if err := extractZipFile(file, targetPath); err != nil {
-			return fmt.Errorf("extract %s: %w", file.Name, err)
-		}
+	if err := os.WriteFile(modelPath, model, 0o600); err != nil {
+		return "", fmt.Errorf("write whisper model: %w", err)
 	}
-	return nil
-}
-
-func extractZipFile(file *zip.File, targetPath string) error {
-	src, err := file.Open()
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	_, err = io.Copy(dst, src)
-	return err
+	return modelPath, nil
 }

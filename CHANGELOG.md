@@ -6,6 +6,17 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-30 14:57:00 -03:00
+
+### Added
+
+- Voice dictation (`f9`) now works on **macOS**, not just Windows. Neither a pure-Go CoreAudio capture library nor an official whisper.cpp macOS binary exists, so Session Hub's own release pipeline now builds both from source for macOS (a new `macos-voice-tools` CI job: whisper.cpp via cmake, plus a small native recorder helper at `native/macos/recorder.m` using AVFoundation) and ships them as a release asset, the same self-contained "downloads what it needs" philosophy as Windows. The main `sessionhub` binary itself is untouched — still `CGO_ENABLED=0` on every platform; the native helper is a separate process invoked via `os/exec`, exactly like `whisper-server` already is on Windows.
+- `internal/voice/install.go` split into shared logic plus `install_windows.go`/`install_darwin.go`/`install_other.go` per platform.
+
+### Known limitation
+
+- The macOS asset's checksum needs to be pinned into `internal/voice/install_darwin.go` after the `macos-voice-tools` CI job runs for this tag for the first time — dictation on macOS will fail with a clear message until that one-time step is done. Also: this is the one piece of this feature not personally verified end-to-end before release (no Mac available) — real-hardware testing is expected as the next step.
+
 ## [0.2.0] - 2026-07-30 14:34:00 -03:00
 
 ### Added

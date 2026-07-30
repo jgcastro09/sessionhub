@@ -34,3 +34,60 @@ jobs:
         working-directory: npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  macos-voice-tools:
+    # Builds the macOS half of voice dictation: whisper.cpp has no
+    # official macOS binary release (only Windows/Linux + an iOS
+    # xcframework), and there's no pure-Go CoreAudio capture library the
+    # way go-wca covers WASAPI on Windows — so this job compiles both
+    # whisper.cpp and a small native mic-recorder helper (native/macos/
+    # recorder.m) from source, as a universal (arm64+x86_64) binary, and
+    # attaches the result to this same release. The main sessionhub Go
+    # binary above stays CGO_ENABLED=0 on every platform; none of this
+    # touches that build.
+    runs-on: macos-latest
+    needs: goreleaser
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Clone whisper.cpp
+        run: git clone --branch v1.9.1 --depth 1 https://github.com/ggml-org/whisper.cpp whisper.cpp-src
+
+      - name: Build whisper.cpp (universal binary)
+        run: |
+          cmake -B whisper.cpp-src/build -S whisper.cpp-src \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_INSTALL_RPATH="@loader_path" \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+            -DWHISPER_BUILD_EXAMPLES=ON \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_SDL2=OFF
+          cmake --build whisper.cpp-src/build --config Release -j "$(sysctl -n hw.logicalcpu)"
+
+      - name: Build sessionhub-voice-recorder (universal binary)
+        run: |
+          clang -arch arm64 -arch x86_64 -O2 \
+            -framework AVFoundation -framework Foundation \
+            -o sessionhub-voice-recorder native/macos/recorder.m
+
+      - name: Package
+        # The exact output subdirectory for whisper-server/whisper-cli/*.dylib
+        # isn't pinned down (only verified this for the Windows build, which
+        # uses a different generator) — find them by name wherever cmake put
+        # them rather than guessing a path, so this doesn't silently ship a
+        # broken/incomplete package if that layout differs.
+        run: |
+          mkdir -p package
+          find whisper.cpp-src/build \( -name "whisper-server" -o -name "whisper-cli" -o -name "*.dylib" \) -type f -exec cp -v {} package/ \;
+          cp sessionhub-voice-recorder package/
+          ls -la package/
+          test -f package/whisper-server
+          test -f package/sessionhub-voice-recorder
+          tar -czvf sessionhub-voice-darwin.tar.gz -C package .
+          shasum -a 256 sessionhub-voice-darwin.tar.gz
+
+      - name: Upload to release
+        run: gh release upload ${{ github.ref_name }} sessionhub-voice-darwin.tar.gz --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

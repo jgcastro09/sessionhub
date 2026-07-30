@@ -507,7 +507,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Voice transcription ready, but no CLI tab is focused"
 			return m, nil
 		}
-		recorder := voice.NewRecorder()
+		recorder := voice.NewRecorder(m.app.Voice.RecorderExe())
 		if err := recorder.Start(); err != nil {
 			m.lastErr = err.Error()
 			m.status = "Microphone error: " + err.Error()
