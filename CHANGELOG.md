@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-30 15:03:00 -03:00
+
+### Fixed
+
+- The new `macos-voice-tools` CI job (added in v0.3.0) was never actually running: it `needs: goreleaser`, and that job's own "Publish to NPM" step always fails in CI by this repo's convention (npm publish is done manually — AGENTS.md rule 6), which GitHub Actions treats as the whole job failing and skips anything depending on it. Added `if: ${{ !cancelled() }}` so it runs regardless of that unrelated, expected failure. `internal/voice/install_darwin.go`'s pinned tag moves to `v0.3.1` to match wherever the asset actually lands.
+
 ## [0.3.0] - 2026-07-30 14:57:00 -03:00
 
 ### Added

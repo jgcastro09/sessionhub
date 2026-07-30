@@ -47,6 +47,13 @@ jobs:
     # touches that build.
     runs-on: macos-latest
     needs: goreleaser
+    # The goreleaser job's own "Publish to NPM" step always fails in CI by
+    # this repo's convention (no NPM_TOKEN there; publish is done manually
+    # from the terminal — see AGENTS.md rule 6), which makes the job's
+    # overall conclusion "failure" even though the release itself was
+    # already created successfully a step earlier. `needs:` alone would
+    # skip this job in that case, so run regardless of that job's result.
+    if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@v7
 

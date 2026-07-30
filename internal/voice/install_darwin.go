@@ -26,7 +26,7 @@ import (
 // is intentionally published (e.g. recorder.m changes, or the pinned
 // whisper.cpp version in the CI job changes).
 const (
-	macosVoiceToolsTag  = "v0.3.0"
+	macosVoiceToolsTag  = "v0.3.1"
 	macosVoiceAssetName = "sessionhub-voice-darwin.tar.gz"
 	macosVoiceURL       = "https://github.com/jgcastro09/sessionhub/releases/download/" + macosVoiceToolsTag + "/" + macosVoiceAssetName
 	// Filled in once the macos-voice-tools CI job has actually run for this
