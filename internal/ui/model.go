@@ -426,7 +426,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, m.reload()
 	case tickMsg:
-		if time.Since(m.lastUpdateCheck) > 30*time.Second {
+		if time.Since(m.lastUpdateCheck) > 5*time.Minute {
 			m.lastUpdateCheck = time.Now()
 			if cmd := m.checkUpdateCmd(); cmd != nil {
 				return m, tea.Batch(tick(), cmd)
