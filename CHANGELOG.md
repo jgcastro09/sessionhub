@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-07-30 13:47:00 -03:00
+
+### Fixed
+
+- Trackpad/mouse-wheel scrolling now works inside full-screen CLIs (opencode, vim, htop, and any other alt-screen app). Previously every wheel up/down was unconditionally intercepted to pan the Hub's own scrollback, so the wheel event never reached the focused app at all. Now the Hub only does that for a plain shell prompt (no alt-screen); once the CLI enters its full-screen UI, wheel events are forwarded to it like any other mouse event, so its own scrolling works.
+
 ## [0.1.19] - 2026-07-30 13:38:00 -03:00
 
 ### Added

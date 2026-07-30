@@ -992,19 +992,26 @@ func (m Model) updateTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 		return m, nil, true
 	case tea.MouseWheelMsg:
 		mouse := msg.Mouse()
-		switch mouse.Button {
-		case tea.MouseWheelUp:
-			m.scrollBy(3)
-		case tea.MouseWheelDown:
-			m.scrollBy(-3)
-		default:
-			col, row, inBounds := m.terminalRelativeCoords(mouse.X, mouse.Y)
-			if inBounds {
-				mEv := uv.Mouse(mouse)
-				mEv.X = col
-				mEv.Y = row
-				_ = m.activeTerminal.SendMouse(owner, uv.MouseWheelEvent(mEv))
+		// A full-screen app (alt-screen — opencode, vim, htop, less...) owns
+		// scrolling itself and expects the wheel forwarded like any other
+		// mouse event; only a plain shell prompt (no alt-screen) benefits
+		// from the Hub instead panning its own scrollback.
+		if !m.activeTerminal.IsAltScreen() {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.scrollBy(3)
+				return m, nil, true
+			case tea.MouseWheelDown:
+				m.scrollBy(-3)
+				return m, nil, true
 			}
+		}
+		col, row, inBounds := m.terminalRelativeCoords(mouse.X, mouse.Y)
+		if inBounds {
+			mEv := uv.Mouse(mouse)
+			mEv.X = col
+			mEv.Y = row
+			_ = m.activeTerminal.SendMouse(owner, uv.MouseWheelEvent(mEv))
 		}
 		return m, nil, true
 	case tea.MouseMotionMsg:
