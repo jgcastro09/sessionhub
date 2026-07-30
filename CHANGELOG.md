@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-07-30 16:30:00 -03:00
+
+### Fixed
+
+- v0.3.5's release build itself failed: the new `TestViewLatencyUnderHeavyOutput` tripped its own 50ms threshold on the shared GitHub Actions runner (`max=63.865247ms`) — that runner is slower/noisier than my dev machine, and the test's own chatty child already competes hard for the same CPU. Relaxed both new tests' thresholds to 300ms; they guard against the actual regression reported (multi-second-plus hangs), not a tight perf budget, so the extra headroom doesn't weaken what they catch.
+
 ## [0.3.5] - 2026-07-30 16:26:00 -03:00
 
 ### Fixed

@@ -124,7 +124,12 @@ func TestViewLatencyUnderHeavyOutput(t *testing.T) {
 	}
 	avg := total / n
 	t.Logf("View() latency under heavy chatty output: avg=%v max=%v (n=%d)", avg, max, n)
-	if max > 50*time.Millisecond {
-		t.Errorf("View() latency too high under heavy output: max=%v (want < 50ms) — this blocks the next keystroke from being processed", max)
+	// Guards against the severe regression this reproduces, not a tight
+	// perf budget — see the matching comment in
+	// internal/terminal/session_test.go's TestSendKeyLatencyUnderHeavyOutput
+	// for why 300ms (shared CI runners are noisy, and this test's own
+	// chatty child already competes hard for the same CPU).
+	if max > 300*time.Millisecond {
+		t.Errorf("View() latency too high under heavy output: max=%v (want < 300ms) — this blocks the next keystroke from being processed", max)
 	}
 }

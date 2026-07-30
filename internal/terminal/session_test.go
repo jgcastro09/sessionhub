@@ -178,11 +178,14 @@ func TestSendKeyLatencyUnderHeavyOutput(t *testing.T) {
 	}
 	avg := total / n
 	t.Logf("SendKey latency under heavy chatty output: avg=%v max=%v (n=%d)", avg, max, n)
-	// A responsive terminal should never make a single key send wait
-	// anywhere near human-perceptible time, even while the child is
-	// producing output as fast as it can.
-	if max > 50*time.Millisecond {
-		t.Errorf("SendKey latency too high under heavy output: max=%v (want < 50ms) — likely emulator lock contention with readOutput's Write calls", max)
+	// Guards against the severe regression this reproduces (SendKey
+	// blocking for seconds behind readOutput's Write calls) rather than
+	// asserting a tight perf budget — shared CI runners are noisy, and
+	// this test's own chatty child already competes hard for the same
+	// CPU. 300ms is still tiny next to what "impossible to work" looked
+	// like, but well clear of ordinary scheduling jitter.
+	if max > 300*time.Millisecond {
+		t.Errorf("SendKey latency too high under heavy output: max=%v (want < 300ms) — likely emulator lock contention with readOutput's Write calls", max)
 	}
 }
 
