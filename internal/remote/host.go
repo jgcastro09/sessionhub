@@ -443,6 +443,15 @@ func (p *peer) releaseObservedControl() {
 
 func (h *Host) Close() error {
 	h.cancel()
+	// Canceling a context does not interrupt a blocking TCP ReadFrame. Close
+	// the sole active controller socket as well so SessionHub can always exit
+	// promptly while a device is remotely connected.
+	h.mu.RLock()
+	active := h.active
+	h.mu.RUnlock()
+	if active != nil {
+		_ = active.conn.Close()
+	}
 	err := h.listener.Close()
 	h.wg.Wait()
 	return err

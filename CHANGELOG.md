@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.30] - 2026-07-30 20:56:03 -03:00
+
+### Fixed
+
+- Closing SessionHub while it is being remotely controlled now closes the active Remote Mode socket before waiting for the host, preventing shutdown from blocking on a remote frame read.
+
 ## [0.3.29] - 2026-07-30 20:52:06 -03:00
 
 ### Added
