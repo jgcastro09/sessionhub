@@ -180,9 +180,24 @@ type formModel struct {
 	// unisolated provider's installer conventionally places its binary.
 	selectedProvider *executor.Provider
 	details          string
+	// Automation uses a purpose-built, selection-first editor: only the
+	// prompt and time are typed; sessions, executors, schedule type and
+	// weekdays are chosen directly in the UI.
+	automationSessions  []automationChoice
+	automationExecutors []automationChoice
+	automationSchedule  int
+	automationDays      [7]bool
+	automationFocus     int
+	automationCursor    int
 }
 
 type executorChoice struct {
+	id       string
+	name     string
+	selected bool
+}
+
+type automationChoice struct {
 	id       string
 	name     string
 	selected bool
@@ -690,7 +705,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "Automations":
 				if item, ok := m.selectedAutomation(); ok {
-					m.form = editAutomationForm(item)
+					m.form = editAutomationForm(item, m.sessions, m.executors)
 				}
 			}
 		case "i":
@@ -2765,39 +2780,56 @@ func newScheduleForm(executors []domain.ExecutorConfig) formModel {
 }
 
 func newAutomationForm(sessions []domain.Session, executors []domain.ExecutorConfig, activeSession int) formModel {
-	sessionID, executorID := "", ""
-	if activeSession >= 0 && activeSession < len(sessions) {
-		sessionID = sessions[activeSession].ID
+	form := makeForm(automationForm, "New Automation", []string{"Prompt", "Time"}, []string{"What should the executor do?", "14:00"})
+	form.automationSessions = make([]automationChoice, len(sessions))
+	for i, session := range sessions {
+		form.automationSessions[i] = automationChoice{id: session.ID, name: session.Name, selected: i == activeSession || (activeSession < 0 && i == 0)}
 	}
-	if sessionID == "" && len(sessions) > 0 {
-		sessionID = sessions[0].ID
+	if len(sessions) > 0 && !automationChoiceSelected(form.automationSessions) {
+		form.automationSessions[0].selected = true
 	}
-	if len(executors) > 0 {
-		executorID = executors[0].ID
+	form.automationExecutors = make([]automationChoice, len(executors))
+	for i, cfg := range executors {
+		form.automationExecutors[i] = automationChoice{id: cfg.ID, name: cfg.Name, selected: i == 0}
 	}
-	return makeForm(automationForm, "New Automation",
-		[]string{"Name", "Session", "Schedule Type", "Date", "Time", "Days of Week", "Enabled", "Steps"},
-		[]string{"Nightly review", sessionID, "once|daily|weekly", "YYYY-MM-DD (once only)", "14:00", "mon,wed,fri (weekly only)", "true", executorID + " | Prompt; executor-id | Next prompt"})
+	form.fields[1].SetValue("14:00")
+	form.fields[0].Blur()
+	form.automationFocus = 0
+	return form
 }
 
-func editAutomationForm(item automation.SimpleAutomation) formModel {
-	form := makeForm(automationForm, "Edit Automation: "+item.Name,
-		[]string{"Name", "Session", "Schedule Type", "Date", "Time", "Days of Week", "Enabled", "Steps"},
-		[]string{"", "session-id", "once|daily|weekly", "YYYY-MM-DD", "14:00", "mon,wed,fri", "true", "executor-id | Prompt; executor-id | Next prompt"})
-	form.editingID = item.ID
-	days := make([]string, 0, len(item.Schedule.DaysOfWeek))
+func editAutomationForm(item automation.SimpleAutomation, sessions []domain.Session, executors []domain.ExecutorConfig) formModel {
+	form := newAutomationForm(sessions, executors, -1)
+	form.title, form.editingID = "Edit Automation: "+item.Name, item.ID
+	for i := range form.automationSessions {
+		form.automationSessions[i].selected = form.automationSessions[i].id == item.SessionID
+	}
+	for i := range form.automationExecutors {
+		form.automationExecutors[i].selected = len(item.Steps) > 0 && form.automationExecutors[i].id == item.Steps[0].ExecutorID
+	}
+	switch item.Schedule.Type {
+	case automation.ScheduleDaily:
+		form.automationSchedule = 1
+	case automation.ScheduleWeekly:
+		form.automationSchedule = 2
+	}
 	for _, day := range item.Schedule.DaysOfWeek {
-		days = append(days, weekdayName(day))
+		form.automationDays[int(day)] = true
 	}
-	steps := make([]string, 0, len(item.Steps))
-	for _, step := range item.Steps {
-		steps = append(steps, step.ExecutorID+" | "+step.Prompt)
+	if len(item.Steps) > 0 {
+		form.fields[0].SetValue(item.Steps[0].Prompt)
 	}
-	values := []string{item.Name, item.SessionID, string(item.Schedule.Type), item.Schedule.Date, item.Schedule.Time, strings.Join(days, ","), strconv.FormatBool(item.Enabled), strings.Join(steps, "; ")}
-	for i := range values {
-		form.fields[i].SetValue(values[i])
-	}
+	form.fields[1].SetValue(item.Schedule.Time)
 	return form
+}
+
+func automationChoiceSelected(choices []automationChoice) bool {
+	for _, choice := range choices {
+		if choice.selected {
+			return true
+		}
+	}
+	return false
 }
 
 func automationDetailsForm(item automation.SimpleAutomation) formModel {
@@ -2870,6 +2902,58 @@ func automationFromValues(values []string, editingID string) (automation.SimpleA
 	return automation.SimpleAutomation{ID: editingID, Name: strings.TrimSpace(values[0]), SessionID: strings.TrimSpace(values[1]), Enabled: enabled, Schedule: schedule, Steps: steps}, nil
 }
 
+func automationFromEditor(form formModel) (automation.SimpleAutomation, error) {
+	selected := func(choices []automationChoice, label string) (automationChoice, error) {
+		for _, choice := range choices {
+			if choice.selected {
+				return choice, nil
+			}
+		}
+		return automationChoice{}, fmt.Errorf("select a %s", label)
+	}
+	session, err := selected(form.automationSessions, "session")
+	if err != nil {
+		return automation.SimpleAutomation{}, err
+	}
+	executorChoice, err := selected(form.automationExecutors, "executor")
+	if err != nil {
+		return automation.SimpleAutomation{}, err
+	}
+	prompt := strings.TrimSpace(form.fields[0].Value())
+	if prompt == "" {
+		return automation.SimpleAutomation{}, errors.New("prompt is required")
+	}
+	clock, err := time.Parse("15:04", strings.TrimSpace(form.fields[1].Value()))
+	if err != nil {
+		return automation.SimpleAutomation{}, errors.New("time must use HH:MM")
+	}
+	types := []automation.SimpleScheduleType{automation.ScheduleOnce, automation.ScheduleDaily, automation.ScheduleWeekly}
+	if form.automationSchedule < 0 || form.automationSchedule >= len(types) {
+		return automation.SimpleAutomation{}, errors.New("select a schedule type")
+	}
+	schedule := automation.SimpleSchedule{Type: types[form.automationSchedule], Time: clock.Format("15:04")}
+	if schedule.Type == automation.ScheduleOnce {
+		now := time.Now().In(time.Local)
+		candidate := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), 0, 0, time.Local)
+		if !candidate.After(now) {
+			candidate = candidate.AddDate(0, 0, 1)
+		}
+		schedule.Date = candidate.Format("2006-01-02")
+	}
+	if schedule.Type == automation.ScheduleWeekly {
+		for day, checked := range form.automationDays {
+			if checked {
+				schedule.DaysOfWeek = append(schedule.DaysOfWeek, time.Weekday(day))
+			}
+		}
+		if len(schedule.DaysOfWeek) == 0 {
+			return automation.SimpleAutomation{}, errors.New("select at least one weekday")
+		}
+	}
+	return automation.SimpleAutomation{ID: form.editingID, Name: truncate(prompt, 42), SessionID: session.id, Enabled: true,
+		Schedule: schedule, Steps: []automation.SimpleStep{{ExecutorID: executorChoice.id, Prompt: prompt}}}, nil
+}
+
 func newPipelineForm() formModel {
 	return makeForm(pipelineForm, "New pipeline",
 		[]string{"Name", "Original request", "Steps (JSON array)", "Budget (JSON object)", "Save as template"},
@@ -2933,6 +3017,111 @@ func (m Model) updateProviderPick(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateAutomationEditor keeps the creation flow deliberately small. The
+// selector sections use arrows/space; text input exists only for Prompt and
+// Time, so operators never need to discover or paste internal IDs.
+func (m Model) updateAutomationEditor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	moveFocus := func(delta int) {
+		if m.form.automationFocus == 4 || m.form.automationFocus == 5 {
+			m.form.fields[m.form.automationFocus-4].Blur()
+		}
+		next := (m.form.automationFocus + delta + 6) % 6
+		if next == 3 && m.form.automationSchedule != 2 {
+			next = (next + delta + 6) % 6
+		}
+		m.form.automationFocus = next
+		m.form.automationCursor = 0
+		if m.form.automationFocus == 4 || m.form.automationFocus == 5 {
+			m.form.fields[m.form.automationFocus-4].Focus()
+		}
+	}
+	moveCursor := func(delta, count int) {
+		if count > 0 {
+			m.form.automationCursor = (m.form.automationCursor + delta + count) % count
+		}
+	}
+	switch msg.String() {
+	case "esc":
+		m.form = formModel{}
+		return m, nil
+	case "ctrl+s":
+		return m.submitForm()
+	case "tab":
+		moveFocus(1)
+		return m, nil
+	case "shift+tab":
+		moveFocus(-1)
+		return m, nil
+	case "up", "k":
+		switch m.form.automationFocus {
+		case 0:
+			moveCursor(-1, len(m.form.automationSessions))
+		case 1:
+			moveCursor(-1, len(m.form.automationExecutors))
+		case 2:
+			moveCursor(-1, 3)
+		case 3:
+			moveCursor(-1, 7)
+		default:
+			moveFocus(-1)
+		}
+		return m, nil
+	case "down", "j":
+		switch m.form.automationFocus {
+		case 0:
+			moveCursor(1, len(m.form.automationSessions))
+		case 1:
+			moveCursor(1, len(m.form.automationExecutors))
+		case 2:
+			moveCursor(1, 3)
+		case 3:
+			moveCursor(1, 7)
+		default:
+			moveFocus(1)
+		}
+		return m, nil
+	case "left", "h":
+		if m.form.automationFocus == 2 {
+			moveCursor(-1, 3)
+			return m, nil
+		}
+	case "right", "l":
+		if m.form.automationFocus == 2 {
+			moveCursor(1, 3)
+			return m, nil
+		}
+	case " ", "enter":
+		switch m.form.automationFocus {
+		case 0:
+			if len(m.form.automationSessions) > 0 {
+				for i := range m.form.automationSessions {
+					m.form.automationSessions[i].selected = i == m.form.automationCursor
+				}
+			}
+		case 1:
+			if len(m.form.automationExecutors) > 0 {
+				for i := range m.form.automationExecutors {
+					m.form.automationExecutors[i].selected = i == m.form.automationCursor
+				}
+			}
+		case 2:
+			m.form.automationSchedule = m.form.automationCursor
+		case 3:
+			m.form.automationDays[m.form.automationCursor] = !m.form.automationDays[m.form.automationCursor]
+		default:
+			moveFocus(1)
+		}
+		return m, nil
+	}
+	if m.form.automationFocus == 4 || m.form.automationFocus == 5 {
+		idx := m.form.automationFocus - 4
+		field, cmd := m.form.fields[idx].Update(msg)
+		m.form.fields[idx] = field
+		return m, cmd
+	}
+	return m, nil
+}
+
 func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tickMsg:
@@ -2967,6 +3156,9 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, nil
 	case tea.KeyPressMsg:
+		if m.form.kind == automationForm {
+			return m.updateAutomationEditor(msg)
+		}
 		if m.form.kind == automationDetailsView {
 			if msg.String() == "esc" || msg.String() == "enter" || msg.String() == "l" {
 				m.form = formModel{}
@@ -3265,7 +3457,7 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			return savedMsg{kind: "schedule", id: saved.ID, err: err}
 		}
 	case automationForm:
-		item, err := automationFromValues(values, m.form.editingID)
+		item, err := automationFromEditor(m.form)
 		if err != nil {
 			m.form.err = err.Error()
 			return m, nil
@@ -3431,6 +3623,9 @@ func (m Model) renderFormPanel() string {
 	if m.form.kind == providerPickForm {
 		return m.renderProviderPickPanel()
 	}
+	if m.form.kind == automationForm {
+		return m.renderAutomationEditor()
+	}
 	if m.form.kind == automationDetailsView {
 		return modalStyle.Width(min(86, max(40, m.width-8))).Render(titleStyle.Render(m.form.title) + "\n\n" + m.form.details + "\n" + mutedStyle.Render("enter or esc closes"))
 	}
@@ -3492,12 +3687,88 @@ func (m Model) renderFormPanel() string {
 	case factoryResetForm:
 		hint = fmt.Sprintf("type %q exactly, then ctrl+s to WIPE EVERYTHING • esc cancels", factoryResetPhrase)
 	}
-	if m.form.kind == automationForm {
-		b.WriteString("\n" + mutedStyle.Render("Use existing IDs — Sessions: "+m.automationSessionChoices()+"\nExecutors: "+m.automationExecutorChoices()) + "\n")
-		hint = "Steps: executor-id | prompt; executor-id | prompt • ctrl+s save • esc cancel"
-	}
 	b.WriteString("\n" + mutedStyle.Render(hint))
 	return modalStyle.Width(min(86, max(40, m.width-8))).Render(b.String())
+}
+
+func (m Model) renderAutomationEditor() string {
+	var b strings.Builder
+	focus := func(index int, label string) {
+		if m.form.automationFocus == index {
+			b.WriteString(keyStyle.Render("› "+label) + "\n")
+		} else {
+			b.WriteString(mutedStyle.Render("  "+label) + "\n")
+		}
+	}
+	radio := func(choice automationChoice, active bool, cursor bool) string {
+		mark, prefix := "○", "  "
+		if active {
+			mark = "●"
+		}
+		if cursor {
+			prefix = "› "
+		}
+		return prefix + mark + " " + choice.name
+	}
+	b.WriteString(titleStyle.Render(m.form.title) + "\n\n")
+	focus(0, "Session")
+	if len(m.form.automationSessions) == 0 {
+		b.WriteString(errorStyle.Render("    No sessions available. Create one first.") + "\n")
+	}
+	for i, choice := range m.form.automationSessions {
+		style := sideItemStyle
+		if m.form.automationFocus == 0 && i == m.form.automationCursor {
+			style = sideActiveStyle
+		}
+		b.WriteString(style.Render(radio(choice, choice.selected, m.form.automationFocus == 0 && i == m.form.automationCursor)) + "\n")
+	}
+	focus(1, "Executor")
+	if len(m.form.automationExecutors) == 0 {
+		b.WriteString(errorStyle.Render("    No executors available. Register one first.") + "\n")
+	}
+	for i, choice := range m.form.automationExecutors {
+		style := sideItemStyle
+		if m.form.automationFocus == 1 && i == m.form.automationCursor {
+			style = sideActiveStyle
+		}
+		b.WriteString(style.Render(radio(choice, choice.selected, m.form.automationFocus == 1 && i == m.form.automationCursor)) + "\n")
+	}
+	focus(2, "Schedule")
+	for i, name := range []string{"Once", "Daily", "Weekly"} {
+		choice := automationChoice{name: name}
+		style := sideItemStyle
+		if m.form.automationFocus == 2 && i == m.form.automationCursor {
+			style = sideActiveStyle
+		}
+		b.WriteString(style.Render(radio(choice, m.form.automationSchedule == i, m.form.automationFocus == 2 && i == m.form.automationCursor)) + "\n")
+	}
+	if m.form.automationSchedule == 2 {
+		focus(3, "Days of Week")
+		for day, name := range []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"} {
+			prefix, mark, style := "  ", "[ ]", sideItemStyle
+			if m.form.automationDays[day] {
+				mark = "[x]"
+			}
+			if m.form.automationFocus == 3 && day == m.form.automationCursor {
+				prefix, style = "› ", sideActiveStyle
+			}
+			b.WriteString(style.Render(prefix+mark+" "+name) + "\n")
+		}
+	} else {
+		b.WriteString(mutedStyle.Render("  Days of Week (only needed for Weekly)") + "\n")
+	}
+	focus(4, "Prompt")
+	b.WriteString(m.form.fields[0].View() + "\n")
+	focus(5, "Time")
+	b.WriteString(m.form.fields[1].View() + "\n")
+	if m.form.automationSchedule == 0 {
+		b.WriteString(mutedStyle.Render("  Once runs at the next occurrence of this time.") + "\n")
+	}
+	if m.form.err != "" {
+		b.WriteString("\n" + errorStyle.Render(m.form.err) + "\n")
+	}
+	b.WriteString("\n" + mutedStyle.Render("tab moves • ↑↓ select • space chooses/toggles • ctrl+s save • esc cancel"))
+	return modalStyle.Width(min(82, max(40, m.width-8))).Render(b.String())
 }
 
 func truncate(value string, width int) string {

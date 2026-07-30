@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-07-30 18:28:24 -03:00
+
+### Changed
+
+- Simplified the Automation editor to a selection-first flow: choose an existing Session, Executor, and `Once`/`Daily`/`Weekly` schedule directly in the interface, select weekly days when needed, and type only the prompt and time. Automation names are derived from the prompt; each automation now creates one straightforward executor prompt instead of exposing IDs, dates, enabled flags, or multi-step syntax.
+- A one-time automation now automatically uses the next future occurrence of the selected time, so no date field is required.
+
 ## [0.3.13] - 2026-07-30 18:18:25 -03:00
 
 ### Added
