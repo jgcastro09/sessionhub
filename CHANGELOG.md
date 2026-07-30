@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-30 15:34:00 -03:00
+
+### Fixed
+
+- macOS voice dictation failed to start on real hardware: `whisper-server didn't come up: ... dyld: Library not loaded: @rpath/libwhisper.1.dylib`. Root cause confirmed by re-downloading v0.3.1/v0.3.2's own release asset: macOS dylibs ship as a fully-versioned real file (`libwhisper.1.9.1.dylib`) plus a shorter compat-version **symlink** (`libwhisper.1.dylib`) that the executables' load commands actually reference — the CI packaging step's `find -type f` silently dropped every such symlink, and `internal/voice/install_darwin.go`'s tar extraction only handled regular files too, so even a correctly-packaged archive would have been silently stripped of symlinks on the client side. Fixed both: the CI job now copies symlinks (`-type l`, `cp -P`) and prints `otool -L` for verification, and `extractTarGz` now recreates `tar.TypeSymlink` entries via `os.Symlink` instead of skipping them.
+- `internal/voice/install_darwin.go`'s pinned tag moves to `v0.3.3` (checksum blank again until this tag's CI run publishes the fixed asset) since v0.3.1/v0.3.2's asset is the broken one.
+
 ## [0.3.2] - 2026-07-30 15:10:00 -03:00
 
 ### Fixed

@@ -84,13 +84,23 @@ jobs:
         # uses a different generator) — find them by name wherever cmake put
         # them rather than guessing a path, so this doesn't silently ship a
         # broken/incomplete package if that layout differs.
+        #
+        # dylibs on macOS are typically installed as a *.N.dylib real file
+        # plus a *.N.dylib (shorter compat-version) symlink pointing to it —
+        # the executables' load commands reference the symlink name (e.g.
+        # @rpath/libwhisper.1.dylib), not the fully-versioned file. `-type f`
+        # alone drops those symlinks; include `-type l` and copy with `-P` to
+        # preserve them as symlinks instead of silently omitting them (this
+        # caused a real "Library not loaded: @rpath/libwhisper.1.dylib"
+        # failure on a real Mac in v0.3.1/v0.3.2 — see CHANGELOG).
         run: |
           mkdir -p package
-          find whisper.cpp-src/build \( -name "whisper-server" -o -name "whisper-cli" -o -name "*.dylib" \) -type f -exec cp -v {} package/ \;
+          find whisper.cpp-src/build \( -name "whisper-server" -o -name "whisper-cli" -o -name "*.dylib" \) \( -type f -o -type l \) -exec cp -Pv {} package/ \;
           cp sessionhub-voice-recorder package/
           ls -la package/
           test -f package/whisper-server
           test -f package/sessionhub-voice-recorder
+          otool -L package/whisper-server
           tar -czvf sessionhub-voice-darwin.tar.gz -C package .
           shasum -a 256 sessionhub-voice-darwin.tar.gz
 

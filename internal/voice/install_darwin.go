@@ -26,14 +26,16 @@ import (
 // is intentionally published (e.g. recorder.m changes, or the pinned
 // whisper.cpp version in the CI job changes).
 const (
-	macosVoiceToolsTag  = "v0.3.1"
+	macosVoiceToolsTag  = "v0.3.3"
 	macosVoiceAssetName = "sessionhub-voice-darwin.tar.gz"
 	macosVoiceURL       = "https://github.com/jgcastro09/sessionhub/releases/download/" + macosVoiceToolsTag + "/" + macosVoiceAssetName
 	// Filled in once the macos-voice-tools CI job has actually run for this
 	// tag and printed the real checksum (see that job's "Package" step) —
 	// left blank beforehand so EnsureInstalled fails loudly with a clear
-	// reason instead of silently skipping verification.
-	macosVoiceAssetSHA256 = "2ab0b426232cde1d4f2d42ec64cf12c96cc5eef49f2886b9f1abf1e350f820d4"
+	// reason instead of silently skipping verification. (v0.3.1/v0.3.2's
+	// asset is broken — missing dylib symlinks, see extractTarGz's comment —
+	// so this intentionally does not reuse that checksum.)
+	macosVoiceAssetSHA256 = ""
 
 	maxArchiveBytes = 64 << 20
 )
@@ -85,9 +87,16 @@ func EnsureInstalled(ctx context.Context, toolsRoot string) (Installed, error) {
 	return installed, nil
 }
 
-// extractTarGz flattens every regular file in the archive directly into
-// destDir (the release asset has no subdirectories — see the "Package" step
-// in .github/workflows/release.yml's macos-voice-tools job).
+// extractTarGz flattens every regular file and symlink in the archive
+// directly into destDir (the release asset has no subdirectories — see the
+// "Package" step in .github/workflows/release.yml's macos-voice-tools job).
+//
+// Symlinks matter here: macOS dylibs are shipped as a real, fully-versioned
+// file (libwhisper.1.9.1.dylib) plus a shorter compat-version symlink
+// (libwhisper.1.dylib) that executables actually reference via their
+// @rpath load commands — skipping symlink entries produced exactly that
+// failure on real hardware ("Library not loaded: @rpath/libwhisper.1.dylib")
+// in v0.3.1/v0.3.2, since the referenced name was never extracted.
 func extractTarGz(archive []byte, destDir string) error {
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
@@ -104,12 +113,17 @@ func extractTarGz(archive []byte, destDir string) error {
 		if err != nil {
 			return err
 		}
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
 		targetPath := filepath.Join(destDir, filepath.Base(header.Name))
-		if err := extractTarFile(tr, targetPath); err != nil {
-			return fmt.Errorf("extract %s: %w", header.Name, err)
+		switch header.Typeflag {
+		case tar.TypeReg:
+			if err := extractTarFile(tr, targetPath); err != nil {
+				return fmt.Errorf("extract %s: %w", header.Name, err)
+			}
+		case tar.TypeSymlink:
+			_ = os.Remove(targetPath)
+			if err := os.Symlink(filepath.Base(header.Linkname), targetPath); err != nil {
+				return fmt.Errorf("symlink %s -> %s: %w", header.Name, header.Linkname, err)
+			}
 		}
 	}
 }
