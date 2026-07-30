@@ -73,6 +73,8 @@ type SimpleAutomation struct {
 	NextRun     *time.Time     `json:"nextRun,omitempty"`
 	Status      SimpleStatus   `json:"status"`
 	CurrentStep int            `json:"currentStep,omitempty"`
+	Activity    string         `json:"activity,omitempty"`
+	LiveOutput  string         `json:"liveOutput,omitempty"`
 	LastRun     LastRun        `json:"lastRun,omitempty"`
 	CreatedAt   time.Time      `json:"createdAt"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
@@ -300,7 +302,8 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 		}
 		for attempt := 1; ; attempt++ {
 			s.setCurrentStep(automationID, i+1)
-			result, err := s.executors.RunAutomationStep(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36)
+			result, err := s.executors.RunAutomationStepWithProgress(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36,
+				func(_ string, output string) { s.setLiveOutput(automationID, output) })
 			if err == nil {
 				if result.Output != "" {
 					previews = append(previews, result.Output)
@@ -345,6 +348,7 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 		return
 	}
 	current.CurrentStep = 0
+	current.Activity, current.LiveOutput = "", ""
 	current.LastRun.FinishedAt, current.LastRun.OutputPreview = &finished, previews
 	if ctx.Err() != nil {
 		current.Status, current.LastRun.Status, current.LastRun.Error = StatusCanceled, StatusCanceled, "canceled"
@@ -377,7 +381,7 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 func (s *Scheduler) setCurrentStep(automationID string, step int) {
 	s.mu.Lock()
 	if item, ok := s.items[automationID]; ok {
-		item.CurrentStep = step
+		item.CurrentStep, item.Activity, item.LiveOutput = step, "Starting executor and acquiring terminal…", ""
 		s.items[automationID] = item
 		_ = s.persistLocked()
 	}
@@ -388,6 +392,7 @@ func (s *Scheduler) setRetrying(automationID string, step, attempt int, cause er
 	s.mu.Lock()
 	if item, ok := s.items[automationID]; ok {
 		item.CurrentStep, item.Status, item.LastRun.Status = step, StatusRunning, StatusRunning
+		item.Activity = "Waiting for terminal control…"
 		item.LastRun.RetryCount = attempt
 		item.LastRun.Error = fmt.Sprintf("Retrying step %d in %s: %v", step, automationRetryDelay, cause)
 		item.UpdatedAt = time.Now().UTC()
@@ -395,6 +400,25 @@ func (s *Scheduler) setRetrying(automationID string, step, attempt int, cause er
 		_ = s.persistLocked()
 	}
 	s.mu.Unlock()
+}
+
+func (s *Scheduler) setLiveOutput(automationID, output string) {
+	s.mu.Lock()
+	if item, ok := s.items[automationID]; ok {
+		item.Activity = "Prompt sent • waiting for executor completion…"
+		item.LiveOutput = outputPreviewString(output, 900)
+		item.UpdatedAt = time.Now().UTC()
+		s.items[automationID] = item
+		_ = s.persistLocked()
+	}
+	s.mu.Unlock()
+}
+
+func outputPreviewString(value string, maxBytes int) string {
+	if len(value) <= maxBytes {
+		return value
+	}
+	return value[len(value)-maxBytes:]
 }
 
 func (s *Scheduler) normalize(now time.Time) error {

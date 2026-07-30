@@ -50,6 +50,23 @@ func TestSchedulerMarksTransientFailureForRetry(t *testing.T) {
 	s.Close()
 }
 
+func TestSchedulerKeepsBoundedLiveOutput(t *testing.T) {
+	s, err := NewScheduler(context.Background(), t.TempDir(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.items["a"] = SimpleAutomation{ID: "a", Status: StatusRunning}
+	s.setLiveOutput("a", strings.Repeat("x", 1000))
+	item, ok := s.Get("a")
+	if !ok {
+		t.Fatal("automation missing")
+	}
+	if item.Activity == "" || len(item.LiveOutput) != 900 {
+		t.Fatalf("unexpected live state: activity=%q output=%d", item.Activity, len(item.LiveOutput))
+	}
+	s.Close()
+}
+
 func TestSchedulerStartupMarksPastOnceAsMissed(t *testing.T) {
 	root := t.TempDir()
 	s, err := NewScheduler(context.Background(), root, nil, nil)

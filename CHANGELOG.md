@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-07-30 18:58:00 -03:00
+
+### Added
+
+- Running automations now show actionable live feedback in the Automation list: whether they are acquiring terminal control, waiting for executor completion, and a bounded live tail of the executor's existing PTY output after the prompt has been sent.
+
 ## [0.3.15] - 2026-07-30 18:39:44 -03:00
 
 ### Fixed

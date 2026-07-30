@@ -49,6 +49,12 @@ type WorkResult struct {
 	Output     string
 }
 
+// AutomationProgress receives a bounded live terminal snapshot after the
+// automation has successfully acquired the PTY and sent its prompt.
+// Callers use it for status only; recognition and process ownership remain
+// entirely inside Service.
+type AutomationProgress func(instanceID, output string)
+
 func New(ctx context.Context, repository *store.Store, terminals *terminal.Manager) *Service {
 	return &Service{
 		ctx: ctx, store: repository, terminals: terminals,
@@ -157,6 +163,17 @@ func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string
 // intentionally delegates process creation, PTY writes, terminal leases and
 // recognition to Service rather than reimplementing any of those concerns.
 func (s *Service) RunAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int) (WorkResult, error) {
+	return s.runAutomationStep(ctx, workID, sessionID, executorID, prompt, width, height, nil)
+}
+
+// RunAutomationStepWithProgress is RunAutomationStep plus best-effort live
+// PTY feedback for the Automation UI. It does not expose a second terminal
+// control path or change recognition semantics.
+func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
+	return s.runAutomationStep(ctx, workID, sessionID, executorID, prompt, width, height, progress)
+}
+
+func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
 	term, instance, err := s.StartOrReuse(ctx, sessionID, executorID, width, height)
 	if err != nil {
 		return WorkResult{}, err
@@ -179,23 +196,34 @@ func (s *Service) RunAutomationStep(ctx context.Context, workID, sessionID, exec
 	}
 	s.work[instance.ID] = work
 	s.mu.Unlock()
+	if progress != nil {
+		progress(instance.ID, "")
+	}
+	updates := time.NewTicker(time.Second)
+	defer updates.Stop()
 
-	select {
-	case result := <-done:
-		if result.Outcome == domain.StateSucceeded || result.Outcome == domain.StateFinished {
-			return result, nil
+	for {
+		select {
+		case result := <-done:
+			if result.Outcome == domain.StateSucceeded || result.Outcome == domain.StateFinished {
+				return result, nil
+			}
+			return result, fmt.Errorf("%s", result.Reason)
+		case <-ctx.Done():
+			s.mu.Lock()
+			if current := s.work[instance.ID]; current != nil && current.ID == workID {
+				delete(s.work, instance.ID)
+			}
+			s.mu.Unlock()
+			// Stop is the established, process-tree-safe cancellation path. It
+			// is also used when an automation is cancelled or Session Hub closes.
+			_ = s.Stop(context.Background(), instance.ID)
+			return WorkResult{InstanceID: instance.ID, Outcome: domain.StateCanceled, Reason: ctx.Err().Error()}, ctx.Err()
+		case <-updates.C:
+			if progress != nil {
+				progress(instance.ID, outputPreview([]byte(term.Snapshot())))
+			}
 		}
-		return result, fmt.Errorf("%s", result.Reason)
-	case <-ctx.Done():
-		s.mu.Lock()
-		if current := s.work[instance.ID]; current != nil && current.ID == workID {
-			delete(s.work, instance.ID)
-		}
-		s.mu.Unlock()
-		// Stop is the established, process-tree-safe cancellation path. It is
-		// also used when an automation is cancelled or Session Hub closes.
-		_ = s.Stop(context.Background(), instance.ID)
-		return WorkResult{InstanceID: instance.ID, Outcome: domain.StateCanceled, Reason: ctx.Err().Error()}, ctx.Err()
 	}
 }
 

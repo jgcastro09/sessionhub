@@ -2443,6 +2443,15 @@ func (m Model) emptyContent(width, height int) string {
 					if item.LastRun.Error != "" {
 						body.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(truncate(item.LastRun.Error, max(20, width-12)))))
 					}
+					if item.Activity != "" {
+						body.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(item.Activity)))
+					}
+					if item.LiveOutput != "" {
+						body.WriteString("    " + titleStyle.Render("Live terminal output") + "\n")
+						for _, line := range strings.Split(item.LiveOutput, "\n") {
+							body.WriteString("      " + truncate(line, max(20, width-18)) + "\n")
+						}
+					}
 				} else {
 					body.WriteString(fmt.Sprintf("    Status: %s  •  Last run: %s\n", item.Status, last))
 				}
