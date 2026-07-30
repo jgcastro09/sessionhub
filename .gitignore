@@ -15,7 +15,8 @@
 
 # Node
 /npm/node_modules/
-/npm/bin/
+/npm/bin/*
+!/npm/bin/sessionhub.js
 *.tgz
 
 # Editors and operating systems
