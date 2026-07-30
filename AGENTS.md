@@ -31,3 +31,8 @@ This project, **Session Hub**, is maintained by **João Cunha** (`jgcastro09`). 
 ### 5. Software Identity & Aesthetics
 - Preserving the visual design, state management, PTY integrity, and dark-theme aesthetic of Session Hub is critical.
 - Maintain project ownership under João Cunha (`github.com/jgcastro09/sessionhub`).
+
+### 6. Automated GitHub Releases & NPM Publishing
+- The repository has `NPM_TOKEN` configured in GitHub Actions Secrets.
+- Every release **MUST** include creating and pushing the corresponding git tag `vX.Y.Z` (e.g., `git tag v0.1.3` and `git push origin v0.1.3`).
+- Pushing a `v*` tag triggers [.github/workflows/release.yml](file:///d:/BUILD_LAB/SESSIONHUB/.github/workflows/release.yml), which automatically builds multi-platform binaries via GoReleaser, creates a GitHub Release, and publishes the package to the official NPM registry.

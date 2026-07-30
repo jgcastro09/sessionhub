@@ -6,7 +6,11 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-07-30 10:52:00 -03:00
+## [0.1.3] - 2026-07-30 11:00:00 -03:00
+
+### Added
+
+- Added rule #6 to `AGENTS.md` specifying automated GitHub Release and NPM publishing workflow when pushing version tags (`v*`).
 
 ### Added
 
@@ -35,7 +39,8 @@ All notable changes to Session Hub are documented here. The format follows
 - Git workspace summaries, release update checks, and the NPM binary installer.
 - Cross-platform CI and reproducible release configuration.
 
-[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/jgcastro09/sessionhub/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/jgcastro09/sessionhub/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/jgcastro09/sessionhub/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jgcastro09/sessionhub/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jgcastro09/sessionhub/releases/tag/v0.1.0
