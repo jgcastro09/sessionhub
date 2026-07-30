@@ -381,7 +381,7 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 func (s *Scheduler) setCurrentStep(automationID string, step int) {
 	s.mu.Lock()
 	if item, ok := s.items[automationID]; ok {
-		item.CurrentStep, item.Activity, item.LiveOutput = step, "Opening the selected CLI tab and waiting for it to be ready…", ""
+		item.CurrentStep, item.Activity, item.LiveOutput = step, "Opening the selected CLI tab • waiting 5 seconds before sending the prompt…", ""
 		s.items[automationID] = item
 		_ = s.persistLocked()
 	}

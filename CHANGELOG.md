@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.23] - 2026-07-30 19:47:05 -03:00
+
+### Fixed
+
+- When Automation activates a previously offline CLI tab, it now waits five seconds for the CLI input layer to finish initializing, then still verifies the PTY's initial render is stable before sending the configured prompt. Existing already-open tabs are sent immediately.
+
 ## [0.3.22] - 2026-07-30 19:40:33 -03:00
 
 ### Fixed

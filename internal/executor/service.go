@@ -39,6 +39,11 @@ type activeWork struct {
 	done chan WorkResult
 }
 
+// automationStartupDelay gives full-screen interactive CLIs time to attach
+// their input handler after their first screen has been rendered. It applies
+// only when Automation itself has just activated an inactive tab.
+const automationStartupDelay = 5 * time.Second
+
 // WorkResult is the bounded completion evidence returned to the simple
 // Automation scheduler. It deliberately exposes a preview rather than a
 // full terminal transcript, which may contain a large or sensitive output.
@@ -312,9 +317,23 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 	defer restoreOperatorControl()
 	if started {
 		// OpenCode and other TUIs can accept PTY bytes before their interactive
-		// input layer exists. Waiting for the terminal's own initial render is
-		// what makes this equivalent to selecting the lazy topbar tab first and
-		// only then typing into it.
+		// input layer exists. Keep this tab active for a short explicit startup
+		// interval, then require its own initial render to be stable. This is
+		// equivalent to selecting the lazy topbar tab, letting the CLI finish
+		// booting, and only then typing into it.
+		startupTimer := time.NewTimer(automationStartupDelay)
+		select {
+		case <-ctx.Done():
+			if !startupTimer.Stop() {
+				select {
+				case <-startupTimer.C:
+				default:
+				}
+			}
+			_ = s.Stop(context.Background(), instance.ID)
+			return WorkResult{InstanceID: instance.ID, Outcome: domain.StateCanceled, Reason: ctx.Err().Error()}, ctx.Err()
+		case <-startupTimer.C:
+		}
 		if err := term.WaitForPromptReady(ctx); err != nil {
 			if ctx.Err() != nil {
 				_ = s.Stop(context.Background(), instance.ID)
