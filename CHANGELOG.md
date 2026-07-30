@@ -6,7 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.3.7] - 2026-07-30 17:02:00 -03:00
+## [0.3.8] - 2026-07-30 16:54:51 -03:00
+
+### Fixed
+
+- Pinned the SHA-256 for v0.3.7's rebuilt `sessionhub-voice-darwin.tar.gz`, which contains the macOS recording-finalization fix. Verified the downloaded release asset against the published checksum, confirmed its universal recorder supports both `x86_64` and `arm64`, and recorded a non-empty WAV with that exact packaged binary. New macOS installs now fetch the corrected helper instead of the pre-fix v0.3.3 helper.
+
+## [0.3.7] - 2026-07-30 16:49:00 -03:00
 
 ### Fixed
 

@@ -26,7 +26,7 @@ import (
 // is intentionally published (e.g. recorder.m changes, or the pinned
 // whisper.cpp version in the CI job changes).
 const (
-	macosVoiceToolsTag  = "v0.3.3"
+	macosVoiceToolsTag  = "v0.3.7"
 	macosVoiceAssetName = "sessionhub-voice-darwin.tar.gz"
 	macosVoiceURL       = "https://github.com/jgcastro09/sessionhub/releases/download/" + macosVoiceToolsTag + "/" + macosVoiceAssetName
 	// Filled in once the macos-voice-tools CI job has actually run for this
@@ -35,7 +35,7 @@ const (
 	// reason instead of silently skipping verification. (v0.3.1/v0.3.2's
 	// asset is broken — missing dylib symlinks, see extractTarGz's comment —
 	// so this intentionally does not reuse that checksum.)
-	macosVoiceAssetSHA256 = "a1ba532e37a80a7a4a78ba3781092dd89bb267feb661aaec907283ef38ced209"
+	macosVoiceAssetSHA256 = "345b7e8dc2fbb4dc0c503115806032716949cf741e3e60729b768e0674c37ee4"
 
 	maxArchiveBytes = 64 << 20
 )
