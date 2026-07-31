@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 	"github.com/jgcastro09/sessionhub/internal/store"
 )
 
@@ -94,7 +95,7 @@ func (e *Engine) RunPipelineReady(
 		e.wg.Add(1)
 		go func() {
 			defer func() { <-e.sem; e.wg.Done() }()
-			e.executeStep(ctx, step, workspace)
+			safego.Run("automation.engine.executeStep", func() { e.executeStep(ctx, step, workspace) })
 		}()
 	}
 	return len(steps), nil

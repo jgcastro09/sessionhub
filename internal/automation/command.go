@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/jgcastro09/sessionhub/internal/safego"
 )
 
 type CommandConfig struct {
@@ -82,7 +84,7 @@ func RunCommand(ctx context.Context, config CommandConfig) (CommandResult, error
 		return CommandResult{}, fmt.Errorf("start deterministic command: %w", err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	go func() { safego.Run("automation.command.wait", func() { done <- cmd.Wait() }) }()
 	var runErr error
 	select {
 	case runErr = <-done:

@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-ole/go-ole"
 	"github.com/moutend/go-wca/pkg/wca"
+
+	"github.com/jgcastro09/sessionhub/internal/safego"
 )
 
 // eCapture is EDataFlow's capture endpoint value (mmdeviceapi.h). go-wca
@@ -67,7 +69,7 @@ func (r *Recorder) Start() error {
 	r.pcm = nil
 	r.format = nil
 	r.mu.Unlock()
-	go r.captureLoop()
+	go func() { safego.Run("voice.recorderWindows.captureLoop", r.captureLoop) }()
 	return <-r.ready
 }
 

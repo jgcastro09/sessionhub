@@ -29,6 +29,7 @@ import (
 	projecthub "github.com/jgcastro09/sessionhub/internal/project"
 	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 	"github.com/jgcastro09/sessionhub/internal/tasks"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	updatecheck "github.com/jgcastro09/sessionhub/internal/update"
@@ -2215,7 +2216,11 @@ func (m *Model) resize() {
 	}
 	if m.remoteController != nil && m.focus && m.activeInstance.ID != "" {
 		controller, instanceID := m.remoteController, m.activeInstance.ID
-		go func() { _ = controller.Resize(context.Background(), instanceID, width, height) }()
+		go func() {
+			safego.Run("ui.remoteResize", func() {
+				_ = controller.Resize(context.Background(), instanceID, width, height)
+			})
+		}()
 	}
 }
 

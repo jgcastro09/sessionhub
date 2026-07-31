@@ -15,6 +15,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
 
@@ -55,7 +56,7 @@ func Listen(ctx context.Context, address string, backend Backend, info Device) (
 	hostCtx, cancel := context.WithCancel(ctx)
 	host := &Host{listener: listener, backend: backend, ctx: hostCtx, cancel: cancel, info: info}
 	host.wg.Add(1)
-	go host.accept()
+	go func() { safego.Run("remote.host.accept", host.accept) }()
 	return host, nil
 }
 
@@ -87,7 +88,7 @@ func (h *Host) accept() {
 		h.wg.Add(1)
 		go func(p *peer) {
 			defer h.wg.Done()
-			h.serve(p)
+			safego.Run("remote.host.serve", func() { h.serve(p) })
 		}(candidate)
 	}
 }
@@ -120,7 +121,7 @@ func (h *Host) serve(peer *peer) {
 	}); err != nil {
 		return
 	}
-	go peer.stream()
+	go func() { safego.Run("remote.host.peerStream", peer.stream) }()
 	reader := bufio.NewReader(peer.conn)
 	for {
 		frame, err := ReadFrame(reader)

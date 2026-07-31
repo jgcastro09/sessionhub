@@ -6,6 +6,18 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-31 18:37:28 -03:00
+
+### Fixed
+
+- Every background goroutine in the codebase now recovers from panics instead of letting them escape, via a new shared `internal/safego.Run` helper (and `internal/terminal.Session`'s existing event-emitting `guarded` method for that package). An uncaught panic in any Go goroutine terminates the whole process immediately, which skips Bubble Tea's own deferred terminal-restore step (raw mode, alt-screen, mouse tracking, Kitty keyboard protocol) since that defer only runs on the panicking goroutine's own stack — not the one that actually panicked. In practice this stranded the user's real terminal in a broken input mode (keystrokes rendering as different characters, terminal appearing frozen) surviving even after SessionHub had exited. Covered: all `internal/terminal.Session` I/O goroutines (PTY read/write, VT emulator bridging, process wait, history persistence), the remote-mode discovery/host/client goroutines, the automation scheduler/engine/command goroutines, the web panel HTTP server goroutine, the voice recorder goroutines, and the TUI's remote-resize goroutine.
+
+### Added
+
+- `internal/safego`: a single shared `Run(name, fn)` panic-recovery wrapper for goroutine bodies, documented with the terminal-corruption failure mode it exists to prevent. See AGENTS.md's new Terminal-Safety Guarantee rule.
+
+Bumps version to 0.5.1.
+
 ## [0.5.0] - 2026-07-31
 
 ### Added

@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/id"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 	"github.com/jgcastro09/sessionhub/internal/store"
 )
 
@@ -122,16 +123,18 @@ func (s *Scheduler) Start() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-s.ctx.Done():
-				return
-			case now := <-ticker.C:
-				s.process(now)
+		safego.Run("automation.scheduler.loop", func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-s.ctx.Done():
+					return
+				case now := <-ticker.C:
+					s.process(now)
+				}
 			}
-		}
+		})
 	}()
 }
 
@@ -277,7 +280,10 @@ func (s *Scheduler) start(automationID, trigger string, occurrence time.Time) er
 	_ = s.persistLocked()
 	s.mu.Unlock()
 	s.wg.Add(1)
-	go func() { defer s.wg.Done(); s.execute(ctx, automationID) }()
+	go func() {
+		defer s.wg.Done()
+		safego.Run("automation.scheduler.execute", func() { s.execute(ctx, automationID) })
+	}()
 	return nil
 }
 

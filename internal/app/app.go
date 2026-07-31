@@ -19,6 +19,7 @@ import (
 	projecthub "github.com/jgcastro09/sessionhub/internal/project"
 	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 	"github.com/jgcastro09/sessionhub/internal/store"
 	"github.com/jgcastro09/sessionhub/internal/tasks"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
@@ -135,23 +136,25 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 			_ = repository.Log(context.Background(), domain.LogEntry{Level: "warn", Kind: "web", Message: "web panel unavailable: " + err.Error()})
 		}
 	}
-	go executors.Run()
+	go func() { safego.Run("app.executors.Run", executors.Run) }()
 	automationScheduler.Start()
 	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case now := <-ticker.C:
-				if err := automationEngine.ProcessSchedules(ctx, now); err != nil {
-					_ = repository.Log(context.Background(), domain.LogEntry{
-						Level: "error", Kind: "scheduler", Message: err.Error(),
-					})
+		safego.Run("app.automationScheduleLoop", func() {
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case now := <-ticker.C:
+					if err := automationEngine.ProcessSchedules(ctx, now); err != nil {
+						_ = repository.Log(context.Background(), domain.LogEntry{
+							Level: "error", Kind: "scheduler", Message: err.Error(),
+						})
+					}
 				}
 			}
-		}
+		})
 	}()
 	return a, nil
 }

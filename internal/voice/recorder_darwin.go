@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/jgcastro09/sessionhub/internal/safego"
 )
 
 // Recorder shells out to the sessionhub-voice-recorder helper (see
@@ -50,7 +52,7 @@ func (r *Recorder) Start() error {
 	}
 
 	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
+	go func() { safego.Run("voice.recorderDarwin.wait", func() { exited <- cmd.Wait() }) }()
 
 	select {
 	case err := <-exited:

@@ -12,6 +12,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 )
 
 type Client struct {
@@ -106,7 +107,7 @@ func ConnectController(ctx context.Context, device Device, controllerName, contr
 		return nil, fmt.Errorf("remote SessionHub version mismatch: this device is v%s, %s is v%s", controllerVersion, c.device.Name, c.device.Version)
 	}
 	c.wg.Add(1)
-	go c.readLoop()
+	go func() { safego.Run("remote.client.readLoop", c.readLoop) }()
 	if _, err := c.request(ctx, Frame{Type: "identify", Payload: payload(map[string]string{"name": controllerName, "version": controllerVersion})}); err != nil {
 		c.Close()
 		return nil, err

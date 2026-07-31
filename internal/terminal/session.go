@@ -190,18 +190,18 @@ func Start(
 	s.historyWG.Add(1)
 	go func() {
 		defer s.historyWG.Done()
-		s.persistHistory()
+		s.guarded("persistHistory", s.persistHistory)
 	}()
 	s.ioWG.Add(2)
 	go func() {
 		defer s.ioWG.Done()
-		s.readOutput()
+		s.guarded("readOutput", s.readOutput)
 	}()
 	go func() {
 		defer s.ioWG.Done()
-		s.copyTerminalReplies()
+		s.guarded("copyTerminalReplies", s.copyTerminalReplies)
 	}()
-	go s.wait()
+	go s.guarded("wait", s.wait)
 	s.emit(Event{InstanceID: instanceID, Kind: EventState, State: domain.StateRunning})
 	return s, nil
 }
@@ -345,6 +345,12 @@ func (s *Session) readOutput() {
 	raw := make(chan []byte, 64)
 	readErr := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				readErr <- fmt.Errorf("recovered panic in pty reader: %v", r)
+				close(raw)
+			}
+		}()
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := s.pty.Read(buf)
@@ -428,6 +434,23 @@ func (s *Session) wait() {
 	s.mu.Unlock()
 	s.emit(Event{InstanceID: s.id, Kind: EventState, State: nowState, Err: err, ExitCode: s.exitCode})
 	close(s.waitDone)
+}
+
+// guarded runs fn with panic recovery. Bubble Tea restores the host
+// terminal (raw mode, alt-screen, mouse tracking, Kitty keyboard protocol)
+// via a defer in its own Run() goroutine — but a Go panic in any other
+// goroutine terminates the whole process immediately without giving that
+// goroutine a chance to run. An uncaught panic in one of this session's I/O
+// goroutines would therefore strand the user's real terminal in raw mode
+// (symptom: keystrokes render as different characters, terminal looks
+// frozen) instead of merely breaking this one CLI session.
+func (s *Session) guarded(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.emit(Event{InstanceID: s.id, Kind: EventError, Err: fmt.Errorf("recovered panic in %s: %v", name, r)})
+		}
+	}()
+	fn()
 }
 
 func (s *Session) emit(event Event) {

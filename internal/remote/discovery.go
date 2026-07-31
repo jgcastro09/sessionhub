@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jgcastro09/sessionhub/internal/safego"
 )
 
 const (
@@ -87,8 +89,8 @@ func StartDiscovery(parent context.Context, name, version, seed string, port int
 		self: Device{ID: hex.EncodeToString(hash[:8]), Name: name, Version: version, Port: port}, tailscaleEnabled: tailscaleEnabled,
 	}
 	d.wg.Add(2)
-	go d.receive()
-	go d.announceLoop()
+	go func() { safego.Run("remote.discovery.receive", d.receive) }()
+	go func() { safego.Run("remote.discovery.announceLoop", d.announceLoop) }()
 	return d, nil
 }
 

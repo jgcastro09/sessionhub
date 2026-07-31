@@ -17,6 +17,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/events"
 	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/safego"
 	"github.com/jgcastro09/sessionhub/internal/tasks"
 )
 
@@ -89,7 +90,7 @@ func Listen(ctx context.Context, address string, backend Backend, bindMode confi
 	server.routes(mux)
 	server.httpServer = &http.Server{Handler: mux, BaseContext: func(net.Listener) context.Context { return serverCtx }}
 	go func() {
-		_ = server.httpServer.Serve(listener)
+		safego.Run("webserver.serve", func() { _ = server.httpServer.Serve(listener) })
 	}()
 	return server, nil
 }
