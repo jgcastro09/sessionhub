@@ -17,6 +17,9 @@ import (
 func (a *App) StartRemoteHost(address string) error {
 	a.remoteMu.Lock()
 	defer a.remoteMu.Unlock()
+	if !a.networkSettings.RemoteEnabled {
+		return fmt.Errorf("Remote Mode is disabled in Settings")
+	}
 	if a.remoteHost != nil {
 		return fmt.Errorf("remote host is already listening on %s", a.remoteHost.Address())
 	}
@@ -33,6 +36,9 @@ func (a *App) StartRemoteHost(address string) error {
 func (a *App) StartAutomaticRemote() error {
 	a.remoteMu.Lock()
 	defer a.remoteMu.Unlock()
+	if !a.networkSettings.RemoteEnabled {
+		return nil
+	}
 	if a.remoteHost != nil {
 		return nil
 	}
@@ -64,14 +70,51 @@ type NetworkStatus struct {
 	TailscaleIPs      []string
 	TailscaleDetected bool
 	TailscaleEnabled  bool
+	RemoteEnabled     bool
+	HostActive        bool
+	DiscoveryActive   bool
+	Endpoint          string
 }
 
 func (a *App) RemoteNetworkStatus() NetworkStatus {
 	a.remoteMu.Lock()
 	settings := a.networkSettings
+	host, discovery := a.remoteHost, a.remoteDiscovery
 	a.remoteMu.Unlock()
 	addresses := remote.LocalNetworkAddresses()
-	return NetworkStatus{LocalIPs: addresses.LocalIPs, TailscaleIPs: addresses.TailscaleIPs, TailscaleDetected: len(addresses.TailscaleIPs) > 0, TailscaleEnabled: settings.TailscaleEnabled}
+	status := NetworkStatus{
+		LocalIPs: addresses.LocalIPs, TailscaleIPs: addresses.TailscaleIPs,
+		TailscaleDetected: len(addresses.TailscaleIPs) > 0,
+		TailscaleEnabled:  settings.TailscaleEnabled, RemoteEnabled: settings.RemoteEnabled,
+		HostActive: host != nil, DiscoveryActive: discovery != nil,
+	}
+	if host != nil {
+		status.Endpoint = host.Address()
+	}
+	return status
+}
+
+// SetRemoteEnabled starts or stops both in-process Remote Mode components.
+// Stopping ends a current remote-control connection rather than allowing a
+// hidden network service to remain reachable.
+func (a *App) SetRemoteEnabled(enabled bool) error {
+	a.remoteMu.Lock()
+	next := a.networkSettings
+	if next.RemoteEnabled == enabled {
+		a.remoteMu.Unlock()
+		return nil
+	}
+	next.RemoteEnabled = enabled
+	if err := config.SaveNetworkSettings(a.Paths.NetworkSettings, next); err != nil {
+		a.remoteMu.Unlock()
+		return err
+	}
+	a.networkSettings = next
+	a.remoteMu.Unlock()
+	if !enabled {
+		return a.StopRemoteHost()
+	}
+	return a.StartAutomaticRemote()
 }
 
 // SetTailscaleEnabled toggles only Tailscale discovery. The host keeps its
@@ -91,6 +134,18 @@ func (a *App) SetTailscaleEnabled(enabled bool) error {
 		discovery.SetTailscaleEnabled(enabled)
 	}
 	return nil
+}
+
+// RestartRemote re-announces this SessionHub without changing its saved
+// network preferences. It is useful after a network/VPN interface changes.
+func (a *App) RestartRemote() error {
+	if !a.RemoteNetworkStatus().RemoteEnabled {
+		return fmt.Errorf("Remote Mode is disabled")
+	}
+	if err := a.StopRemoteHost(); err != nil {
+		return err
+	}
+	return a.StartAutomaticRemote()
 }
 
 func (a *App) StopRemoteHost() error {

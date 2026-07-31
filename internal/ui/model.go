@@ -71,6 +71,7 @@ type remoteRevokedMsg struct {
 }
 
 type networkSettingsMsg struct {
+	action  string
 	enabled bool
 	err     error
 }
@@ -565,13 +566,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case networkSettingsMsg:
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
-			m.status = "Couldn't save network settings: " + msg.err.Error()
+			m.status = "Couldn't update network settings: " + msg.err.Error()
 			return m, nil
 		}
-		if msg.enabled {
-			m.status = "Tailscale discovery enabled • LAN and Tailscale are both available"
-		} else {
-			m.status = "Tailscale discovery disabled • LAN discovery remains available"
+		switch msg.action {
+		case "remote":
+			if msg.enabled {
+				m.status = "Remote Mode enabled • host and discovery are online"
+			} else {
+				m.status = "Remote Mode disabled • no SessionHub is exposed on the network"
+			}
+		case "restart":
+			m.status = "Remote Mode restarted • LAN/Tailscale discovery re-announced"
+		default:
+			if msg.enabled {
+				m.status = "Tailscale discovery enabled • LAN and Tailscale are both available"
+			} else {
+				m.status = "Tailscale discovery disabled • LAN discovery remains available"
+			}
 		}
 	case savedMsg:
 		if msg.err != nil {
@@ -931,6 +943,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "r":
+			if sections[m.section] == "Settings" {
+				enabled := !m.app.RemoteNetworkStatus().RemoteEnabled
+				application := m.app
+				m.status = "Updating Remote Mode..."
+				return m, func() tea.Msg {
+					return networkSettingsMsg{action: "remote", enabled: enabled, err: application.SetRemoteEnabled(enabled)}
+				}
+			}
 			if sections[m.section] == "Automations" {
 				if item, ok := m.selectedAutomation(); ok {
 					if err := m.app.AutomationScheduler.RunNow(item.ID); err != nil {
@@ -1009,7 +1029,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				enabled := !m.app.RemoteNetworkStatus().TailscaleEnabled
 				application := m.app
 				return m, func() tea.Msg {
-					return networkSettingsMsg{enabled: enabled, err: application.SetTailscaleEnabled(enabled)}
+					return networkSettingsMsg{action: "tailscale", enabled: enabled, err: application.SetTailscaleEnabled(enabled)}
+				}
+			}
+		case "p":
+			if sections[m.section] == "Settings" {
+				application := m.app
+				m.status = "Restarting Remote Mode..."
+				return m, func() tea.Msg {
+					return networkSettingsMsg{action: "restart", err: application.RestartRemote()}
 				}
 			}
 		}
@@ -2979,30 +3007,56 @@ func (m Model) emptyContent(width, height int) string {
 		if ver != "" && !strings.HasPrefix(ver, "v") {
 			ver = "v" + ver
 		}
-		body.WriteString(fmt.Sprintf("Session Hub %s\n\n", ver))
-		body.WriteString(fmt.Sprintf("Data Directory:     %s\n", m.app.Paths.Root))
-		body.WriteString(fmt.Sprintf("Database Path:      %s\n", m.app.Paths.Database))
-		body.WriteString(fmt.Sprintf("Recovered Records:  %d\n\n", m.app.RecoveredCount()))
+		body.WriteString(titleStyle.Render("System") + "\n")
+		body.WriteString(fmt.Sprintf("  Version      %s\n", keyStyle.Render(ver)))
+		body.WriteString(fmt.Sprintf("  Data root    %s\n", mutedStyle.Render(m.app.Paths.Root)))
+		body.WriteString(fmt.Sprintf("  Database     %s\n", mutedStyle.Render(m.app.Paths.Database)))
+		body.WriteString(fmt.Sprintf("  Recovered    %d records\n\n", m.app.RecoveredCount()))
 
 		network := m.app.RemoteNetworkStatus()
-		body.WriteString(titleStyle.Render("Remote Network") + "\n")
+		body.WriteString(titleStyle.Render("Remote Network Control") + "\n")
+		remoteState := "DISABLED"
+		remoteDetail := "host and discovery are stopped"
+		if network.RemoteEnabled {
+			remoteState = "ENABLED"
+			remoteDetail = "host + discovery are active"
+			if !network.HostActive || !network.DiscoveryActive {
+				remoteDetail = "starting or unavailable — press p to restart"
+			}
+		}
+		body.WriteString("  " + keyStyle.Render("[r]") + " Remote Mode       " + keyStyle.Render(remoteState) + "  " + mutedStyle.Render(remoteDetail) + "\n")
+		tailscaleState := "DISABLED"
+		tailscaleDetail := "not advertised over Tailscale"
+		if network.TailscaleEnabled {
+			tailscaleState = "ENABLED"
+			tailscaleDetail = "advertise and discover Tailscale peers"
+		}
+		body.WriteString("  " + keyStyle.Render("[t]") + " Tailscale         " + keyStyle.Render(tailscaleState) + "  " + mutedStyle.Render(tailscaleDetail) + "\n")
+		body.WriteString("  " + keyStyle.Render("[p]") + " Restart network   " + mutedStyle.Render("rebind host and re-announce after Wi-Fi/VPN changes") + "\n\n")
+
+		body.WriteString(mutedStyle.Render("Transport status") + "\n")
 		localIPs := strings.Join(network.LocalIPs, ", ")
 		if localIPs == "" {
 			localIPs = "waiting for a private LAN address"
 		}
-		body.WriteString("  LAN:       " + keyStyle.Render("Active") + " (always)\n")
-		body.WriteString("  Local IP:  " + localIPs + "\n")
-		if network.TailscaleDetected {
-			status := "disabled"
-			if network.TailscaleEnabled {
-				status = "enabled"
-			}
-			body.WriteString("  Tailscale: " + keyStyle.Render(status) + "\n")
-			body.WriteString("  Tailscale IP: " + strings.Join(network.TailscaleIPs, ", ") + "\n")
-		} else {
-			body.WriteString("  Tailscale: " + mutedStyle.Render("not detected on this computer") + "\n")
+		lanState := "OFFLINE"
+		if network.RemoteEnabled && network.HostActive && network.DiscoveryActive {
+			lanState = "ONLINE"
 		}
-		body.WriteString("\n  " + keyStyle.Render("t") + mutedStyle.Render(" Toggle Tailscale discovery • LAN remains active in both modes\n\n"))
+		body.WriteString("  LAN        " + keyStyle.Render(lanState) + "  " + localIPs + "\n")
+		if network.TailscaleDetected {
+			status := "OFFLINE"
+			if network.RemoteEnabled && network.TailscaleEnabled && network.HostActive && network.DiscoveryActive {
+				status = "ONLINE"
+			}
+			body.WriteString("  Tailscale  " + keyStyle.Render(status) + "  " + strings.Join(network.TailscaleIPs, ", ") + "\n")
+		} else {
+			body.WriteString("  Tailscale  " + mutedStyle.Render("not detected on this computer") + "\n")
+		}
+		if network.Endpoint != "" {
+			body.WriteString("  Host        " + mutedStyle.Render(network.Endpoint) + "\n")
+		}
+		body.WriteString("  Config      " + mutedStyle.Render(m.app.Paths.NetworkSettings) + "\n\n")
 
 		body.WriteString(titleStyle.Render("Software Update") + "\n")
 		if m.isUpdating {
@@ -3012,20 +3066,18 @@ func (m Model) emptyContent(width, height int) string {
 		} else if m.availableUpdate != nil {
 			body.WriteString(fmt.Sprintf("  Status: ✨ Update %s AVAILABLE!\n", m.availableUpdate.TagName))
 			body.WriteString(fmt.Sprintf("  Release URL: %s\n", m.availableUpdate.HTMLURL))
-			body.WriteString("\n  Press 'u' or Enter to install update now.")
+			body.WriteString("\n  " + keyStyle.Render("[u] [Enter]") + mutedStyle.Render(" Install update now."))
 		} else {
 			body.WriteString("  Status: ✓ Session Hub is up to date\n")
 			if !m.lastUpdateCheck.IsZero() {
 				body.WriteString(fmt.Sprintf("  Last checked: %s\n", m.lastUpdateCheck.Format("15:04:05")))
 			}
-			body.WriteString("\n  Press 'u' or Enter to check for updates now.")
+			body.WriteString("\n  " + keyStyle.Render("[u] [Enter]") + mutedStyle.Render(" Check for updates now."))
 		}
 
-		body.WriteString("\n\n" + titleStyle.Render("Factory Reset") + "\n")
-		body.WriteString("  Wipes every session, executor, login, log, and downloaded file, back to a\n")
-		body.WriteString("  clean first-install state. Cannot be undone.\n\n")
-		body.WriteString("  Press ctrl+r to begin (step 1 of 3) — a y/n confirm (step 2), then typing\n")
-		body.WriteString(fmt.Sprintf("  %q to confirm for real (step 3), still stand between you and the wipe.", factoryResetPhrase))
+		body.WriteString("\n\n" + titleStyle.Render("Danger Zone") + "\n")
+		body.WriteString("  " + keyStyle.Render("[ctrl+r]") + mutedStyle.Render(" Factory reset — wipes sessions, executors, logins, logs and downloads.") + "\n")
+		body.WriteString("  " + mutedStyle.Render("A y/n confirmation and typing "+strconv.Quote(factoryResetPhrase)+" are both required."))
 	}
 	return contentStyle.Width(width).Height(height).Render(body.String())
 }

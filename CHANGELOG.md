@@ -6,6 +6,17 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.36] - 2026-07-30 21:46:56 -03:00
+
+### Added
+
+- Settings now presents a compact technical Remote Network control panel with prominent actions to enable/disable Remote Mode, toggle Tailscale separately, and restart/re-announce networking after Wi-Fi or VPN changes.
+- Remote Mode enablement is persisted independently from Tailscale. Disabling it stops both the local host and discovery endpoint; the saved Tailscale preference is retained for the next enablement.
+
+### Changed
+
+- Settings now groups system paths, transport state, endpoint/config location, software update actions, and factory reset into concise operational sections.
+
 ## [0.3.35] - 2026-07-30 21:35:11 -03:00
 
 ### Added

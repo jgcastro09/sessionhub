@@ -7,13 +7,17 @@ import (
 	"path/filepath"
 )
 
-// NetworkSettings intentionally contains only opt-in network transport
-// preferences. The local LAN interface is always active for Remote Mode.
+// NetworkSettings controls the in-process Remote Mode transport. A missing
+// field keeps the backwards-compatible, enabled default when loading an
+// older network.json file.
 type NetworkSettings struct {
+	RemoteEnabled    bool `json:"remote_enabled"`
 	TailscaleEnabled bool `json:"tailscale_enabled"`
 }
 
-func DefaultNetworkSettings() NetworkSettings { return NetworkSettings{TailscaleEnabled: true} }
+func DefaultNetworkSettings() NetworkSettings {
+	return NetworkSettings{RemoteEnabled: true, TailscaleEnabled: true}
+}
 
 func LoadNetworkSettings(path string) (NetworkSettings, error) {
 	settings := DefaultNetworkSettings()

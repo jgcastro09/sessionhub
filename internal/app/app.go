@@ -81,8 +81,10 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 	// terminal endpoint and advertises it only on the local LAN/tailnet.
 	// Failure to bind discovery must not prevent the normal local app from
 	// starting (for example, another process may temporarily own the UDP port).
-	if err := a.StartAutomaticRemote(); err != nil {
-		_ = repository.Log(context.Background(), domain.LogEntry{Level: "warn", Kind: "remote", Message: "automatic remote discovery unavailable: " + err.Error()})
+	if networkSettings.RemoteEnabled {
+		if err := a.StartAutomaticRemote(); err != nil {
+			_ = repository.Log(context.Background(), domain.LogEntry{Level: "warn", Kind: "remote", Message: "automatic remote discovery unavailable: " + err.Error()})
+		}
 	}
 	go executors.Run()
 	automationScheduler.Start()
