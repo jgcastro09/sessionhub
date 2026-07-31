@@ -225,6 +225,15 @@ func (c *Controller) Executors(ctx context.Context) ([]domain.ExecutorConfig, er
 	return value, json.Unmarshal(frame.Payload, &value)
 }
 
+func (c *Controller) ExecutorStatuses(ctx context.Context) ([]ExecutorStatus, error) {
+	frame, err := c.request(ctx, Frame{Type: "executor_status"})
+	if err != nil {
+		return nil, err
+	}
+	var value []ExecutorStatus
+	return value, json.Unmarshal(frame.Payload, &value)
+}
+
 func (c *Controller) StartTerminal(ctx context.Context, sessionID, executorID string, width, height int) (domain.Instance, error) {
 	frame, err := c.request(ctx, Frame{Type: "start_terminal", Payload: payload(map[string]any{"session_id": sessionID, "executor_id": executorID, "width": width, "height": height})})
 	if err != nil {

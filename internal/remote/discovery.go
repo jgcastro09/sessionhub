@@ -35,6 +35,15 @@ type Device struct {
 	Online  bool      `json:"online"`
 }
 
+// ExecutorStatus is intentionally metadata only. Login profiles and secret
+// environment values always remain on the controlled computer.
+type ExecutorStatus struct {
+	ExecutorID string `json:"executor_id"`
+	LoginKnown bool   `json:"login_known"`
+	Activated  bool   `json:"activated"`
+	Live       bool   `json:"live"`
+}
+
 func (d Device) Endpoint() string { return net.JoinHostPort(d.Address, itoa(d.Port)) }
 
 type announcement struct {

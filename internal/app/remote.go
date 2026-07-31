@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 )
@@ -117,6 +118,29 @@ func (a *App) RemoteSessions(ctx context.Context) ([]domain.Session, error) {
 
 func (a *App) RemoteExecutors(ctx context.Context) ([]domain.ExecutorConfig, error) {
 	return a.Store.ListExecutors(ctx)
+}
+
+func (a *App) RemoteExecutorStatuses(ctx context.Context) ([]remote.ExecutorStatus, error) {
+	executors, err := a.Store.ListExecutors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := a.Store.ListSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	statuses := make([]remote.ExecutorStatus, 0, len(executors))
+	for _, cfg := range executors {
+		live := false
+		for _, session := range sessions {
+			if a.Executors.IsActive(session.ID, cfg.ID) {
+				live = true
+				break
+			}
+		}
+		statuses = append(statuses, remote.ExecutorStatus{ExecutorID: cfg.ID, LoginKnown: cfg.InstallDir != "", Activated: executor.HasLoginState(cfg), Live: live})
+	}
+	return statuses, nil
 }
 
 func (a *App) RemoteStartTerminal(ctx context.Context, sessionID, executorID string, width, height int) (domain.Instance, error) {

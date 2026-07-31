@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.32] - 2026-07-30 21:08:39 -03:00
+
+### Fixed
+
+- Remote Mode now obtains executor login/active status from the controlled computer instead of probing the controller's filesystem. Logged-in remote CLIs therefore remain shown as logged in, while login profiles and secret values stay exclusively on the remote host.
+
 ## [0.3.31] - 2026-07-30 21:00:55 -03:00
 
 ### Added

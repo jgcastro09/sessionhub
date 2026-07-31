@@ -21,6 +21,7 @@ import (
 type Backend interface {
 	RemoteSessions(context.Context) ([]domain.Session, error)
 	RemoteExecutors(context.Context) ([]domain.ExecutorConfig, error)
+	RemoteExecutorStatuses(context.Context) ([]ExecutorStatus, error)
 	RemoteStartTerminal(context.Context, string, string, int, int) (domain.Instance, error)
 	RemoteTerminal(string) (*terminal.Session, bool)
 	RemoteMetrics(context.Context, string) (domain.Metric, error)
@@ -176,6 +177,9 @@ func (p *peer) handle(frame Frame) Frame {
 			items[i] = items[i].Redacted()
 		}
 		return response("executors", items, err)
+	case "executor_status":
+		items, err := p.backend.RemoteExecutorStatuses(ctx)
+		return response("executor_status", items, err)
 	case "start_terminal":
 		var request struct {
 			SessionID  string `json:"session_id"`

@@ -52,6 +52,7 @@ type remoteConnectedMsg struct {
 	device     remote.Device
 	sessions   []domain.Session
 	executors  []domain.ExecutorConfig
+	statuses   []remote.ExecutorStatus
 	err        error
 }
 
@@ -250,10 +251,11 @@ type Model struct {
 	// remoteController is present only while this UI is controlling another
 	// SessionHub. Local state is reloaded from the store immediately after
 	// disconnecting, so Remote Mode never mutates or replaces local records.
-	remoteController   *remote.Controller
-	remoteDevice       remote.Device
-	remoteTabInstances map[string]string
-	activeInstance     domain.Instance
+	remoteController     *remote.Controller
+	remoteDevice         remote.Device
+	remoteTabInstances   map[string]string
+	remoteExecutorStatus map[string]remote.ExecutorStatus
+	activeInstance       domain.Instance
 	// scrollOffset is how many lines back into the active terminal's
 	// scrollback the view currently shows (0 = live tail).
 	scrollOffset    int
@@ -332,10 +334,11 @@ func New(application *app.App) Model {
 	vp := viewport.New()
 	return Model{
 		app: application, sidebar: true, activeSession: -1,
-		viewport:           vp,
-		tabInstances:       make(map[string]string),
-		remoteTabInstances: make(map[string]string),
-		status:             "click or use keys • ctrl+g command mode • n new session • q quit",
+		viewport:             vp,
+		tabInstances:         make(map[string]string),
+		remoteTabInstances:   make(map[string]string),
+		remoteExecutorStatus: make(map[string]remote.ExecutorStatus),
+		status:               "click or use keys • ctrl+g command mode • n new session • q quit",
 	}
 }
 
@@ -503,6 +506,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.remoteController, m.remoteDevice = msg.controller, msg.device
 		m.remoteTabInstances = make(map[string]string)
+		m.remoteExecutorStatus = make(map[string]remote.ExecutorStatus, len(msg.statuses))
+		for _, status := range msg.statuses {
+			m.remoteExecutorStatus[status.ExecutorID] = status
+		}
 		m.sessions, m.executors, m.instances = msg.sessions, msg.executors, nil
 		m.activeSession, m.activeTerminal, m.focus = -1, nil, false
 		if len(m.sessions) > 0 {
@@ -808,6 +815,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					controller := m.remoteController
 					m.remoteController = nil
 					m.remoteTabInstances = make(map[string]string)
+					m.remoteExecutorStatus = make(map[string]remote.ExecutorStatus)
 					m.activeTerminal, m.focus = nil, false
 					m.status = "Returned to local SessionHub environment"
 					return m, func() tea.Msg { _ = controller.Close(); return savedMsg{kind: "local environment"} }
@@ -1872,7 +1880,12 @@ func (m Model) connectRemote(device remote.Device) tea.Cmd {
 			controller.Close()
 			return remoteConnectedMsg{device: device, err: err}
 		}
-		return remoteConnectedMsg{controller: controller, device: controller.Device(), sessions: sessions, executors: executors}
+		statuses, err := controller.ExecutorStatuses(ctx)
+		if err != nil {
+			controller.Close()
+			return remoteConnectedMsg{device: device, err: err}
+		}
+		return remoteConnectedMsg{controller: controller, device: controller.Device(), sessions: sessions, executors: executors, statuses: statuses}
 	}
 }
 
@@ -2527,6 +2540,14 @@ func (m Model) renderSidebar() string {
 			marker := ""
 			if live {
 				marker = "● "
+			} else if m.remoteController != nil {
+				if status, ok := m.remoteExecutorStatus[cfg.ID]; ok {
+					if status.Live || status.Activated || !status.LoginKnown {
+						marker = "● "
+					} else {
+						marker = "○ "
+					}
+				}
 			} else if cfg.InstallDir != "" {
 				marker = "○ "
 				if executorActivated(cfg) {
@@ -2642,7 +2663,7 @@ func (m Model) emptyContent(width, height int) string {
 					prefix = "› "
 					itemTitleStyle = sideActiveStyle
 				}
-				status := executorStatusLabel(cfg)
+				status := m.executorStatusLabel(cfg)
 				if status != "" {
 					status = "  " + status
 				}
@@ -2889,11 +2910,7 @@ func executorNamesForIDs(ids []string, executors []domain.ExecutorConfig) []stri
 // meaning not. Only meaningful for executors installed through SessionHub
 // (InstallDir set); manually-registered ones return false, unknown.
 func executorActivated(cfg domain.ExecutorConfig) bool {
-	if cfg.InstallDir == "" {
-		return false
-	}
-	entries, err := os.ReadDir(filepath.Join(cfg.InstallDir, "config"))
-	return err == nil && len(entries) > 0
+	return executor.HasLoginState(cfg)
 }
 
 // executorStatusLabel renders the activated/deactivated marker for the
@@ -2907,6 +2924,26 @@ func executorStatusLabel(cfg domain.ExecutorConfig) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#50FA7B")).Render("● activated")
 	}
 	return mutedStyle.Render("○ deactivated")
+}
+
+func (m Model) executorStatusLabel(cfg domain.ExecutorConfig) string {
+	if m.remoteController != nil {
+		status, ok := m.remoteExecutorStatus[cfg.ID]
+		if !ok {
+			return mutedStyle.Render("○ remote status unavailable")
+		}
+		if status.Live {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#50FA7B")).Render("● active on remote")
+		}
+		if !status.LoginKnown {
+			return mutedStyle.Render("● configured on remote")
+		}
+		if status.Activated {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#50FA7B")).Render("● logged in on remote")
+		}
+		return mutedStyle.Render("○ login needed on remote")
+	}
+	return executorStatusLabel(cfg)
 }
 
 func shortenPath(path string) string {

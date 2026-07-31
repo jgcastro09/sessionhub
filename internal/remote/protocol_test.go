@@ -92,11 +92,44 @@ func TestSameVersionRequiresExactRelease(t *testing.T) {
 	}
 }
 
-type remoteTestBackend struct{}
+func TestControllerReadsExecutorStatusFromHost(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	host, err := Listen(ctx, "127.0.0.1:0", remoteTestBackend{statuses: []ExecutorStatus{{ExecutorID: "codex", LoginKnown: true, Activated: true}}}, Device{Name: "target", Version: "0.3.31"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	name, rawPort, err := net.SplitHostPort(host.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := net.LookupPort("tcp", rawPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := ConnectController(context.Background(), Device{Name: "target", Address: name, Port: port}, "controller", "0.3.31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controller.Close()
+	statuses, err := controller.ExecutorStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 1 || !statuses[0].Activated || statuses[0].ExecutorID != "codex" {
+		t.Fatalf("unexpected remote executor status: %#v", statuses)
+	}
+}
+
+type remoteTestBackend struct{ statuses []ExecutorStatus }
 
 func (remoteTestBackend) RemoteSessions(context.Context) ([]domain.Session, error) { return nil, nil }
 func (remoteTestBackend) RemoteExecutors(context.Context) ([]domain.ExecutorConfig, error) {
 	return nil, nil
+}
+func (b remoteTestBackend) RemoteExecutorStatuses(context.Context) ([]ExecutorStatus, error) {
+	return b.statuses, nil
 }
 func (remoteTestBackend) RemoteStartTerminal(context.Context, string, string, int, int) (domain.Instance, error) {
 	return domain.Instance{}, nil
