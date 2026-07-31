@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.42] - 2026-07-31 00:25:56 -03:00
+
+### Fixed
+
+- The Executor Command field (introduced in 0.3.40 to merge Command + Arguments into one free-text field) treated backslash as a shell escape character, so every Windows install path (e.g. `\executors\claude-code\node_modules\.bin\claude.CMD`) got mangled on parse and, to compensate, was wrapped in escaped quotes on display — showing as a garbled, seemingly fixed value with a stray trailing `"` and no visible room to add flags like `--dangerously-skip-permissions`. Backslash is now treated as an ordinary character (quoting is only applied for whitespace or embedded quote characters), so Windows paths display and round-trip untouched and the field is now obviously editable — append your flags after the path, same field.
+
+Bumps version to 0.3.42.
+
 ## [0.3.41] - 2026-07-31 00:16:25 -03:00
 
 ### Changed

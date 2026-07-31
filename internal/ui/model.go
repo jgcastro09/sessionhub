@@ -4278,6 +4278,9 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 // into a command and its arguments, so executor forms take one free-text
 // field instead of a separate command plus a JSON arguments array. Quotes
 // allow a single argument to contain spaces ("mycli \"path with spaces\"").
+// Backslash is treated as an ordinary character, not an escape: nearly every
+// command here is a Windows path (C:\Users\...\claude.CMD), and escaping
+// would mangle those on every parse.
 func shellSplitLine(line string) (string, []string, error) {
 	tokens, err := shellTokenize(line)
 	if err != nil {
@@ -4294,15 +4297,8 @@ func shellTokenize(line string) ([]string, error) {
 	var current strings.Builder
 	hasToken := false
 	var quote rune
-	escaped := false
 	for _, r := range line {
 		switch {
-		case escaped:
-			current.WriteRune(r)
-			escaped = false
-			hasToken = true
-		case r == '\\' && quote != '\'':
-			escaped = true
 		case quote != 0:
 			if r == quote {
 				quote = 0
@@ -4322,9 +4318,6 @@ func shellTokenize(line string) ([]string, error) {
 			current.WriteRune(r)
 			hasToken = true
 		}
-	}
-	if escaped {
-		return nil, fmt.Errorf("trailing backslash")
 	}
 	if quote != 0 {
 		return nil, fmt.Errorf("unterminated quote")
@@ -4349,23 +4342,27 @@ func shellJoinLine(command string, args []string) string {
 	return strings.Join(parts, " ")
 }
 
+// shellQuoteToken quotes a token only when shellTokenize would otherwise
+// split or misparse it (whitespace or a quote character present). A bare
+// backslash — the common case, since most commands here are Windows paths —
+// never triggers quoting.
 func shellQuoteToken(token string) string {
 	if token == "" {
 		return `""`
 	}
-	if !strings.ContainsAny(token, " \t\"'\\") {
+	if !strings.ContainsAny(token, " \t\"'") {
 		return token
 	}
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range token {
-		if r == '"' || r == '\\' {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
+	if !strings.Contains(token, `"`) {
+		return `"` + token + `"`
 	}
-	b.WriteByte('"')
-	return b.String()
+	if !strings.Contains(token, `'`) {
+		return `'` + token + `'`
+	}
+	// Contains both quote characters plus whitespace: shellTokenize has no
+	// escape mechanism to round-trip this exactly. Extremely unlikely for a
+	// CLI command/flag; fall back to double quotes (imperfect round-trip).
+	return `"` + token + `"`
 }
 
 // parseEnvSpec parses "NAME=value; *SECRET=value" plain text into env vars.
