@@ -11,10 +11,21 @@ import (
 // hand. Only providers with a confirmed, official install method are
 // listed here — guessing a package name wrong wastes an install attempt
 // and, worse, could point at an unofficial/impersonating package.
+type Category string
+
+const (
+	CategoryAI    Category = "AI CLI"
+	CategoryShell Category = "System Terminal"
+)
+
+// Provider is a known CLI or system shell offered as a pick-list entry in the
+// "Add a Terminal / CLI" flow.
 type Provider struct {
-	Name    string
-	Command string
-	Args    []string
+	Name        string
+	Command     string
+	Args        []string
+	Category    Category
+	UseHostHome bool
 	// InstallCmd returns the raw shell line to run (WorkingDir is already
 	// the executor's own folder), branching on GOOS where needed.
 	InstallCmd func() string
@@ -37,39 +48,82 @@ type Provider struct {
 	DefaultDirs func() []string
 }
 
-// Catalog lists providers with a confirmed install command. Kimi Code CLI
-// (Moonshot AI) is deliberately not included: its official install path
-// (uv/pip) has no documented custom-directory option and its config
-// location isn't documented, so it can only be added via Custom for now.
+// Catalog lists providers with verified install commands and system shell options.
 var Catalog = []Provider{
+	// System Terminals (Shells)
 	{
-		Name:    "Codex",
-		Command: "codex",
-		// Pre-filled as an editable suggestion in the add-CLI form only —
-		// not force-applied — so Codex opens unlocked (no approval prompts)
-		// by default but the operator can remove the flag before saving.
+		Name:        "Zsh (Terminal)",
+		Command:     "zsh",
+		Args:        []string{"-l"},
+		Category:    CategoryShell,
+		UseHostHome: true,
+	},
+	{
+		Name:        "Bash (Shell)",
+		Command:     "bash",
+		Args:        []string{"-l"},
+		Category:    CategoryShell,
+		UseHostHome: true,
+	},
+	{
+		Name:        "Fish (Shell)",
+		Command:     "fish",
+		Category:    CategoryShell,
+		UseHostHome: true,
+	},
+	{
+		Name: "PowerShell",
+		Command: func() string {
+			if runtime.GOOS == "windows" {
+				return "powershell.exe"
+			}
+			return "pwsh"
+		}(),
+		Args:        []string{"-NoLogo"},
+		Category:    CategoryShell,
+		UseHostHome: true,
+	},
+	{
+		Name:        "CMD (Command Prompt)",
+		Command:     "cmd.exe",
+		Category:    CategoryShell,
+		UseHostHome: true,
+	},
+	{
+		Name:        "WSL (Linux)",
+		Command:     "wsl.exe",
+		Category:    CategoryShell,
+		UseHostHome: true,
+	},
+	// AI CLIs
+	{
+		Name:         "Codex",
+		Command:      "codex",
 		Args:         []string{"--yolo"},
+		Category:     CategoryAI,
 		InstallCmd:   func() string { return "npm install @openai/codex" },
 		Isolated:     true,
 		ConfigEnvVar: "CODEX_HOME",
 	},
 	{
-		Name:    "Claude Code",
-		Command: "claude",
-		// Same idea as Codex's --yolo: suggested, not forced.
+		Name:       "Claude Code",
+		Command:    "claude",
 		Args:       []string{"--dangerously-skip-permissions"},
+		Category:   CategoryAI,
 		InstallCmd: func() string { return "npm install @anthropic-ai/claude-code" },
 		Isolated:   true,
 	},
 	{
 		Name:       "OpenCode",
 		Command:    "opencode",
+		Category:   CategoryAI,
 		InstallCmd: func() string { return "npm install opencode-ai" },
 		Isolated:   true,
 	},
 	{
-		Name:    "Antigravity",
-		Command: "agy",
+		Name:     "Antigravity",
+		Command:  "agy",
+		Category: CategoryAI,
 		InstallCmd: func() string {
 			if runtime.GOOS == "windows" {
 				return `powershell -NoProfile -Command "irm https://antigravity.google/cli/install.ps1 | iex"`

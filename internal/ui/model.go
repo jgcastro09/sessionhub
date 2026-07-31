@@ -3295,14 +3295,14 @@ func newInstallForm() formModel {
 // entry, so the user only needs to confirm (or tweak, e.g. for a second
 // account of the same CLI) rather than typing everything by hand.
 func newInstallFormForProvider(p executor.Provider) formModel {
-	form := makeForm(installForm, "Add a CLI — "+p.Name, installFormLabels, installFormPlaceholders)
+	form := makeForm(installForm, "Add Terminal / CLI — "+p.Name, installFormLabels, installFormPlaceholders)
 	form.fields[0].SetValue(p.Name)
-	// Args (e.g. the --yolo / --dangerously-skip-permissions unlock flags on
-	// well-known CLIs) are pre-filled as an editable suggestion, not forced:
-	// the operator can delete them before ctrl+s if they don't want the CLI
-	// to open unlocked by default.
 	form.fields[1].SetValue(shellJoinLine(p.Command, p.Args))
-	form.fields[2].SetValue(p.InstallCmd())
+	if p.InstallCmd != nil {
+		form.fields[2].SetValue(p.InstallCmd())
+	} else {
+		form.fields[2].SetValue("")
+	}
 	provider := p
 	form.selectedProvider = &provider
 	return form
@@ -3962,13 +3962,18 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			ID: id.New("exec"), Name: name, Command: command, BinaryName: command, Args: args,
 			WorkingDir: workingDir, PromptSuffix: "\r", InstallDir: dirs.Root,
 		}
-		if provider := m.form.selectedProvider; provider != nil && provider.ConfigEnvVar != "" {
-			// Belt-and-suspenders alongside the universal HOME override:
-			// some CLIs (especially native, non-Node binaries) only
-			// reliably honor their own documented config-dir variable.
-			cfg.Environment = append(cfg.Environment, domain.SecretEnv{
-				Name: provider.ConfigEnvVar, Value: filepath.Join(dirs.Root, "config"),
-			})
+		if provider := m.form.selectedProvider; provider != nil {
+			if provider.UseHostHome {
+				cfg.UseHostHome = true
+			}
+			if provider.ConfigEnvVar != "" {
+				// Belt-and-suspenders alongside the universal HOME override:
+				// some CLIs (especially native, non-Node binaries) only
+				// reliably honor their own documented config-dir variable.
+				cfg.Environment = append(cfg.Environment, domain.SecretEnv{
+					Name: provider.ConfigEnvVar, Value: filepath.Join(dirs.Root, "config"),
+				})
+			}
 		}
 		var extraDirs []string
 		if provider := m.form.selectedProvider; provider != nil && !provider.Isolated && provider.DefaultDirs != nil {
@@ -4265,7 +4270,7 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 
 	cfg := domain.ExecutorConfig{
 		ID: id.New("exec"), Name: field("Display name"), Command: command, Args: args,
-		BinaryName: orig.BinaryName, InstallDir: orig.InstallDir, CreatedAt: orig.CreatedAt,
+		BinaryName: orig.BinaryName, InstallDir: orig.InstallDir, UseHostHome: orig.UseHostHome, CreatedAt: orig.CreatedAt,
 		WorkingDir: workingDir, Environment: environment, Shell: shell,
 		ResumeCommand: resumeCommand, ResumeArgs: resumeArgs, Rules: rules,
 		Timeout: timeout, PromptSuffix: suffix, Roles: roles, Model: model,

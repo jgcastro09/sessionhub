@@ -161,7 +161,7 @@ func Start(
 	// Manually-registered executors (no InstallDir) are left alone, since
 	// those deliberately point at something already installed globally.
 	isolatedHome := ""
-	if cfg.InstallDir != "" {
+	if cfg.InstallDir != "" && !cfg.UseHostHome {
 		isolatedHome = filepath.Join(cfg.InstallDir, "config")
 		if err := os.MkdirAll(isolatedHome, 0o700); err != nil {
 			cancel()

@@ -6,6 +6,16 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.44] - 2026-07-31 11:50:00 -03:00
+
+### Added
+
+- Added System Terminal aggregations (Zsh, Bash, Fish, PowerShell, CMD, WSL) to the Add Terminal/CLI catalog.
+- Added `UseHostHome` option to `ExecutorConfig` so standard system shell tabs preserve the user's real host environment, dotfiles (`.zshrc`, `.bashrc`, `$PROFILE`), aliases, and custom prompts without HOME redirection.
+- Supported running AI tools, scripts, and voice dictation directly inside system shell tabs.
+
+Bumps version to 0.3.44.
+
 ## [0.3.43] - 2026-07-31 11:34:00 -03:00
 
 ### Added

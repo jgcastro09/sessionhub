@@ -69,6 +69,7 @@ type ExecutorConfig struct {
 	// "update the CLI" run can re-resolve Command afterward without
 	// guessing a name back out of the resolved path.
 	BinaryName    string            `json:"binary_name,omitempty"`
+	UseHostHome   bool              `json:"use_host_home,omitempty"`
 	Args          []string          `json:"args"`
 	WorkingDir    string            `json:"working_dir,omitempty"`
 	Environment   []SecretEnv       `json:"environment,omitempty"`
