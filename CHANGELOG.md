@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.46] - 2026-07-31 12:08:00 -03:00
+
+### Added
+
+- Automatically attached newly created system terminals and executors to the active session upon registration, making their tabs immediately visible and selectable (via click or `Alt+1`, `Alt+2`, etc.) in the topbar tab bar.
+
+Bumps version to 0.3.46.
+
 ## [0.3.45] - 2026-07-31 12:00:00 -03:00
 
 ### Added

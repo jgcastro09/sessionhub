@@ -1733,6 +1733,20 @@ func (m *Model) checkPendingRegister() tea.Cmd {
 		if err != nil {
 			return savedMsg{kind: "executor", id: pending.cfg.ID, err: fmt.Errorf("save %q: %w", pending.cfg.Name, err)}
 		}
+		if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
+			session := m.sessions[m.activeSession]
+			found := false
+			for _, id := range session.ExecutorIDs() {
+				if id == pending.cfg.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				session.SetExecutorIDs(append(session.ExecutorIDs(), pending.cfg.ID))
+				_, _ = m.app.Store.SaveSession(context.Background(), session)
+			}
+		}
 		if pending.installDirs != nil {
 			if err := executor.WriteManifest(*pending.installDirs, executor.Manifest{
 				ID: pending.cfg.ID, Name: pending.cfg.Name, Slug: filepath.Base(pending.installDirs.Root),
@@ -3936,6 +3950,20 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		}
 		return m, func() tea.Msg {
 			err := m.app.Store.SaveExecutor(context.Background(), cfg)
+			if err == nil && m.form.editingID == "" && m.activeSession >= 0 && m.activeSession < len(m.sessions) {
+				session := m.sessions[m.activeSession]
+				found := false
+				for _, id := range session.ExecutorIDs() {
+					if id == cfg.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					session.SetExecutorIDs(append(session.ExecutorIDs(), cfg.ID))
+					_, _ = m.app.Store.SaveSession(context.Background(), session)
+				}
+			}
 			return savedMsg{kind: "executor", id: cfg.ID, err: err}
 		}
 	case installForm:
@@ -3996,6 +4024,20 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 				err := m.app.Store.SaveExecutor(context.Background(), cfg)
 				if err != nil {
 					return savedMsg{kind: "executor", id: cfg.ID, err: fmt.Errorf("save %q: %w", cfg.Name, err)}
+				}
+				if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
+					session := m.sessions[m.activeSession]
+					found := false
+					for _, id := range session.ExecutorIDs() {
+						if id == cfg.ID {
+							found = true
+							break
+						}
+					}
+					if !found {
+						session.SetExecutorIDs(append(session.ExecutorIDs(), cfg.ID))
+						_, _ = m.app.Store.SaveSession(context.Background(), session)
+					}
 				}
 				if err := executor.WriteManifest(dirs, executor.Manifest{
 					ID: cfg.ID, Name: name, Slug: slug, Command: resolved, BinaryName: command,
