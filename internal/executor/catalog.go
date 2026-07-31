@@ -43,15 +43,21 @@ type Provider struct {
 // location isn't documented, so it can only be added via Custom for now.
 var Catalog = []Provider{
 	{
-		Name:         "Codex",
-		Command:      "codex",
+		Name:    "Codex",
+		Command: "codex",
+		// Pre-filled as an editable suggestion in the add-CLI form only —
+		// not force-applied — so Codex opens unlocked (no approval prompts)
+		// by default but the operator can remove the flag before saving.
+		Args:         []string{"--yolo"},
 		InstallCmd:   func() string { return "npm install @openai/codex" },
 		Isolated:     true,
 		ConfigEnvVar: "CODEX_HOME",
 	},
 	{
-		Name:       "Claude Code",
-		Command:    "claude",
+		Name:    "Claude Code",
+		Command: "claude",
+		// Same idea as Codex's --yolo: suggested, not forced.
+		Args:       []string{"--dangerously-skip-permissions"},
 		InstallCmd: func() string { return "npm install @anthropic-ai/claude-code" },
 		Isolated:   true,
 	},

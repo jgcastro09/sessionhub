@@ -6,7 +6,16 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.3.39] - 2026-07-30 22:50:08 -03:00
+## [0.3.40] - 2026-07-30 23:14:31 -03:00
+
+### Changed
+
+- Simplified the Executor form: "Command" and "Arguments" are now a single free-text field (e.g. `codex --yolo`) instead of a command field plus a separate JSON-array field. Quotes allow an argument to contain spaces.
+- "Resume args" was folded into "Resume command" the same way.
+- "Environment", "Roles", and "Recognition rules" no longer require JSON syntax: Environment is `NAME=value` pairs separated by `;` (prefix a name with `*` to mark it secret), Roles is a comma-separated list, and Recognition rules is `name::kind::value::outcome` entries separated by `;;`.
+- The "Add a CLI" catalog now pre-fills the Command field with each CLI's permission-bypass flag as an editable suggestion (`codex --yolo`, `claude --dangerously-skip-permissions`) so new executors open unlocked by default; remove the flag before saving if you don't want that.
+
+Bumps version to 0.3.40.
 
 ### Fixed
 

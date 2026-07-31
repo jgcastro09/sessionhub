@@ -3237,23 +3237,24 @@ func shortenPath(path string) string {
 }
 
 var executorCoreLabels = []string{
-	"Display name", "Command", "Arguments (JSON array)", "Working directory",
+	"Display name", "Command", "Working directory",
 }
 
 var executorCorePlaceholders = []string{
-	"My CLI", "executable or absolute path", `["arg","value"]`, "defaults to session workspace",
+	"My CLI", "executable and args, e.g. codex --yolo", "defaults to session workspace",
 }
 
 var executorAdvancedLabels = []string{
-	"Environment (JSON array)", "Shell (optional)", "Resume command",
-	"Resume args (JSON array)", "Recognition rules (JSON array)",
-	"Timeout", "Prompt suffix", "Roles (JSON array)", "Model label",
+	"Environment", "Shell (optional)", "Resume command",
+	"Recognition rules",
+	"Timeout", "Prompt suffix", "Roles", "Model label",
 	"Tokenizer", "Price ID",
 }
 
 var executorAdvancedPlaceholders = []string{
-	`[{"name":"TOKEN","value":"...","secret":true}]`, "shell executable", "optional executable",
-	`[]`, `[]`, "30m or 0", `\r`, `[]`, "metrics only", "unicode_words", "optional",
+	"NAME=value; *SECRET=value (prefix with * for secret)", "shell executable", "executable and args, e.g. claude --continue",
+	"name::kind::value::outcome ;; more rules (kinds: literal, pattern, prompt_return, stable_output, exit_code, process_exit, command_result, manual, timeout)",
+	"30m or 0", `\r`, "comma, separated, roles", "metrics only", "unicode_words", "optional",
 }
 
 // newExecutorForm only asks what is required to launch the process. OAuth
@@ -3269,11 +3270,11 @@ func newExecutorForm() formModel {
 // runs the install command in a real PTY. Either way the executor ends up
 // registered without a separate manual step.
 var installFormLabels = []string{
-	"Display name", "Command", "Arguments (JSON array)", "Install command (only runs if not found)",
+	"Display name", "Command", "Install command (only runs if not found)",
 }
 
 var installFormPlaceholders = []string{
-	"Codex", "codex", `["--yolo"]`, `npm install @openai/codex`,
+	"Codex", "codex --yolo", `npm install @openai/codex`,
 }
 
 // newInstallForm opens the "Custom" (blank) variant of the add-a-CLI form.
@@ -3288,13 +3289,12 @@ func newInstallForm() formModel {
 func newInstallFormForProvider(p executor.Provider) formModel {
 	form := makeForm(installForm, "Add a CLI — "+p.Name, installFormLabels, installFormPlaceholders)
 	form.fields[0].SetValue(p.Name)
-	form.fields[1].SetValue(p.Command)
-	if len(p.Args) > 0 {
-		if data, err := json.Marshal(p.Args); err == nil {
-			form.fields[2].SetValue(string(data))
-		}
-	}
-	form.fields[3].SetValue(p.InstallCmd())
+	// Args (e.g. the --yolo / --dangerously-skip-permissions unlock flags on
+	// well-known CLIs) are pre-filled as an editable suggestion, not forced:
+	// the operator can delete them before ctrl+s if they don't want the CLI
+	// to open unlocked by default.
+	form.fields[1].SetValue(shellJoinLine(p.Command, p.Args))
+	form.fields[2].SetValue(p.InstallCmd())
 	provider := p
 	form.selectedProvider = &provider
 	return form
@@ -3332,10 +3332,9 @@ func editExecutorForm(cfg domain.ExecutorConfig) formModel {
 func executorToValues(cfg domain.ExecutorConfig) map[string]string {
 	values := map[string]string{
 		"Display name":      cfg.Name,
-		"Command":           cfg.Command,
+		"Command":           shellJoinLine(cfg.Command, cfg.Args),
 		"Working directory": cfg.WorkingDir,
 		"Shell (optional)":  cfg.Shell,
-		"Resume command":    cfg.ResumeCommand,
 		"Prompt suffix":     strings.NewReplacer("\r", `\r`, "\n", `\n`, "\t", `\t`).Replace(cfg.PromptSuffix),
 		"Model label":       cfg.Model,
 		"Tokenizer":         cfg.Tokenizer,
@@ -3344,20 +3343,17 @@ func executorToValues(cfg domain.ExecutorConfig) map[string]string {
 	if cfg.Timeout > 0 {
 		values["Timeout"] = cfg.Timeout.String()
 	}
-	if len(cfg.Args) > 0 {
-		values["Arguments (JSON array)"] = string(payloadJSON(cfg.Args))
+	if cfg.ResumeCommand != "" {
+		values["Resume command"] = shellJoinLine(cfg.ResumeCommand, cfg.ResumeArgs)
 	}
 	if len(cfg.Environment) > 0 {
-		values["Environment (JSON array)"] = string(payloadJSON(cfg.Environment))
-	}
-	if len(cfg.ResumeArgs) > 0 {
-		values["Resume args (JSON array)"] = string(payloadJSON(cfg.ResumeArgs))
+		values["Environment"] = formatEnvSpec(cfg.Environment)
 	}
 	if len(cfg.Rules) > 0 {
-		values["Recognition rules (JSON array)"] = string(payloadJSON(cfg.Rules))
+		values["Recognition rules"] = formatRules(cfg.Rules)
 	}
 	if len(cfg.Roles) > 0 {
-		values["Roles (JSON array)"] = string(payloadJSON(cfg.Roles))
+		values["Roles"] = formatRoles(cfg.Roles)
 	}
 	return values
 }
@@ -3925,17 +3921,14 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		}
 	case installForm:
 		name := strings.TrimSpace(values[0])
-		command := strings.TrimSpace(values[1])
-		if name == "" || command == "" {
+		if name == "" || strings.TrimSpace(values[1]) == "" {
 			m.form.err = "display name and command are required"
 			return m, nil
 		}
-		var args []string
-		if raw := strings.TrimSpace(values[2]); raw != "" {
-			if err := json.Unmarshal([]byte(raw), &args); err != nil {
-				m.form.err = "invalid arguments JSON: " + err.Error()
-				return m, nil
-			}
+		command, args, err := shellSplitLine(values[1])
+		if err != nil {
+			m.form.err = "invalid command: " + err.Error()
+			return m, nil
 		}
 		workingDir := ""
 		if m.activeSession >= 0 {
@@ -3947,7 +3940,7 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			m.form.err = err.Error()
 			return m, nil
 		}
-		installLine := strings.TrimSpace(values[3])
+		installLine := strings.TrimSpace(values[2])
 		cfg := domain.ExecutorConfig{
 			ID: id.New("exec"), Name: name, Command: command, BinaryName: command, Args: args,
 			WorkingDir: workingDir, PromptSuffix: "\r", InstallDir: dirs.Root,
@@ -4163,23 +4156,27 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 		return ""
 	}
 
-	var args, resumeArgs, roles []string
-	var environment []domain.SecretEnv
-	var rules []domain.RecognitionRule
-	for value, target := range map[string]any{
-		field("Arguments (JSON array)"):         &args,
-		field("Environment (JSON array)"):       &environment,
-		field("Resume args (JSON array)"):       &resumeArgs,
-		field("Recognition rules (JSON array)"): &rules,
-		field("Roles (JSON array)"):             &roles,
-	} {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		if err := json.Unmarshal([]byte(value), target); err != nil {
-			return domain.ExecutorConfig{}, fmt.Errorf("invalid JSON field: %w", err)
+	command, args, err := shellSplitLine(field("Command"))
+	if err != nil {
+		return domain.ExecutorConfig{}, fmt.Errorf("invalid command: %w", err)
+	}
+	var resumeCommand string
+	var resumeArgs []string
+	if raw := strings.TrimSpace(field("Resume command")); raw != "" {
+		resumeCommand, resumeArgs, err = shellSplitLine(raw)
+		if err != nil {
+			return domain.ExecutorConfig{}, fmt.Errorf("invalid resume command: %w", err)
 		}
 	}
+	environment, err := parseEnvSpec(field("Environment"))
+	if err != nil {
+		return domain.ExecutorConfig{}, err
+	}
+	rules, err := parseRules(field("Recognition rules"))
+	if err != nil {
+		return domain.ExecutorConfig{}, err
+	}
+	roles := parseRoles(field("Roles"))
 	timeout := time.Duration(0)
 	if raw := strings.TrimSpace(field("Timeout")); raw != "" {
 		var err error
@@ -4197,13 +4194,202 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 		suffix = "\r"
 	}
 	cfg := domain.ExecutorConfig{
-		ID: id.New("exec"), Name: field("Display name"), Command: field("Command"), Args: args,
+		ID: id.New("exec"), Name: field("Display name"), Command: command, Args: args,
 		WorkingDir: workingDir, Environment: environment, Shell: field("Shell (optional)"),
-		ResumeCommand: field("Resume command"), ResumeArgs: resumeArgs, Rules: rules,
+		ResumeCommand: resumeCommand, ResumeArgs: resumeArgs, Rules: rules,
 		Timeout: timeout, PromptSuffix: suffix, Roles: roles, Model: field("Model label"),
 		Tokenizer: field("Tokenizer"), PriceID: field("Price ID"),
 	}
 	return cfg, cfg.Validate()
+}
+
+// shellSplitLine tokenizes a single plain-text line — e.g. "codex --yolo" —
+// into a command and its arguments, so executor forms take one free-text
+// field instead of a separate command plus a JSON arguments array. Quotes
+// allow a single argument to contain spaces ("mycli \"path with spaces\"").
+func shellSplitLine(line string) (string, []string, error) {
+	tokens, err := shellTokenize(line)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(tokens) == 0 {
+		return "", nil, fmt.Errorf("command is required")
+	}
+	return tokens[0], tokens[1:], nil
+}
+
+func shellTokenize(line string) ([]string, error) {
+	var tokens []string
+	var current strings.Builder
+	hasToken := false
+	var quote rune
+	escaped := false
+	for _, r := range line {
+		switch {
+		case escaped:
+			current.WriteRune(r)
+			escaped = false
+			hasToken = true
+		case r == '\\' && quote != '\'':
+			escaped = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+		case r == '"' || r == '\'':
+			quote = r
+			hasToken = true
+		case r == ' ' || r == '\t':
+			if hasToken {
+				tokens = append(tokens, current.String())
+				current.Reset()
+				hasToken = false
+			}
+		default:
+			current.WriteRune(r)
+			hasToken = true
+		}
+	}
+	if escaped {
+		return nil, fmt.Errorf("trailing backslash")
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated quote")
+	}
+	if hasToken {
+		tokens = append(tokens, current.String())
+	}
+	return tokens, nil
+}
+
+// shellJoinLine is the inverse of shellSplitLine, used to prefill the form
+// field when editing an existing executor or a catalog suggestion.
+func shellJoinLine(command string, args []string) string {
+	if command == "" {
+		return ""
+	}
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, shellQuoteToken(command))
+	for _, a := range args {
+		parts = append(parts, shellQuoteToken(a))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuoteToken(token string) string {
+	if token == "" {
+		return `""`
+	}
+	if !strings.ContainsAny(token, " \t\"'\\") {
+		return token
+	}
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range token {
+		if r == '"' || r == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// parseEnvSpec parses "NAME=value; *SECRET=value" plain text into env vars.
+// A leading '*' on an entry marks it secret (redacted in the UI).
+func parseEnvSpec(spec string) ([]domain.SecretEnv, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil, nil
+	}
+	var out []domain.SecretEnv
+	for _, part := range strings.Split(spec, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		secret := false
+		if strings.HasPrefix(part, "*") {
+			secret = true
+			part = strings.TrimSpace(strings.TrimPrefix(part, "*"))
+		}
+		name, value, ok := strings.Cut(part, "=")
+		if !ok {
+			return nil, fmt.Errorf("environment entry %q must be NAME=value", part)
+		}
+		out = append(out, domain.SecretEnv{Name: strings.TrimSpace(name), Value: value, Secret: secret})
+	}
+	return out, nil
+}
+
+func formatEnvSpec(envs []domain.SecretEnv) string {
+	parts := make([]string, 0, len(envs))
+	for _, e := range envs {
+		prefix := ""
+		if e.Secret {
+			prefix = "*"
+		}
+		parts = append(parts, prefix+e.Name+"="+e.Value)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// parseRoles splits a comma-separated plain-text list, e.g. "coder, reviewer".
+func parseRoles(spec string) []string {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil
+	}
+	parts := strings.Split(spec, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func formatRoles(roles []string) string {
+	return strings.Join(roles, ", ")
+}
+
+// parseRules parses "name::kind::value::outcome ;; name2::kind2::value2::outcome2"
+// plain text into recognition rules, replacing the old JSON-array field.
+func parseRules(spec string) ([]domain.RecognitionRule, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil, nil
+	}
+	var out []domain.RecognitionRule
+	for _, chunk := range strings.Split(spec, ";;") {
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+		fields := strings.SplitN(chunk, "::", 4)
+		if len(fields) != 4 {
+			return nil, fmt.Errorf("recognition rule %q must have 4 fields: name::kind::value::outcome", chunk)
+		}
+		for i := range fields {
+			fields[i] = strings.TrimSpace(fields[i])
+		}
+		out = append(out, domain.RecognitionRule{
+			Name: fields[0], Kind: domain.RecognitionKind(fields[1]),
+			Value: fields[2], Outcome: domain.State(fields[3]),
+		})
+	}
+	return out, nil
+}
+
+func formatRules(rules []domain.RecognitionRule) string {
+	parts := make([]string, 0, len(rules))
+	for _, r := range rules {
+		parts = append(parts, strings.Join([]string{r.Name, string(r.Kind), r.Value, string(r.Outcome)}, "::"))
+	}
+	return strings.Join(parts, ";; ")
 }
 
 // shellCommandLine wraps a raw shell command line (e.g. an install command
