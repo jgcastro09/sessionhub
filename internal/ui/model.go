@@ -672,7 +672,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Update check failed"
 		} else if msg.newer {
 			m.availableUpdate = &msg.release
-			m.toastMessage = fmt.Sprintf("✨ Update %s is available! Press 'u' to update", msg.release.TagName)
+			m.toastMessage = fmt.Sprintf("Update %s is available! Press 'u' to update", msg.release.TagName)
 			m.toastExpires = time.Now().Add(12 * time.Second)
 			m.status = fmt.Sprintf("Update %s available • Press 'u' to update now • %s", msg.release.TagName, msg.release.HTMLURL)
 		} else {
@@ -684,11 +684,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.lastErr = fmt.Sprintf("Update failed: %v", msg.err)
 			m.status = "Update failed"
-			m.toastMessage = fmt.Sprintf("❌ Update failed: %v", msg.err)
+			m.toastMessage = fmt.Sprintf("Update failed: %v", msg.err)
 			m.toastExpires = time.Now().Add(10 * time.Second)
 		} else {
 			m.availableUpdate = nil
-			m.toastMessage = fmt.Sprintf("🎉 Session Hub updated to %s! Restart app to apply.", msg.version)
+			m.toastMessage = fmt.Sprintf("Session Hub updated to %s! Restart app to apply.", msg.version)
 			m.toastExpires = time.Now().Add(15 * time.Second)
 			m.status = fmt.Sprintf("Session Hub updated to %s • Restart app to apply", msg.version)
 		}
@@ -715,7 +715,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.partialInFlight = true
 		m.dictatedText = ""
 		m.recordingTerminal = m.activeTerminal
-		m.status = "🎤 Recording... text will appear as you speak • F9 stops"
+		m.status = "Recording... text will appear as you speak • F9 stops"
 		return m, m.transcribePartialCmd(m.recordingID, recorder)
 	case voiceProgressMsg:
 		if !m.voiceBusy {
@@ -736,7 +736,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.lastErr = err.Error()
 					m.status = "Couldn't paste live transcription: " + err.Error()
 				} else {
-					m.status = fmt.Sprintf("🎤 Recording... pasted %d live characters • F9 stops", len([]rune(delta)))
+					m.status = fmt.Sprintf("Recording... pasted %d live characters • F9 stops", len([]rune(delta)))
 				}
 			}
 			if text != "" {
@@ -1089,9 +1089,9 @@ func (m Model) voiceButtonLabel() string {
 		return " ■ PARAR "
 	}
 	if m.voiceBusy {
-		return " ⏳ PREPARANDO "
+		return " PREPARANDO "
 	}
-	return " 🎙 MICROFONE "
+	return " MICROFONE "
 }
 
 func (m Model) voiceButtonBounds() (start, end int, ok bool) {
@@ -2514,10 +2514,10 @@ func (m Model) renderConfirmPanel() string {
 	var b strings.Builder
 	title := "Confirm delete"
 	if m.confirm.kind == "update" {
-		title = "✨ Update Session Hub"
+		title = "Update Session Hub"
 	}
 	if m.confirm.kind == "factory-reset-warn" {
-		title = "⚠ FACTORY RESET"
+		title = "FACTORY RESET"
 	}
 	b.WriteString(errorStyle.Render(title) + "\n\n")
 	b.WriteString(m.confirm.message + "\n\n")
@@ -2613,9 +2613,9 @@ func (m Model) renderTop() string {
 		text += banner
 	}
 	if m.isUpdating {
-		text += "  ⏳ UPDATING... "
+		text += "  UPDATING... "
 	} else if m.availableUpdate != nil {
-		text += fmt.Sprintf("  ✨ UPDATE %s AVAILABLE (press 'u') ", m.availableUpdate.TagName)
+		text += fmt.Sprintf("  UPDATE %s AVAILABLE (press 'u') ", m.availableUpdate.TagName)
 	}
 	// Style.Width() word-wraps content that's too long rather than
 	// truncating it — left unbounded, a long session/workspace/branch combo
@@ -3097,11 +3097,11 @@ func (m Model) emptyContent(width, height int) string {
 
 		body.WriteString(titleStyle.Render("Software Update") + "\n")
 		if m.isUpdating {
-			body.WriteString("  Status: ⏳ Downloading and applying update...\n")
+			body.WriteString("  Status: Downloading and applying update...\n")
 		} else if m.isCheckingUpdate {
-			body.WriteString("  Status: 🔍 Checking for updates on GitHub...\n")
+			body.WriteString("  Status: Checking for updates on GitHub...\n")
 		} else if m.availableUpdate != nil {
-			body.WriteString(fmt.Sprintf("  Status: ✨ Update %s AVAILABLE!\n", m.availableUpdate.TagName))
+			body.WriteString(fmt.Sprintf("  Status: Update %s AVAILABLE!\n", m.availableUpdate.TagName))
 			body.WriteString(fmt.Sprintf("  Release URL: %s\n", m.availableUpdate.HTMLURL))
 			body.WriteString("\n  " + keyStyle.Render("[u] [Enter]") + mutedStyle.Render(" Install update now."))
 		} else {
@@ -3608,7 +3608,7 @@ func newPriceForm() formModel {
 // else, so this last gate can't be crossed by a stray keypress.
 func newFactoryResetForm() formModel {
 	return makeForm(factoryResetForm,
-		fmt.Sprintf("⚠ FACTORY RESET — step 3 of 3: type %q to wipe everything", factoryResetPhrase),
+		fmt.Sprintf("FACTORY RESET — step 3 of 3: type %q to wipe everything", factoryResetPhrase),
 		[]string{"Confirmation phrase"}, []string{factoryResetPhrase})
 }
 

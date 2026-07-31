@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.51] - 2026-07-31 13:07:00 -03:00
+
+### Removed
+
+- Removed all emoji characters across status messages, modals, titles, and buttons in the terminal user interface.
+
+Bumps version to 0.3.51.
+
 ## [0.3.50] - 2026-07-31 12:45:00 -03:00
 
 ### Removed
