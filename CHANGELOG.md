@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-31 14:23:04 -03:00
+
+### Added
+
+- Web Panel Settings: `[o]` opens the panel in the system's default browser (always via the loopback URL, so it works regardless of bind mode or pairing), and the screen now lists every `http://<ip>:<port>` link other devices can actually reach given the current bind mode (LAN IPs, Tailscale IPs, or both).
+
+Bumps version to 0.4.1.
+
 ## [0.4.0] - 2026-07-31 13:55:49 -03:00
 
 ### Added

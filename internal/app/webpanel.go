@@ -2,8 +2,12 @@ package app
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
+	"strings"
 
 	"github.com/jgcastro09/sessionhub/internal/config"
+	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/webserver"
 )
 
@@ -47,9 +51,17 @@ type WebPanelStatus struct {
 	Enabled      bool
 	Active       bool
 	Endpoint     string
+	Port         int
 	BindMode     config.WebBindMode
 	PairingCode  string
 	NeedsPairing bool
+	// LocalURL always works from this machine — loopback bypasses pairing
+	// and bind-mode checks entirely (see internal/webserver/auth.go).
+	LocalURL string
+	// NetworkURLs are the http://<ip>:<port> links other devices can
+	// actually reach given the current bind mode: LAN IPs when local
+	// pairing is allowed, Tailscale IPs when Tailscale is allowed.
+	NetworkURLs []string
 }
 
 func (a *App) WebPanelStatus() WebPanelStatus {
@@ -58,17 +70,67 @@ func (a *App) WebPanelStatus() WebPanelStatus {
 	server := a.webServer
 	a.webMu.Unlock()
 	status := WebPanelStatus{
-		Enabled: settings.Enabled, BindMode: settings.BindMode,
+		Enabled: settings.Enabled, BindMode: settings.BindMode, Port: a.webPort(),
 		Active:       server != nil,
 		NeedsPairing: settings.BindMode == config.WebBindLocal || settings.BindMode == config.WebBindBoth,
 	}
 	if server != nil {
 		status.Endpoint = server.Address()
+		status.LocalURL = webPanelURL("127.0.0.1", status.Port)
+		status.NetworkURLs = webPanelNetworkURLs(status.Port, settings.BindMode)
 		if status.NeedsPairing {
 			status.PairingCode = server.PairingCode()
 		}
 	}
 	return status
+}
+
+func webPanelNetworkURLs(port int, mode config.WebBindMode) []string {
+	addresses := remote.LocalNetworkAddresses()
+	var urls []string
+	if mode == config.WebBindLocal || mode == config.WebBindBoth {
+		for _, ip := range addresses.LocalIPs {
+			urls = append(urls, webPanelURL(ip, port))
+		}
+	}
+	if mode == config.WebBindTailscale || mode == config.WebBindBoth {
+		for _, ip := range addresses.TailscaleIPs {
+			urls = append(urls, webPanelURL(ip, port))
+		}
+	}
+	return urls
+}
+
+func webPanelURL(ip string, port int) string {
+	if strings.Contains(ip, ":") {
+		return fmt.Sprintf("http://[%s]:%d", ip, port)
+	}
+	return fmt.Sprintf("http://%s:%d", ip, port)
+}
+
+// OpenWebPanel launches the system's default browser at this machine's own
+// loopback URL — the one link that always works regardless of bind mode or
+// pairing, since the person pressing the keybinding is sitting at this
+// computer.
+func (a *App) OpenWebPanel() error {
+	status := a.WebPanelStatus()
+	if !status.Active {
+		return fmt.Errorf("Web Panel isn't running — enable it with w first")
+	}
+	return openInBrowser(status.LocalURL)
+}
+
+func openInBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
 }
 
 // SetWebPanelEnabled starts or stops the web panel, mirroring

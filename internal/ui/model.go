@@ -1112,6 +1112,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+		case "o":
+			if sections[m.section] == "Settings" {
+				if err := m.app.OpenWebPanel(); err != nil {
+					m.status = err.Error()
+				} else {
+					m.status = "Opening Web Panel in your browser..."
+				}
+				return m, nil
+			}
 		}
 	}
 	return m, nil
@@ -3162,21 +3171,30 @@ func (m Model) emptyContent(width, height int) string {
 		webPanel := m.app.WebPanelStatus()
 		body.WriteString(titleStyle.Render("Web Panel") + "\n")
 		webState := "DISABLED"
-		webDetail := "not reachable from the browser"
+		webDetail := fmt.Sprintf("port %d configured, not running", webPanel.Port)
 		if webPanel.Enabled {
 			webState = "ENABLED"
 			webDetail = "starting..."
 			if webPanel.Active {
-				webDetail = "reachable at " + webPanel.Endpoint
+				webDetail = fmt.Sprintf("running on port %d", webPanel.Port)
 			}
 		}
 		body.WriteString("  " + keyStyle.Render("[w]") + " Web Panel         " + keyStyle.Render(webState) + "  " + mutedStyle.Render(webDetail) + "\n")
 		body.WriteString("  " + keyStyle.Render("[b]") + " Bind mode         " + keyStyle.Render(strings.ToUpper(string(webPanel.BindMode))) + "  " + mutedStyle.Render("tailscale → local → both") + "\n")
 		if webPanel.Active {
+			body.WriteString("  " + keyStyle.Render("[o]") + " Open in browser   " + mutedStyle.Render(webPanel.LocalURL) + "\n")
 			if webPanel.NeedsPairing {
 				body.WriteString("  " + keyStyle.Render("[g]") + " Pairing code      " + keyStyle.Render(webPanel.PairingCode) + "  " + mutedStyle.Render("type this once on a LAN device's browser • g regenerates it") + "\n")
 			} else {
-				body.WriteString("  " + mutedStyle.Render("Tailscale-only: any device on your tailnet opens the URL above with no code needed.") + "\n")
+				body.WriteString("  " + mutedStyle.Render("Tailscale-only: any device on your tailnet can open the links below with no code needed.") + "\n")
+			}
+			if len(webPanel.NetworkURLs) > 0 {
+				body.WriteString(mutedStyle.Render("  Open from another device:") + "\n")
+				for _, url := range webPanel.NetworkURLs {
+					body.WriteString("    " + keyStyle.Render(url) + "\n")
+				}
+			} else {
+				body.WriteString(mutedStyle.Render("  No reachable network address yet for the current bind mode.") + "\n")
 			}
 		}
 		body.WriteString("  Config      " + mutedStyle.Render(m.app.Paths.WebSettings) + "\n\n")
