@@ -3312,12 +3312,13 @@ func newInstallFormForProvider(p executor.Provider) formModel {
 // single-select pick list (↑↓ moves, enter confirms) shown before the
 // install form itself.
 func newProviderPickForm() formModel {
-	names := make([]string, 0, len(executor.Catalog)+1)
-	for _, p := range executor.Catalog {
+	catalog := executor.CatalogForOS()
+	names := make([]string, 0, len(catalog)+1)
+	for _, p := range catalog {
 		names = append(names, p.Name)
 	}
 	names = append(names, "Custom")
-	return formModel{kind: providerPickForm, title: "Add a CLI — pick one", providerNames: names}
+	return formModel{kind: providerPickForm, title: "Add Terminal / CLI — pick one", providerNames: names}
 }
 
 // editExecutorForm opens the same short (core-only) form as "new executor",
@@ -3626,8 +3627,9 @@ func (m Model) updateProviderPick(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.form.choiceCursor++
 		}
 	case "enter":
-		if m.form.choiceCursor < len(executor.Catalog) {
-			m.form = newInstallFormForProvider(executor.Catalog[m.form.choiceCursor])
+		catalog := executor.CatalogForOS()
+		if m.form.choiceCursor < len(catalog) {
+			m.form = newInstallFormForProvider(catalog[m.form.choiceCursor])
 		} else {
 			m.form = newInstallForm()
 		}

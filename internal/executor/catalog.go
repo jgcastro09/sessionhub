@@ -26,6 +26,9 @@ type Provider struct {
 	Args        []string
 	Category    Category
 	UseHostHome bool
+	// SupportedOS lists OS names ("darwin", "windows", "linux") this provider is valid for.
+	// Empty means supported on all operating systems.
+	SupportedOS []string
 	// InstallCmd returns the raw shell line to run (WorkingDir is already
 	// the executor's own folder), branching on GOOS where needed.
 	InstallCmd func() string
@@ -57,6 +60,7 @@ var Catalog = []Provider{
 		Args:        []string{"-l"},
 		Category:    CategoryShell,
 		UseHostHome: true,
+		SupportedOS: []string{"darwin", "linux"},
 	},
 	{
 		Name:        "Bash (Shell)",
@@ -64,12 +68,14 @@ var Catalog = []Provider{
 		Args:        []string{"-l"},
 		Category:    CategoryShell,
 		UseHostHome: true,
+		SupportedOS: []string{"darwin", "linux"},
 	},
 	{
 		Name:        "Fish (Shell)",
 		Command:     "fish",
 		Category:    CategoryShell,
 		UseHostHome: true,
+		SupportedOS: []string{"darwin", "linux"},
 	},
 	{
 		Name: "PowerShell",
@@ -82,18 +88,21 @@ var Catalog = []Provider{
 		Args:        []string{"-NoLogo"},
 		Category:    CategoryShell,
 		UseHostHome: true,
+		SupportedOS: []string{"windows"},
 	},
 	{
 		Name:        "CMD (Command Prompt)",
 		Command:     "cmd.exe",
 		Category:    CategoryShell,
 		UseHostHome: true,
+		SupportedOS: []string{"windows"},
 	},
 	{
 		Name:        "WSL (Linux)",
 		Command:     "wsl.exe",
 		Category:    CategoryShell,
 		UseHostHome: true,
+		SupportedOS: []string{"windows"},
 	},
 	// AI CLIs
 	{
@@ -145,4 +154,26 @@ var Catalog = []Provider{
 			return []string{filepath.Join(home, ".local", "bin")}
 		},
 	},
+}
+
+// CatalogForOS returns catalog providers valid for the current OS (runtime.GOOS).
+func CatalogForOS() []Provider {
+	goos := runtime.GOOS
+	filtered := make([]Provider, 0, len(Catalog))
+	for _, p := range Catalog {
+		if len(p.SupportedOS) > 0 {
+			matched := false
+			for _, osName := range p.SupportedOS {
+				if osName == goos {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
 }

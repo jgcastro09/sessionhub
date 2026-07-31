@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.45] - 2026-07-31 12:00:00 -03:00
+
+### Added
+
+- Added OS-specific filtering (`CatalogForOS`) for System Terminals in the Add Terminal / CLI pick list. On macOS/Linux, Windows-only shells (`PowerShell`, `CMD`, `WSL`) are hidden; on Windows, macOS-only shells (`Zsh`) are hidden, presenting only OS-compatible shells.
+
+Bumps version to 0.3.45.
+
 ## [0.3.44] - 2026-07-31 11:50:00 -03:00
 
 ### Added
