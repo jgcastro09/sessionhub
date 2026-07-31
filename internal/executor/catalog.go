@@ -22,7 +22,6 @@ const (
 // "Add a Terminal / CLI" flow.
 type Provider struct {
 	Name        string
-	Icon        string
 	Command     string
 	Args        []string
 	Category    Category
@@ -57,7 +56,6 @@ var Catalog = []Provider{
 	// System Terminals (Shells)
 	{
 		Name:        "Zsh (Terminal)",
-		Icon:        "",
 		Command:     "zsh",
 		Args:        []string{"-l"},
 		Category:    CategoryShell,
@@ -66,7 +64,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:        "Bash (Shell)",
-		Icon:        "🐚",
 		Command:     "bash",
 		Args:        []string{"-l"},
 		Category:    CategoryShell,
@@ -75,7 +72,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:        "Fish (Shell)",
-		Icon:        "🐟",
 		Command:     "fish",
 		Category:    CategoryShell,
 		UseHostHome: true,
@@ -83,7 +79,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name: "PowerShell",
-		Icon: "⚡",
 		Command: func() string {
 			if runtime.GOOS == "windows" {
 				return "powershell.exe"
@@ -97,7 +92,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:        "CMD (Command Prompt)",
-		Icon:        "🖥️",
 		Command:     "cmd.exe",
 		Category:    CategoryShell,
 		UseHostHome: true,
@@ -105,7 +99,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:        "WSL (Linux)",
-		Icon:        "🐧",
 		Command:     "wsl.exe",
 		Category:    CategoryShell,
 		UseHostHome: true,
@@ -114,7 +107,6 @@ var Catalog = []Provider{
 	// AI CLIs
 	{
 		Name:         "Codex",
-		Icon:         "🤖",
 		Command:      "codex",
 		Args:         []string{"--yolo"},
 		Category:     CategoryAI,
@@ -124,7 +116,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:       "Claude Code",
-		Icon:       "✳️",
 		Command:    "claude",
 		Args:       []string{"--dangerously-skip-permissions"},
 		Category:   CategoryAI,
@@ -133,7 +124,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:       "OpenCode",
-		Icon:       "🚀",
 		Command:    "opencode",
 		Category:   CategoryAI,
 		InstallCmd: func() string { return "npm install opencode-ai" },
@@ -141,7 +131,6 @@ var Catalog = []Provider{
 	},
 	{
 		Name:     "Antigravity",
-		Icon:     "🌌",
 		Command:  "agy",
 		Category: CategoryAI,
 		InstallCmd: func() string {

@@ -58,7 +58,6 @@ func (r RecognitionRule) Validate() error {
 type ExecutorConfig struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Icon    string `json:"icon,omitempty"`
 	Command string `json:"command"`
 	// InstallDir is the absolute path to this executor's own managed folder
 	// (executors/<slug>/{bin,config,runtime}/manifest.json) when it was

@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.50] - 2026-07-31 12:45:00 -03:00
+
+### Removed
+
+- Reverted logo and Dock icon changes per user request; restored pure terminal-native layout and behavior.
+
+Bumps version to 0.3.50.
+
 ## [0.3.49] - 2026-07-31 12:35:00 -03:00
 
 ### Added

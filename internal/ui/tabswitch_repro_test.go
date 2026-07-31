@@ -187,7 +187,7 @@ func TestRenderTabsMarksAutomationActivatedTerminalOnline(t *testing.T) {
 	if _, _, err := application.Executors.Start(ctx, session.ID, cfg.ID, 80, 24); err != nil {
 		t.Fatal(err)
 	}
-	if got := model.renderTabs(); !strings.Contains(got, "●") || !strings.Contains(got, "Automation CLI") {
+	if got := model.renderTabs(); !strings.Contains(got, "● Automation CLI") {
 		t.Fatalf("automation-started terminal should show an online dot, got %q", got)
 	}
 }
