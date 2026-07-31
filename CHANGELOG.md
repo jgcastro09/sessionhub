@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.37] - 2026-07-30 22:02:59 -03:00
+
+### Fixed
+
+- Closing a terminal that emitted a very large amount of output no longer waits indefinitely for every queued history write. Persisted history is retained while only the pending shutdown backlog is discarded, preventing CI release builds and SessionHub shutdown from hanging.
+
 ## [0.3.36] - 2026-07-30 21:46:56 -03:00
 
 ### Added

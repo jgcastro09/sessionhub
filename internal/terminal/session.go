@@ -78,6 +78,11 @@ type Session struct {
 	historyQueue  []historyRecord
 	historyWake   chan struct{}
 	historyClosed bool
+	// historyDiscard is set only during shutdown. A CLI can emit megabytes of
+	// output in a few seconds; waiting for every queued history write would
+	// make closing SessionHub (and CI) hang indefinitely. Already committed
+	// history remains intact, while the pending tail is safely discarded.
+	historyDiscard bool
 
 	mu        sync.RWMutex
 	state     domain.State
@@ -286,6 +291,12 @@ func (s *Session) persistHistory() {
 		closed := s.historyClosed
 		s.historyMu.Unlock()
 		for _, record := range batch {
+			s.historyMu.Lock()
+			discard := s.historyDiscard
+			s.historyMu.Unlock()
+			if discard {
+				break
+			}
 			if s.sink == nil {
 				continue
 			}
@@ -293,7 +304,10 @@ func (s *Session) persistHistory() {
 				s.emit(Event{InstanceID: s.id, Kind: EventError, Err: err})
 			}
 		}
-		if closed && len(batch) == 0 {
+		s.historyMu.Lock()
+		discard := s.historyDiscard
+		s.historyMu.Unlock()
+		if closed && (len(batch) == 0 || discard) {
 			return
 		}
 		<-s.historyWake
@@ -303,7 +317,7 @@ func (s *Session) persistHistory() {
 func (s *Session) record(direction string, data []byte) {
 	copyData := append([]byte(nil), data...)
 	s.historyMu.Lock()
-	if s.historyClosed {
+	if s.historyClosed || s.historyDiscard {
 		s.historyMu.Unlock()
 		return
 	}
@@ -714,6 +728,8 @@ func (s *Session) Close(grace time.Duration) error {
 		}
 		s.historyMu.Lock()
 		s.historyClosed = true
+		s.historyDiscard = true
+		s.historyQueue = nil
 		s.historyMu.Unlock()
 		select {
 		case s.historyWake <- struct{}{}:

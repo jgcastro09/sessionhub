@@ -17,6 +17,62 @@ type memoryHistory struct {
 	records [][]byte
 }
 
+type blockingHistory struct {
+	started chan struct{}
+	release chan struct{}
+	mu      sync.Mutex
+	calls   int
+}
+
+func (b *blockingHistory) AppendTerminal(_ context.Context, _, _ string, _ []byte) error {
+	b.mu.Lock()
+	b.calls++
+	b.mu.Unlock()
+	select {
+	case b.started <- struct{}{}:
+	default:
+	}
+	<-b.release
+	return nil
+}
+
+func TestHistoryShutdownDropsPendingBacklog(t *testing.T) {
+	sink := &blockingHistory{started: make(chan struct{}, 1), release: make(chan struct{})}
+	session := &Session{
+		id: "history-close", sink: sink, historyWake: make(chan struct{}, 1),
+		historyQueue: []historyRecord{
+			{direction: "output", data: []byte("one")},
+			{direction: "output", data: []byte("two")},
+			{direction: "output", data: []byte("three")},
+		},
+	}
+	done := make(chan struct{})
+	go func() { session.persistHistory(); close(done) }()
+	session.historyWake <- struct{}{}
+	select {
+	case <-sink.started:
+	case <-time.After(time.Second):
+		t.Fatal("history writer did not start")
+	}
+	session.historyMu.Lock()
+	session.historyClosed = true
+	session.historyDiscard = true
+	session.historyQueue = nil
+	session.historyMu.Unlock()
+	close(sink.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("history writer should stop without draining backlog")
+	}
+	sink.mu.Lock()
+	calls := sink.calls
+	sink.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("history writes = %d, want only the already-started write", calls)
+	}
+}
+
 func (m *memoryHistory) AppendTerminal(_ context.Context, _, _ string, data []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
