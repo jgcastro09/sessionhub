@@ -79,6 +79,10 @@ func TestInspectDetectsConflict(t *testing.T) {
 
 	mergeCmd := exec.Command("git", "merge", "feature")
 	mergeCmd.Dir = work
+	mergeCmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
 	_ = mergeCmd.Run() // expected to fail with a conflict
 
 	state, err := Inspect(context.Background(), work)
