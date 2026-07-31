@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sort"
 	"strings"
 )
 
@@ -14,6 +15,32 @@ var (
 
 func IsTailscaleIP(address netip.Addr) bool {
 	return tailscaleV4.Contains(address) || tailscaleV6.Contains(address)
+}
+
+// NetworkAddresses describes the interfaces Remote Mode can use. LAN is
+// always available; Tailscale is simply an optional additional route.
+type NetworkAddresses struct {
+	LocalIPs     []string
+	TailscaleIPs []string
+}
+
+func LocalNetworkAddresses() NetworkAddresses {
+	assigned, err := localAddresses()
+	if err != nil {
+		return NetworkAddresses{}
+	}
+	var result NetworkAddresses
+	for address := range assigned {
+		switch {
+		case IsTailscaleIP(address):
+			result.TailscaleIPs = append(result.TailscaleIPs, address.String())
+		case address.IsPrivate() && !address.IsLoopback():
+			result.LocalIPs = append(result.LocalIPs, address.String())
+		}
+	}
+	sort.Strings(result.LocalIPs)
+	sort.Strings(result.TailscaleIPs)
+	return result
 }
 
 func ValidateListenAddress(address string) (netip.AddrPort, error) {

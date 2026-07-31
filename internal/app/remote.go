@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/jgcastro09/sessionhub/internal/config"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/remote"
@@ -49,12 +50,46 @@ func (a *App) StartAutomaticRemote() error {
 		_ = host.Close()
 		return err
 	}
-	discovery, err := remote.StartDiscovery(a.ctx, a.remoteName(), a.Version, a.Paths.Root, port)
+	discovery, err := remote.StartDiscovery(a.ctx, a.remoteName(), a.Version, a.Paths.Root, port, a.networkSettings.TailscaleEnabled)
 	if err != nil {
 		_ = host.Close()
 		return err
 	}
 	a.remoteHost, a.remoteDiscovery = host, discovery
+	return nil
+}
+
+type NetworkStatus struct {
+	LocalIPs          []string
+	TailscaleIPs      []string
+	TailscaleDetected bool
+	TailscaleEnabled  bool
+}
+
+func (a *App) RemoteNetworkStatus() NetworkStatus {
+	a.remoteMu.Lock()
+	settings := a.networkSettings
+	a.remoteMu.Unlock()
+	addresses := remote.LocalNetworkAddresses()
+	return NetworkStatus{LocalIPs: addresses.LocalIPs, TailscaleIPs: addresses.TailscaleIPs, TailscaleDetected: len(addresses.TailscaleIPs) > 0, TailscaleEnabled: settings.TailscaleEnabled}
+}
+
+// SetTailscaleEnabled toggles only Tailscale discovery. The host keeps its
+// LAN listener and local peer discovery active in both cases.
+func (a *App) SetTailscaleEnabled(enabled bool) error {
+	a.remoteMu.Lock()
+	next := a.networkSettings
+	next.TailscaleEnabled = enabled
+	if err := config.SaveNetworkSettings(a.Paths.NetworkSettings, next); err != nil {
+		a.remoteMu.Unlock()
+		return err
+	}
+	a.networkSettings = next
+	discovery := a.remoteDiscovery
+	a.remoteMu.Unlock()
+	if discovery != nil {
+		discovery.SetTailscaleEnabled(enabled)
+	}
 	return nil
 }
 

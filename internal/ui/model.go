@@ -64,6 +64,11 @@ type remoteStartedMsg struct {
 
 type remoteInputMsg struct{ err error }
 
+type networkSettingsMsg struct {
+	enabled bool
+	err     error
+}
+
 type savedMsg struct {
 	kind    string
 	id      string
@@ -539,6 +544,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastErr = msg.err.Error()
 			m.status = "Remote terminal input failed: " + msg.err.Error()
 		}
+	case networkSettingsMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Couldn't save network settings: " + msg.err.Error()
+			return m, nil
+		}
+		if msg.enabled {
+			m.status = "Tailscale discovery enabled • LAN and Tailscale are both available"
+		} else {
+			m.status = "Tailscale discovery disabled • LAN discovery remains available"
+		}
 	case savedMsg:
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
@@ -954,6 +970,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.app.Paths.Root),
 				}
 				return m, nil
+			}
+		case "t":
+			if sections[m.section] == "Settings" {
+				enabled := !m.app.RemoteNetworkStatus().TailscaleEnabled
+				application := m.app
+				return m, func() tea.Msg {
+					return networkSettingsMsg{enabled: enabled, err: application.SetTailscaleEnabled(enabled)}
+				}
 			}
 		}
 	}
@@ -2798,6 +2822,26 @@ func (m Model) emptyContent(width, height int) string {
 		body.WriteString(fmt.Sprintf("Data Directory:     %s\n", m.app.Paths.Root))
 		body.WriteString(fmt.Sprintf("Database Path:      %s\n", m.app.Paths.Database))
 		body.WriteString(fmt.Sprintf("Recovered Records:  %d\n\n", m.app.RecoveredCount()))
+
+		network := m.app.RemoteNetworkStatus()
+		body.WriteString(titleStyle.Render("Remote Network") + "\n")
+		localIPs := strings.Join(network.LocalIPs, ", ")
+		if localIPs == "" {
+			localIPs = "waiting for a private LAN address"
+		}
+		body.WriteString("  LAN:       " + keyStyle.Render("Active") + " (always)\n")
+		body.WriteString("  Local IP:  " + localIPs + "\n")
+		if network.TailscaleDetected {
+			status := "disabled"
+			if network.TailscaleEnabled {
+				status = "enabled"
+			}
+			body.WriteString("  Tailscale: " + keyStyle.Render(status) + "\n")
+			body.WriteString("  Tailscale IP: " + strings.Join(network.TailscaleIPs, ", ") + "\n")
+		} else {
+			body.WriteString("  Tailscale: " + mutedStyle.Render("not detected on this computer") + "\n")
+		}
+		body.WriteString("\n  " + keyStyle.Render("t") + mutedStyle.Render(" Toggle Tailscale discovery • LAN remains active in both modes\n\n"))
 
 		body.WriteString(titleStyle.Render("Software Update") + "\n")
 		if m.isUpdating {

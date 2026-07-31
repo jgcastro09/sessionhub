@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.34] - 2026-07-30 21:24:52 -03:00
+
+### Added
+
+- Settings now includes a minimal Remote Network panel showing always-on LAN discovery, detected local IPs, Tailscale detection and its IPs, plus a persistent `t` toggle for Tailscale discovery.
+- LAN and Tailscale Remote Mode are available simultaneously when enabled. Disabling Tailscale removes only Tailscale peer discovery; the local-network listener and discovery remain active.
+
 ## [0.3.33] - 2026-07-30 21:14:55 -03:00
 
 ### Fixed

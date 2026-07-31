@@ -20,6 +20,10 @@ type Paths struct {
 	// own features (e.g. the local Whisper transcription server), separate
 	// from Executors since these aren't user-registered CLIs.
 	Tools string
+	// NetworkSettings persists the small Remote Mode preference set. LAN
+	// discovery always remains enabled; this file only controls whether
+	// Tailscale peer discovery is used as an additional interface.
+	NetworkSettings string
 }
 
 func ResolvePaths() (Paths, error) {
@@ -40,12 +44,13 @@ func ResolvePaths() (Paths, error) {
 		return Paths{}, fmt.Errorf("resolve data directory: %w", err)
 	}
 	p := Paths{
-		Root:      root,
-		Database:  filepath.Join(root, "sessionhub.db"),
-		Logs:      filepath.Join(root, "logs"),
-		Downloads: filepath.Join(root, "updates"),
-		Executors: filepath.Join(root, "executors"),
-		Tools:     filepath.Join(root, "tools"),
+		Root:            root,
+		Database:        filepath.Join(root, "sessionhub.db"),
+		Logs:            filepath.Join(root, "logs"),
+		Downloads:       filepath.Join(root, "updates"),
+		Executors:       filepath.Join(root, "executors"),
+		Tools:           filepath.Join(root, "tools"),
+		NetworkSettings: filepath.Join(root, "network.json"),
 	}
 	for _, dir := range []string{p.Root, p.Logs, p.Downloads, p.Executors, p.Tools} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {

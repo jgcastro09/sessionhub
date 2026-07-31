@@ -58,16 +58,17 @@ type announcement struct {
 // peers. It uses LAN broadcast plus unicast probes to Tailscale peers; no
 // Internet service, daemon, or system scheduler is involved.
 type Discovery struct {
-	conn   *net.UDPConn
-	self   Device
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.RWMutex
-	peers  map[string]Device
-	wg     sync.WaitGroup
+	conn             *net.UDPConn
+	self             Device
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.RWMutex
+	peers            map[string]Device
+	tailscaleEnabled bool
+	wg               sync.WaitGroup
 }
 
-func StartDiscovery(parent context.Context, name, version, seed string, port int) (*Discovery, error) {
+func StartDiscovery(parent context.Context, name, version, seed string, port int, tailscaleEnabled bool) (*Discovery, error) {
 	if name == "" {
 		name, _ = os.Hostname()
 	}
@@ -83,7 +84,7 @@ func StartDiscovery(parent context.Context, name, version, seed string, port int
 	hash := sha256.Sum256([]byte(name + "\x00" + seed))
 	d := &Discovery{
 		conn: conn, ctx: ctx, cancel: cancel, peers: make(map[string]Device),
-		self: Device{ID: hex.EncodeToString(hash[:8]), Name: name, Version: version, Port: port},
+		self: Device{ID: hex.EncodeToString(hash[:8]), Name: name, Version: version, Port: port}, tailscaleEnabled: tailscaleEnabled,
 	}
 	d.wg.Add(2)
 	go d.receive()
@@ -103,6 +104,9 @@ func (d *Discovery) Devices() []Device {
 	}
 	out := make([]Device, 0, len(d.peers))
 	for _, device := range d.peers {
+		if device.Network == "Tailscale" && !d.tailscaleEnabled {
+			continue
+		}
 		device.Online = true
 		out = append(out, device)
 	}
@@ -114,6 +118,25 @@ func (d *Discovery) Devices() []Device {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out
+}
+
+func (d *Discovery) SetTailscaleEnabled(enabled bool) {
+	d.mu.Lock()
+	d.tailscaleEnabled = enabled
+	if !enabled {
+		for id, device := range d.peers {
+			if device.Network == "Tailscale" {
+				delete(d.peers, id)
+			}
+		}
+	}
+	d.mu.Unlock()
+}
+
+func (d *Discovery) TailscaleEnabled() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.tailscaleEnabled
 }
 
 func (d *Discovery) receive() {
@@ -163,7 +186,14 @@ func (d *Discovery) announceLoop() {
 
 func (d *Discovery) announce() {
 	data, _ := json.Marshal(announcement{Type: "sessionhub-discovery-v1", ID: d.self.ID, Name: d.self.Name, Version: d.self.Version, Port: d.self.Port})
-	for _, destination := range append(lanBroadcastAddresses(), tailscalePeerAddresses()...) {
+	d.mu.RLock()
+	tailscaleEnabled := d.tailscaleEnabled
+	d.mu.RUnlock()
+	destinations := lanBroadcastAddresses()
+	if tailscaleEnabled {
+		destinations = append(destinations, tailscalePeerAddresses()...)
+	}
+	for _, destination := range destinations {
 		_, _ = d.conn.WriteToUDP(data, &net.UDPAddr{IP: net.ParseIP(destination), Port: discoveryPort})
 	}
 }

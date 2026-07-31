@@ -36,6 +36,7 @@ type App struct {
 	remoteMu            sync.Mutex
 	remoteHost          *remote.Host
 	remoteDiscovery     *remote.Discovery
+	networkSettings     config.NetworkSettings
 	recovered           int64
 }
 
@@ -61,13 +62,20 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		cancel()
 		return nil, fmt.Errorf("load automations: %w", err)
 	}
+	networkSettings, err := config.LoadNetworkSettings(paths.NetworkSettings)
+	if err != nil {
+		_ = repository.Close()
+		cancel()
+		return nil, err
+	}
 	a := &App{
 		Version: version, Paths: paths, Store: repository,
 		Terminals: terminals, Executors: executors,
 		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
 		Automation: automationEngine, AutomationScheduler: automationScheduler,
-		Voice: voice.NewManager(paths.Tools),
-		ctx:   ctx, cancel: cancel, recovered: recovered,
+		Voice:           voice.NewManager(paths.Tools),
+		networkSettings: networkSettings,
+		ctx:             ctx, cancel: cancel, recovered: recovered,
 	}
 	// Remote Mode is a peer feature: every open SessionHub hosts its own
 	// terminal endpoint and advertises it only on the local LAN/tailnet.
