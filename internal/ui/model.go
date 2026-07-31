@@ -1717,6 +1717,10 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		device := devices[m.selected]
+		if !remote.SameVersion(m.app.Version, device.Version) {
+			m.status = fmt.Sprintf("Can't connect to %s: it runs v%s, while this SessionHub runs v%s", device.Name, device.Version, m.app.Version)
+			return m, nil
+		}
 		m.status = "Connecting to " + device.Name + "..."
 		return m, m.connectRemote(device)
 	case "Settings":
@@ -1854,7 +1858,7 @@ func (m Model) connectRemote(device remote.Device) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		name, _ := os.Hostname()
-		controller, err := remote.ConnectController(ctx, device, name)
+		controller, err := remote.ConnectController(ctx, device, name, m.app.Version)
 		if err != nil {
 			return remoteConnectedMsg{device: device, err: err}
 		}
@@ -2752,9 +2756,14 @@ func (m Model) emptyContent(width, height int) string {
 				if i == m.selected {
 					prefix, style = "› ", sideActiveStyle
 				}
-				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render("● "+device.Name), mutedStyle.Render("online • "+device.Network+" • "+device.Address)))
+				version := "v" + strings.TrimPrefix(device.Version, "v")
+				if !remote.SameVersion(m.app.Version, device.Version) {
+					body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, mutedStyle.Render("● "+device.Name), errorStyle.Render("incompatible • "+version+" required: v"+strings.TrimPrefix(m.app.Version, "v"))))
+					continue
+				}
+				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render("● "+device.Name), mutedStyle.Render("online • "+version+" • "+device.Network+" • "+device.Address)))
 			}
-			body.WriteString("\n" + keyStyle.Render("Enter Connect") + mutedStyle.Render(" • only one controller can connect to a SessionHub at a time"))
+			body.WriteString("\n" + keyStyle.Render("Enter Connect") + mutedStyle.Render(" • exact same version required • only one controller can connect to a SessionHub at a time"))
 		}
 	case "Settings":
 		ver := ""

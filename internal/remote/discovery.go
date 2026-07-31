@@ -27,6 +27,7 @@ const (
 type Device struct {
 	ID      string    `json:"id"`
 	Name    string    `json:"name"`
+	Version string    `json:"version"`
 	Address string    `json:"address"`
 	Port    int       `json:"port"`
 	Network string    `json:"network"`
@@ -37,10 +38,11 @@ type Device struct {
 func (d Device) Endpoint() string { return net.JoinHostPort(d.Address, itoa(d.Port)) }
 
 type announcement struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Port int    `json:"port"`
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Port    int    `json:"port"`
 }
 
 // Discovery advertises this SessionHub and retains only recently observed
@@ -56,7 +58,7 @@ type Discovery struct {
 	wg     sync.WaitGroup
 }
 
-func StartDiscovery(parent context.Context, name, seed string, port int) (*Discovery, error) {
+func StartDiscovery(parent context.Context, name, version, seed string, port int) (*Discovery, error) {
 	if name == "" {
 		name, _ = os.Hostname()
 	}
@@ -72,7 +74,7 @@ func StartDiscovery(parent context.Context, name, seed string, port int) (*Disco
 	hash := sha256.Sum256([]byte(name + "\x00" + seed))
 	d := &Discovery{
 		conn: conn, ctx: ctx, cancel: cancel, peers: make(map[string]Device),
-		self: Device{ID: hex.EncodeToString(hash[:8]), Name: name, Port: port},
+		self: Device{ID: hex.EncodeToString(hash[:8]), Name: name, Version: version, Port: port},
 	}
 	d.wg.Add(2)
 	go d.receive()
@@ -131,7 +133,7 @@ func (d *Discovery) receive() {
 			network = "Tailscale"
 		}
 		d.mu.Lock()
-		d.peers[message.ID] = Device{ID: message.ID, Name: message.Name, Address: address.Unmap().String(), Port: message.Port, Network: network, SeenAt: time.Now(), Online: true}
+		d.peers[message.ID] = Device{ID: message.ID, Name: message.Name, Version: message.Version, Address: address.Unmap().String(), Port: message.Port, Network: network, SeenAt: time.Now(), Online: true}
 		d.mu.Unlock()
 	}
 }
@@ -151,10 +153,17 @@ func (d *Discovery) announceLoop() {
 }
 
 func (d *Discovery) announce() {
-	data, _ := json.Marshal(announcement{Type: "sessionhub-discovery-v1", ID: d.self.ID, Name: d.self.Name, Port: d.self.Port})
+	data, _ := json.Marshal(announcement{Type: "sessionhub-discovery-v1", ID: d.self.ID, Name: d.self.Name, Version: d.self.Version, Port: d.self.Port})
 	for _, destination := range append(lanBroadcastAddresses(), tailscalePeerAddresses()...) {
 		_, _ = d.conn.WriteToUDP(data, &net.UDPAddr{IP: net.ParseIP(destination), Port: discoveryPort})
 	}
+}
+
+// SameVersion deliberately requires an exact release match. Remote control
+// shares PTY and protocol semantics, so allowing only a major/minor match
+// would make mixed releases look supported when they are not.
+func SameVersion(left, right string) bool {
+	return strings.TrimPrefix(strings.TrimSpace(left), "v") == strings.TrimPrefix(strings.TrimSpace(right), "v") && strings.TrimSpace(left) != "" && strings.TrimSpace(right) != ""
 }
 
 func (d *Discovery) Close() error {

@@ -31,7 +31,7 @@ func TestFrameRoundTrip(t *testing.T) {
 func TestControllerConnectionIsExclusive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	host, err := Listen(ctx, "127.0.0.1:0", remoteTestBackend{}, Device{Name: "target"})
+	host, err := Listen(ctx, "127.0.0.1:0", remoteTestBackend{}, Device{Name: "target", Version: "0.3.30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestControllerConnectionIsExclusive(t *testing.T) {
 		t.Fatal(err)
 	}
 	device := Device{Name: "target", Address: hostName, Port: port, Network: "LAN"}
-	first, err := ConnectController(context.Background(), device, "controller-one")
+	first, err := ConnectController(context.Background(), device, "controller-one", "0.3.30")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,38 @@ func TestControllerConnectionIsExclusive(t *testing.T) {
 	if got := host.Status(); !got.Active || got.Controller != "controller-one" {
 		t.Fatalf("unexpected host status: %#v", got)
 	}
-	if _, err := ConnectController(context.Background(), device, "controller-two"); err == nil {
+	if _, err := ConnectController(context.Background(), device, "controller-two", "0.3.30"); err == nil {
 		t.Fatal("second controller should be rejected")
+	}
+}
+
+func TestControllerRejectsDifferentSessionHubVersion(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	host, err := Listen(ctx, "127.0.0.1:0", remoteTestBackend{}, Device{Name: "target", Version: "0.3.30"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	name, rawPort, err := net.SplitHostPort(host.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := net.LookupPort("tcp", rawPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConnectController(context.Background(), Device{Name: "target", Address: name, Port: port}, "controller", "0.3.29"); err == nil {
+		t.Fatal("version mismatch should be rejected")
+	}
+}
+
+func TestSameVersionRequiresExactRelease(t *testing.T) {
+	if !SameVersion("v0.3.30", "0.3.30") {
+		t.Fatal("same release should match")
+	}
+	if SameVersion("0.3.30", "0.3.29") {
+		t.Fatal("different releases must not match")
 	}
 }
 

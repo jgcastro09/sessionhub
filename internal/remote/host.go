@@ -91,16 +91,17 @@ func (h *Host) accept() {
 }
 
 type peer struct {
-	id       string
-	conn     net.Conn
-	writerMu sync.Mutex
-	backend  Backend
-	observed string
-	sequence uint64
-	ctx      context.Context
-	cancel   context.CancelFunc
-	host     *Host
-	name     string
+	id         string
+	conn       net.Conn
+	writerMu   sync.Mutex
+	backend    Backend
+	observed   string
+	sequence   uint64
+	ctx        context.Context
+	cancel     context.CancelFunc
+	host       *Host
+	name       string
+	compatible bool
 }
 
 func (h *Host) serve(peer *peer) {
@@ -147,12 +148,20 @@ func (p *peer) write(frame Frame) error {
 func (p *peer) handle(frame Frame) Frame {
 	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
 	defer cancel()
+	if frame.Type != "identify" && !p.compatible {
+		return Frame{Type: "error", Error: "remote SessionHub must identify with the exact same version before it can control this host"}
+	}
 	switch frame.Type {
 	case "identify":
 		var request struct {
-			Name string `json:"name"`
+			Name    string `json:"name"`
+			Version string `json:"version"`
 		}
 		_ = json.Unmarshal(frame.Payload, &request)
+		if !SameVersion(p.host.info.Version, request.Version) {
+			return Frame{Type: "error", Error: fmt.Sprintf("remote SessionHub version mismatch: this host is v%s and the controller is v%s", p.host.info.Version, request.Version)}
+		}
+		p.compatible = true
 		if request.Name != "" {
 			p.name = request.Name
 			p.host.setControllerName(p, request.Name)

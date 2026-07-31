@@ -78,7 +78,7 @@ type Controller struct {
 	wg      sync.WaitGroup
 }
 
-func ConnectController(ctx context.Context, device Device, controllerName string) (*Controller, error) {
+func ConnectController(ctx context.Context, device Device, controllerName, controllerVersion string) (*Controller, error) {
 	client, hello, err := Connect(ctx, device.Endpoint())
 	if err != nil {
 		return nil, err
@@ -94,12 +94,17 @@ func ConnectController(ctx context.Context, device Device, controllerName string
 			Host Device `json:"host"`
 		}
 		if json.Unmarshal(hello.Payload, &info) == nil && info.Host.Name != "" {
-			c.device.Name = info.Host.Name
+			c.device.Name, c.device.Version = info.Host.Name, info.Host.Version
 		}
+	}
+	if !SameVersion(controllerVersion, c.device.Version) {
+		_ = client.Close()
+		cancel()
+		return nil, fmt.Errorf("remote SessionHub version mismatch: this device is v%s, %s is v%s", controllerVersion, c.device.Name, c.device.Version)
 	}
 	c.wg.Add(1)
 	go c.readLoop()
-	if _, err := c.request(ctx, Frame{Type: "identify", Payload: payload(map[string]string{"name": controllerName})}); err != nil {
+	if _, err := c.request(ctx, Frame{Type: "identify", Payload: payload(map[string]string{"name": controllerName, "version": controllerVersion})}); err != nil {
 		c.Close()
 		return nil, err
 	}

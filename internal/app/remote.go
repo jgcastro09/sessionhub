@@ -18,7 +18,7 @@ func (a *App) StartRemoteHost(address string) error {
 	if a.remoteHost != nil {
 		return fmt.Errorf("remote host is already listening on %s", a.remoteHost.Address())
 	}
-	host, err := remote.Listen(a.ctx, address, a, remote.Device{Name: a.remoteName()})
+	host, err := remote.Listen(a.ctx, address, a, remote.Device{Name: a.remoteName(), Version: a.Version})
 	if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func (a *App) StartAutomaticRemote() error {
 	if a.remoteHost != nil {
 		return nil
 	}
-	host, err := remote.Listen(a.ctx, ":0", a, remote.Device{Name: a.remoteName()})
+	host, err := remote.Listen(a.ctx, ":0", a, remote.Device{Name: a.remoteName(), Version: a.Version})
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func (a *App) StartAutomaticRemote() error {
 		_ = host.Close()
 		return err
 	}
-	discovery, err := remote.StartDiscovery(a.ctx, a.remoteName(), a.Paths.Root, port)
+	discovery, err := remote.StartDiscovery(a.ctx, a.remoteName(), a.Version, a.Paths.Root, port)
 	if err != nil {
 		_ = host.Close()
 		return err

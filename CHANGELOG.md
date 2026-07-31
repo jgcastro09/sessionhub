@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.31] - 2026-07-30 21:00:55 -03:00
+
+### Added
+
+- Remote discovery now announces the SessionHub release version. Devices running a different version remain visible in the Remote list but are explicitly marked incompatible and cannot be selected for control.
+- Remote control validates the exact SessionHub version in both the controller and host handshake, preventing incompatible peers from opening or operating a terminal even outside the normal UI.
+
 ## [0.3.30] - 2026-07-30 20:56:03 -03:00
 
 ### Fixed
