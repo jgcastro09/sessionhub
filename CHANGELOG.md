@@ -6,6 +6,15 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.41] - 2026-07-31 00:16:25 -03:00
+
+### Changed
+
+- The Executor edit form now opens with just the core fields (Display name, Command, Working directory), same as "new executor", instead of dumping all ten advanced fields (Environment, Resume command, Recognition rules, Roles, Shell, Timeout, Prompt suffix, Model label, Tokenizer, Price ID) at once. ctrl+a still reveals them, now prefilled from the existing config.
+- Saving no longer silently drops advanced fields, install metadata (BinaryName/InstallDir), or CreatedAt when the operator only edits the core fields without expanding ctrl+a — they're carried through from the config being edited.
+
+Bumps version to 0.3.41.
+
 ## [0.3.40] - 2026-07-30 23:14:31 -03:00
 
 ### Changed

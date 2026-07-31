@@ -205,6 +205,14 @@ type formModel struct {
 	// providerPickForm) is a single-select "pick a CLI" list; choiceCursor
 	// indexes it. The last entry is always "Custom".
 	providerNames []string
+	// originalExecutor, set only by editExecutorForm, is the config being
+	// edited. editExecutorForm shows only the core fields (same short form
+	// as "new executor"); advanced fields (Environment, Resume command,
+	// Recognition rules, Roles, Shell, Timeout, Prompt suffix, Model label,
+	// Tokenizer, Price ID) are carried through from here untouched unless
+	// ctrl+a expands them into the form, so collapsing the form never
+	// silently drops data the operator can't see.
+	originalExecutor *domain.ExecutorConfig
 	// selectedProvider carries the catalog entry (if any) chosen before
 	// this installForm was opened, so submitForm knows where an
 	// unisolated provider's installer conventionally places its binary.
@@ -3312,16 +3320,18 @@ func newProviderPickForm() formModel {
 	return formModel{kind: providerPickForm, title: "Add a CLI — pick one", providerNames: names}
 }
 
-// editExecutorForm opens the full field set (core + advanced) prefilled from
-// an existing config, so saving never silently drops fields that aren't
-// shown in the short create form.
+// editExecutorForm opens the same short (core-only) form as "new executor",
+// prefilled from the existing config, so the common case (tweaking the
+// command/args) isn't buried under ten rarely-used advanced fields. ctrl+a
+// still reveals the advanced fields, prefilled too (see the ctrl+a handler).
+// Fields that stay hidden are carried through from originalExecutor on save
+// (see executorFromValues), so collapsing the form never silently drops data.
 func editExecutorForm(cfg domain.ExecutorConfig) formModel {
-	labels := append(append([]string{}, executorCoreLabels...), executorAdvancedLabels...)
-	placeholders := append(append([]string{}, executorCorePlaceholders...), executorAdvancedPlaceholders...)
-	form := makeForm(executorForm, "Edit Executor: "+cfg.Name, labels, placeholders)
+	form := makeForm(executorForm, "Edit Executor: "+cfg.Name, executorCoreLabels, executorCorePlaceholders)
 	form.editingID = cfg.ID
+	form.originalExecutor = &cfg
 	values := executorToValues(cfg)
-	for i, label := range labels {
+	for i, label := range executorCoreLabels {
 		if value, ok := values[label]; ok && value != "" {
 			form.fields[i].SetValue(value)
 		}
@@ -3823,11 +3833,18 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.submitForm()
 		case "ctrl+a":
 			if m.form.kind == executorForm && len(m.form.fields) == len(executorCoreLabels) {
+				var values map[string]string
+				if m.form.originalExecutor != nil {
+					values = executorToValues(*m.form.originalExecutor)
+				}
 				m.form.labels = append(m.form.labels, executorAdvancedLabels...)
-				for _, placeholder := range executorAdvancedPlaceholders {
+				for i, placeholder := range executorAdvancedPlaceholders {
 					field := textinput.New()
 					field.Placeholder = placeholder
 					field.SetWidth(70)
+					if value, ok := values[executorAdvancedLabels[i]]; ok && value != "" {
+						field.SetValue(value)
+					}
 					m.form.fields = append(m.form.fields, field)
 				}
 				m.status = "advanced fields added"
@@ -4145,7 +4162,10 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 
 // executorFromValues looks fields up by label rather than fixed index, since
 // the executor form may be the short (core-only) or expanded (ctrl+a,
-// automation fields included) variant.
+// automation fields included) variant. When editing, advanced fields the
+// operator never expanded into view (ctrl+a) are carried through from
+// m.form.originalExecutor rather than treated as cleared, so collapsing the
+// edit form to core-only never silently drops data the operator can't see.
 func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig, error) {
 	field := func(name string) string {
 		for i, label := range labels {
@@ -4155,50 +4175,101 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 		}
 		return ""
 	}
+	has := func(name string) bool {
+		for _, label := range labels {
+			if label == name {
+				return true
+			}
+		}
+		return false
+	}
+	orig := domain.ExecutorConfig{}
+	if m.form.originalExecutor != nil {
+		orig = *m.form.originalExecutor
+	}
 
 	command, args, err := shellSplitLine(field("Command"))
 	if err != nil {
 		return domain.ExecutorConfig{}, fmt.Errorf("invalid command: %w", err)
 	}
-	var resumeCommand string
-	var resumeArgs []string
-	if raw := strings.TrimSpace(field("Resume command")); raw != "" {
-		resumeCommand, resumeArgs, err = shellSplitLine(raw)
-		if err != nil {
-			return domain.ExecutorConfig{}, fmt.Errorf("invalid resume command: %w", err)
+
+	resumeCommand, resumeArgs := orig.ResumeCommand, orig.ResumeArgs
+	if has("Resume command") {
+		resumeCommand, resumeArgs = "", nil
+		if raw := strings.TrimSpace(field("Resume command")); raw != "" {
+			resumeCommand, resumeArgs, err = shellSplitLine(raw)
+			if err != nil {
+				return domain.ExecutorConfig{}, fmt.Errorf("invalid resume command: %w", err)
+			}
 		}
 	}
-	environment, err := parseEnvSpec(field("Environment"))
-	if err != nil {
-		return domain.ExecutorConfig{}, err
-	}
-	rules, err := parseRules(field("Recognition rules"))
-	if err != nil {
-		return domain.ExecutorConfig{}, err
-	}
-	roles := parseRoles(field("Roles"))
-	timeout := time.Duration(0)
-	if raw := strings.TrimSpace(field("Timeout")); raw != "" {
-		var err error
-		timeout, err = time.ParseDuration(raw)
-		if err != nil {
-			return domain.ExecutorConfig{}, fmt.Errorf("invalid timeout: %w", err)
+
+	environment := orig.Environment
+	if has("Environment") {
+		if environment, err = parseEnvSpec(field("Environment")); err != nil {
+			return domain.ExecutorConfig{}, err
 		}
 	}
+
+	rules := orig.Rules
+	if has("Recognition rules") {
+		if rules, err = parseRules(field("Recognition rules")); err != nil {
+			return domain.ExecutorConfig{}, err
+		}
+	}
+
+	roles := orig.Roles
+	if has("Roles") {
+		roles = parseRoles(field("Roles"))
+	}
+
+	timeout := orig.Timeout
+	if has("Timeout") {
+		timeout = 0
+		if raw := strings.TrimSpace(field("Timeout")); raw != "" {
+			if timeout, err = time.ParseDuration(raw); err != nil {
+				return domain.ExecutorConfig{}, fmt.Errorf("invalid timeout: %w", err)
+			}
+		}
+	}
+
+	shell := orig.Shell
+	if has("Shell (optional)") {
+		shell = field("Shell (optional)")
+	}
+	model := orig.Model
+	if has("Model label") {
+		model = field("Model label")
+	}
+	tokenizer := orig.Tokenizer
+	if has("Tokenizer") {
+		tokenizer = field("Tokenizer")
+	}
+	priceID := orig.PriceID
+	if has("Price ID") {
+		priceID = field("Price ID")
+	}
+
 	workingDir := strings.TrimSpace(field("Working directory"))
 	if workingDir == "" && m.activeSession >= 0 {
 		workingDir = m.sessions[m.activeSession].Workspace
 	}
-	suffix := strings.NewReplacer(`\r`, "\r", `\n`, "\n", `\t`, "\t").Replace(field("Prompt suffix"))
+
+	suffix := orig.PromptSuffix
+	if has("Prompt suffix") {
+		suffix = strings.NewReplacer(`\r`, "\r", `\n`, "\n", `\t`, "\t").Replace(field("Prompt suffix"))
+	}
 	if suffix == "" {
 		suffix = "\r"
 	}
+
 	cfg := domain.ExecutorConfig{
 		ID: id.New("exec"), Name: field("Display name"), Command: command, Args: args,
-		WorkingDir: workingDir, Environment: environment, Shell: field("Shell (optional)"),
+		BinaryName: orig.BinaryName, InstallDir: orig.InstallDir, CreatedAt: orig.CreatedAt,
+		WorkingDir: workingDir, Environment: environment, Shell: shell,
 		ResumeCommand: resumeCommand, ResumeArgs: resumeArgs, Rules: rules,
-		Timeout: timeout, PromptSuffix: suffix, Roles: roles, Model: field("Model label"),
-		Tokenizer: field("Tokenizer"), PriceID: field("Price ID"),
+		Timeout: timeout, PromptSuffix: suffix, Roles: roles, Model: model,
+		Tokenizer: tokenizer, PriceID: priceID,
 	}
 	return cfg, cfg.Validate()
 }
