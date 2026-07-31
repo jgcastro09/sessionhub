@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -266,16 +267,7 @@ func extractBinaryFromTarGz(archivePath, destDir string) (string, error) {
 
 func replaceExecutable(currentPath, newBinaryPath string) error {
 	if runtime.GOOS == "windows" {
-		oldPath := currentPath + ".old"
-		_ = os.Remove(oldPath)
-		if err := os.Rename(currentPath, oldPath); err != nil {
-			return fmt.Errorf("rename current executable to .old: %w", err)
-		}
-		if err := copyFileContents(newBinaryPath, currentPath); err != nil {
-			_ = os.Rename(oldPath, currentPath)
-			return fmt.Errorf("copy new binary: %w", err)
-		}
-		return nil
+		return scheduleWindowsReplacement(currentPath, newBinaryPath)
 	}
 
 	tempPath := currentPath + ".new"
@@ -284,6 +276,35 @@ func replaceExecutable(currentPath, newBinaryPath string) error {
 	}
 	_ = os.Chmod(tempPath, 0o755)
 	return os.Rename(tempPath, currentPath)
+}
+
+// scheduleWindowsReplacement avoids renaming a running .exe, which Windows
+// correctly rejects. The verified binary is staged beside the executable and
+// a small PowerShell helper waits for this process to exit before replacing
+// it. The UI tells the user to restart, so no files are swapped mid-session.
+func scheduleWindowsReplacement(currentPath, newBinaryPath string) error {
+	stagedPath := currentPath + ".sessionhub-new"
+	if err := copyFileContents(newBinaryPath, stagedPath); err != nil {
+		return fmt.Errorf("stage new Windows executable: %w", err)
+	}
+	command := windowsReplacementCommand(os.Getpid(), stagedPath, currentPath)
+	helper := exec.Command(
+		"powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+		"-Command", command,
+	)
+	if err := helper.Start(); err != nil {
+		_ = os.Remove(stagedPath)
+		return fmt.Errorf("start Windows update helper: %w", err)
+	}
+	return nil
+}
+
+func windowsReplacementCommand(pid int, stagedPath, currentPath string) string {
+	quote := func(path string) string { return "'" + strings.ReplaceAll(path, "'", "''") + "'" }
+	return fmt.Sprintf(
+		"$ErrorActionPreference='Stop'; Wait-Process -Id %d; Move-Item -LiteralPath %s -Destination %s -Force",
+		pid, quote(stagedPath), quote(currentPath),
+	)
 }
 
 func copyFileContents(src, dst string) error {

@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.38] - 2026-07-30 22:11:35 -03:00
+
+### Fixed
+
+- Windows self-update now stages the verified executable and replaces it only after SessionHub exits, instead of trying to rename the running `.exe`.
+- Replaced all-motion mouse capture with cell-motion capture, preserving clickable UI controls without Windows Terminal pointer/escape-sequence rendering glitches.
+
 ## [0.3.37] - 2026-07-30 22:02:59 -03:00
 
 ### Fixed

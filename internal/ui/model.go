@@ -2185,9 +2185,10 @@ func (m Model) View() tea.View {
 	content := m.render()
 	view := tea.NewView(content)
 	view.AltScreen = true
-	// Mouse is captured at all times (not just while a terminal is focused)
-	// so the sidebar and tab bar are clickable from anywhere.
-	view.MouseMode = tea.MouseModeAllMotion
+	// Cell motion keeps sidebar/tab clicks working without enabling terminal
+	// hover reporting. The latter can make Windows Terminal hide the pointer
+	// and render stray mouse escape sequences after a screen refresh.
+	view.MouseMode = tea.MouseModeCellMotion
 	if m.focus {
 		view.KeyboardEnhancements.ReportEventTypes = true
 	}

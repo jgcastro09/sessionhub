@@ -1,6 +1,9 @@
 package update
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestVersionComparison(t *testing.T) {
 	if !IsNewer("0.1.0", "v0.2.0") {
@@ -19,5 +22,12 @@ func TestChecksumLookup(t *testing.T) {
 	}
 	if _, err := checksumFor([]byte(hash+" other\n"), "missing"); err == nil {
 		t.Fatal("expected missing checksum error")
+	}
+}
+
+func TestWindowsReplacementCommandWaitsAndEscapesPaths(t *testing.T) {
+	command := windowsReplacementCommand(42, `C:\O'Brien\sessionhub.exe.sessionhub-new`, `C:\O'Brien\sessionhub.exe`)
+	if !strings.Contains(command, "Wait-Process -Id 42") || !strings.Contains(command, "O''Brien") || !strings.Contains(command, "Move-Item") {
+		t.Fatalf("unexpected replacement command: %s", command)
 	}
 }
