@@ -17,6 +17,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/store"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	"github.com/jgcastro09/sessionhub/internal/voice"
+	"github.com/jgcastro09/sessionhub/internal/webserver"
 )
 
 type App struct {
@@ -37,6 +38,9 @@ type App struct {
 	remoteHost          *remote.Host
 	remoteDiscovery     *remote.Discovery
 	networkSettings     config.NetworkSettings
+	webMu               sync.Mutex
+	webServer           *webserver.Server
+	webSettings         config.WebPanelSettings
 	recovered           int64
 }
 
@@ -68,6 +72,12 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		cancel()
 		return nil, err
 	}
+	webSettings, err := config.LoadWebPanelSettings(paths.WebSettings)
+	if err != nil {
+		_ = repository.Close()
+		cancel()
+		return nil, err
+	}
 	a := &App{
 		Version: version, Paths: paths, Store: repository,
 		Terminals: terminals, Executors: executors,
@@ -75,6 +85,7 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		Automation: automationEngine, AutomationScheduler: automationScheduler,
 		Voice:           voice.NewManager(paths.Tools),
 		networkSettings: networkSettings,
+		webSettings:     webSettings,
 		ctx:             ctx, cancel: cancel, recovered: recovered,
 	}
 	// Remote Mode is a peer feature: every open SessionHub hosts its own
@@ -84,6 +95,11 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 	if networkSettings.RemoteEnabled {
 		if err := a.StartAutomaticRemote(); err != nil {
 			_ = repository.Log(context.Background(), domain.LogEntry{Level: "warn", Kind: "remote", Message: "automatic remote discovery unavailable: " + err.Error()})
+		}
+	}
+	if webSettings.Enabled {
+		if err := a.StartWebPanel(); err != nil {
+			_ = repository.Log(context.Background(), domain.LogEntry{Level: "warn", Kind: "web", Message: "web panel unavailable: " + err.Error()})
 		}
 	}
 	go executors.Run()
@@ -115,7 +131,7 @@ func (a *App) Close() error {
 		a.AutomationScheduler.Close()
 		a.cancel()
 		a.Automation.Wait()
-		result = errors.Join(a.StopRemoteHost(), a.Terminals.Close(), a.Voice.Close(), a.Store.Close())
+		result = errors.Join(a.StopRemoteHost(), a.StopWebPanel(), a.Terminals.Close(), a.Voice.Close(), a.Store.Close())
 	})
 	return result
 }

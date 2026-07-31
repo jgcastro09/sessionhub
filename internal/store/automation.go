@@ -282,6 +282,29 @@ ORDER BY next_run`, at.UTC().Format(time.RFC3339Nano))
 	return out, rows.Err()
 }
 
+func (s *Store) ListSchedules(ctx context.Context, sessionID string) ([]domain.Schedule, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT payload FROM schedules WHERE session_id=?
+ORDER BY created_at`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list schedules: %w", err)
+	}
+	defer rows.Close()
+	var out []domain.Schedule
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		v, err := decode[domain.Schedule](data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 func ValidatePipeline(steps []domain.PipelineStep) error {
 	byID := make(map[string]domain.PipelineStep, len(steps))
 	for _, step := range steps {
@@ -404,6 +427,29 @@ INSERT INTO step_dependencies(step_id,dependency_id) VALUES(?,?)`,
 		return pipeline, steps, err
 	}
 	return pipeline, steps, nil
+}
+
+func (s *Store) ListPipelines(ctx context.Context, sessionID string) ([]domain.Pipeline, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT payload FROM pipelines WHERE session_id=?
+ORDER BY created_at`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list pipelines: %w", err)
+	}
+	defer rows.Close()
+	var out []domain.Pipeline
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		v, err := decode[domain.Pipeline](data)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ClaimReadySteps(ctx context.Context, pipelineID string, limit int) ([]domain.PipelineStep, error) {

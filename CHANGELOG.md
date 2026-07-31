@@ -6,6 +6,17 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-31 13:55:49 -03:00
+
+### Added
+
+- Web Panel: a monitoring-only companion dashboard served straight from the SessionHub binary (`internal/webserver`), covering sessions, executors, aggregated token/cost metrics, logs, queue, schedules, and pipelines as read-only REST endpoints plus a `/api/events` Server-Sent Events stream for live updates.
+- Terminal-styled, mobile-first web frontend (`web/`, React + Vite + TypeScript) built straight into `internal/webserver/dist` via `go:embed`, so the panel ships inside the single Go binary with no extra runtime dependency.
+- Lightweight access control for the panel: a Tailscale-address trust check reusing `remote.IsTailscaleIP` (no code needed on the tailnet), and a short pairing code + HttpOnly cookie flow for LAN access, configurable per `Settings` in the TUI (`[w]` toggle, `[b]` cycle bind mode, `[g]` regenerate pairing code).
+- New `ListSchedules`/`ListPipelines` store queries and `App.WebQueue`/`WebSchedules`/`WebPipelines` methods backing the panel's automation views.
+
+Bumps version to 0.4.0.
+
 ## [0.3.51] - 2026-07-31 13:07:00 -03:00
 
 ### Removed

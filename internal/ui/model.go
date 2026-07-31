@@ -21,6 +21,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jgcastro09/sessionhub/internal/app"
 	"github.com/jgcastro09/sessionhub/internal/automation"
+	"github.com/jgcastro09/sessionhub/internal/config"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/gitstate"
@@ -74,6 +75,25 @@ type networkSettingsMsg struct {
 	action  string
 	enabled bool
 	err     error
+}
+
+type webPanelSettingsMsg struct {
+	action string
+	err    error
+}
+
+// nextWebBindMode cycles the three bind modes in a fixed order so the "b"
+// key in Settings acts like a dial: Tailscale (no code needed, the default)
+// → LAN-only (needs pairing) → both → back to Tailscale.
+func nextWebBindMode(mode config.WebBindMode) config.WebBindMode {
+	switch mode {
+	case config.WebBindTailscale:
+		return config.WebBindLocal
+	case config.WebBindLocal:
+		return config.WebBindBoth
+	default:
+		return config.WebBindTailscale
+	}
 }
 
 type savedMsg struct {
@@ -593,6 +613,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "Tailscale discovery disabled • LAN discovery remains available"
 			}
 		}
+	case webPanelSettingsMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			m.status = "Couldn't update Web Panel: " + msg.err.Error()
+			return m, nil
+		}
+		switch msg.action {
+		case "toggle":
+			if m.app.WebPanelStatus().Active {
+				m.status = "Web Panel enabled • see Settings for the URL and pairing code"
+			} else {
+				m.status = "Web Panel disabled • it's no longer reachable on any network"
+			}
+		case "bind":
+			m.status = "Web Panel bind mode updated to " + string(m.app.WebPanelStatus().BindMode)
+		}
 	case savedMsg:
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
@@ -1047,6 +1083,34 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return networkSettingsMsg{action: "restart", err: application.RestartRemote()}
 				}
+			}
+		case "w":
+			if sections[m.section] == "Settings" {
+				enabled := !m.app.WebPanelStatus().Enabled
+				application := m.app
+				m.status = "Updating Web Panel..."
+				return m, func() tea.Msg {
+					return webPanelSettingsMsg{action: "toggle", err: application.SetWebPanelEnabled(enabled)}
+				}
+			}
+		case "b":
+			if sections[m.section] == "Settings" {
+				application := m.app
+				next := nextWebBindMode(m.app.WebPanelStatus().BindMode)
+				m.status = "Updating Web Panel bind mode..."
+				return m, func() tea.Msg {
+					return webPanelSettingsMsg{action: "bind", err: application.SetWebBindMode(next)}
+				}
+			}
+		case "g":
+			if sections[m.section] == "Settings" {
+				code := m.app.RegenerateWebPairingCode()
+				if code == "" {
+					m.status = "Web Panel isn't running — enable it with w first"
+				} else {
+					m.status = "New pairing code generated"
+				}
+				return m, nil
 			}
 		}
 	}
@@ -3094,6 +3158,28 @@ func (m Model) emptyContent(width, height int) string {
 			body.WriteString("  Host        " + mutedStyle.Render(network.Endpoint) + "\n")
 		}
 		body.WriteString("  Config      " + mutedStyle.Render(m.app.Paths.NetworkSettings) + "\n\n")
+
+		webPanel := m.app.WebPanelStatus()
+		body.WriteString(titleStyle.Render("Web Panel") + "\n")
+		webState := "DISABLED"
+		webDetail := "not reachable from the browser"
+		if webPanel.Enabled {
+			webState = "ENABLED"
+			webDetail = "starting..."
+			if webPanel.Active {
+				webDetail = "reachable at " + webPanel.Endpoint
+			}
+		}
+		body.WriteString("  " + keyStyle.Render("[w]") + " Web Panel         " + keyStyle.Render(webState) + "  " + mutedStyle.Render(webDetail) + "\n")
+		body.WriteString("  " + keyStyle.Render("[b]") + " Bind mode         " + keyStyle.Render(strings.ToUpper(string(webPanel.BindMode))) + "  " + mutedStyle.Render("tailscale → local → both") + "\n")
+		if webPanel.Active {
+			if webPanel.NeedsPairing {
+				body.WriteString("  " + keyStyle.Render("[g]") + " Pairing code      " + keyStyle.Render(webPanel.PairingCode) + "  " + mutedStyle.Render("type this once on a LAN device's browser • g regenerates it") + "\n")
+			} else {
+				body.WriteString("  " + mutedStyle.Render("Tailscale-only: any device on your tailnet opens the URL above with no code needed.") + "\n")
+			}
+		}
+		body.WriteString("  Config      " + mutedStyle.Render(m.app.Paths.WebSettings) + "\n\n")
 
 		body.WriteString(titleStyle.Render("Software Update") + "\n")
 		if m.isUpdating {

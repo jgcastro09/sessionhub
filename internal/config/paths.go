@@ -24,6 +24,8 @@ type Paths struct {
 	// discovery always remains enabled; this file only controls whether
 	// Tailscale peer discovery is used as an additional interface.
 	NetworkSettings string
+	// WebSettings persists the web panel's enabled/bind-mode/port preferences.
+	WebSettings string
 }
 
 func ResolvePaths() (Paths, error) {
@@ -51,6 +53,7 @@ func ResolvePaths() (Paths, error) {
 		Executors:       filepath.Join(root, "executors"),
 		Tools:           filepath.Join(root, "tools"),
 		NetworkSettings: filepath.Join(root, "network.json"),
+		WebSettings:     filepath.Join(root, "web.json"),
 	}
 	for _, dir := range []string{p.Root, p.Logs, p.Downloads, p.Executors, p.Tools} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
