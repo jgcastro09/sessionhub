@@ -25,15 +25,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-      - name: Publish to NPM
-        run: npm publish --access public
-        working-directory: npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   macos-voice-tools:
     # Builds the macOS half of voice dictation: whisper.cpp has no
@@ -47,13 +38,6 @@ jobs:
     # touches that build.
     runs-on: macos-latest
     needs: goreleaser
-    # The goreleaser job's own "Publish to NPM" step always fails in CI by
-    # this repo's convention (no NPM_TOKEN there; publish is done manually
-    # from the terminal — see AGENTS.md rule 6), which makes the job's
-    # overall conclusion "failure" even though the release itself was
-    # already created successfully a step earlier. `needs:` alone would
-    # skip this job in that case, so run regardless of that job's result.
-    if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@v7
 
