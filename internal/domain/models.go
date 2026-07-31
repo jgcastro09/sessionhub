@@ -127,36 +127,38 @@ func (c ExecutorConfig) Redacted() ExecutorConfig {
 	return out
 }
 
-type Session struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
-	Workspace      string          `json:"workspace"`
+type Project struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Root is the absolute local root of the project. Project configuration
+	// itself always lives below Root/.shproject and only stores relative paths.
+	Root           string          `json:"root"`
 	ActiveInstance string          `json:"active_instance,omitempty"`
 	Settings       json.RawMessage `json:"settings,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
-func (s Session) Validate() error {
+func (s Project) Validate() error {
 	if strings.TrimSpace(s.Name) == "" {
-		return fmt.Errorf("session name is required")
+		return fmt.Errorf("project name is required")
 	}
-	if strings.TrimSpace(s.Workspace) == "" {
-		return fmt.Errorf("session workspace is required")
+	if strings.TrimSpace(s.Root) == "" {
+		return fmt.Errorf("project root is required")
 	}
 	return nil
 }
 
-// sessionSettings is the shape persisted in Session.Settings. A session
+// sessionSettings is the shape persisted in Project.Settings. A project
 // carries no conversation "context" of its own — it's just a workspace plus
 // which CLIs (Executors) are grouped together as tabs under it.
 type sessionSettings struct {
 	ExecutorIDs []string `json:"executor_ids,omitempty"`
 }
 
-// ExecutorIDs returns the Executors grouped under this session (one tab
+// ExecutorIDs returns the Executors grouped under this project (one tab
 // each), in the order they were assigned.
-func (s Session) ExecutorIDs() []string {
+func (s Project) ExecutorIDs() []string {
 	if len(s.Settings) == 0 {
 		return nil
 	}
@@ -165,8 +167,8 @@ func (s Session) ExecutorIDs() []string {
 	return settings.ExecutorIDs
 }
 
-// SetExecutorIDs replaces the Executors grouped under this session.
-func (s *Session) SetExecutorIDs(ids []string) {
+// SetExecutorIDs replaces the Executors grouped under this project.
+func (s *Project) SetExecutorIDs(ids []string) {
 	data, err := json.Marshal(sessionSettings{ExecutorIDs: ids})
 	if err != nil {
 		return
@@ -176,7 +178,7 @@ func (s *Session) SetExecutorIDs(ids []string) {
 
 type Instance struct {
 	ID         string     `json:"id"`
-	SessionID  string     `json:"session_id"`
+	ProjectID  string     `json:"project_id"`
 	ExecutorID string     `json:"executor_id"`
 	State      State      `json:"state"`
 	ExitCode   *int       `json:"exit_code,omitempty"`
@@ -187,7 +189,7 @@ type Instance struct {
 }
 
 type GlobalContext struct {
-	SessionID       string          `json:"session_id"`
+	ProjectID       string          `json:"project_id"`
 	Goal            string          `json:"goal,omitempty"`
 	OriginalRequest string          `json:"original_request,omitempty"`
 	Progress        string          `json:"progress,omitempty"`
@@ -206,7 +208,7 @@ type GlobalContext struct {
 
 type Checkpoint struct {
 	ID        string          `json:"id"`
-	SessionID string          `json:"session_id"`
+	ProjectID string          `json:"project_id"`
 	Name      string          `json:"name"`
 	Automatic bool            `json:"automatic"`
 	Snapshot  json.RawMessage `json:"snapshot"`
@@ -223,7 +225,7 @@ const (
 
 type Metric struct {
 	ID             string    `json:"id"`
-	SessionID      string    `json:"session_id,omitempty"`
+	ProjectID      string    `json:"project_id,omitempty"`
 	ExecutorID     string    `json:"executor_id,omitempty"`
 	InstanceID     string    `json:"instance_id,omitempty"`
 	AutomationID   string    `json:"automation_id,omitempty"`
@@ -275,7 +277,7 @@ func (b Budget) HasObjectiveLimit() bool {
 
 type QueueItem struct {
 	ID               string          `json:"id"`
-	SessionID        string          `json:"session_id"`
+	ProjectID        string          `json:"project_id"`
 	ExecutorID       string          `json:"executor_id"`
 	Prompt           string          `json:"prompt"`
 	Priority         int             `json:"priority"`
@@ -319,7 +321,7 @@ const (
 
 type Schedule struct {
 	ID           string          `json:"id"`
-	SessionID    string          `json:"session_id"`
+	ProjectID    string          `json:"project_id"`
 	Name         string          `json:"name"`
 	Kind         ScheduleKind    `json:"kind"`
 	Spec         string          `json:"spec"`
@@ -347,7 +349,7 @@ const (
 
 type Pipeline struct {
 	ID            string          `json:"id"`
-	SessionID     string          `json:"session_id"`
+	ProjectID     string          `json:"project_id"`
 	Name          string          `json:"name"`
 	State         State           `json:"state"`
 	Budget        Budget          `json:"budget"`
@@ -387,7 +389,7 @@ type PipelineStep struct {
 
 type Approval struct {
 	ID          string     `json:"id"`
-	SessionID   string     `json:"session_id"`
+	ProjectID   string     `json:"project_id"`
 	TargetType  string     `json:"target_type"`
 	TargetID    string     `json:"target_id"`
 	Reason      string     `json:"reason"`
@@ -400,7 +402,7 @@ type Approval struct {
 
 type Watcher struct {
 	ID            string          `json:"id"`
-	SessionID     string          `json:"session_id"`
+	ProjectID     string          `json:"project_id"`
 	Name          string          `json:"name"`
 	Kind          string          `json:"kind"`
 	Workspace     string          `json:"workspace"`
@@ -415,7 +417,7 @@ type Watcher struct {
 
 type LogEntry struct {
 	ID        string          `json:"id"`
-	SessionID string          `json:"session_id,omitempty"`
+	ProjectID string          `json:"project_id,omitempty"`
 	Level     string          `json:"level"`
 	Kind      string          `json:"kind"`
 	Message   string          `json:"message"`

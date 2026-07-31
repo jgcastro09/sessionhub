@@ -1,5 +1,5 @@
 // Package webserver exposes a read-only HTTP view of a running SessionHub —
-// sessions, executors, metrics, logs and automation status — for the
+// projects, executors, metrics, logs and automation status — for the
 // companion web panel. It deliberately mirrors internal/remote's Backend
 // pattern instead of talking to internal/store directly, so the same App
 // methods back both the TCP remote-control protocol and this HTTP surface.
@@ -19,10 +19,10 @@ import (
 
 // Backend is the read-only subset of data a monitoring dashboard needs. Its
 // first five methods intentionally share signatures with internal/remote's
-// Backend interface (RemoteSessions, RemoteExecutors, ...) so *app.App
+// Backend interface (RemoteProjects, RemoteExecutors, ...) so *app.App
 // satisfies both without duplicate glue code.
 type Backend interface {
-	RemoteSessions(context.Context) ([]domain.Session, error)
+	RemoteProjects(context.Context) ([]domain.Project, error)
 	RemoteExecutors(context.Context) ([]domain.ExecutorConfig, error)
 	RemoteExecutorStatuses(context.Context) ([]remote.ExecutorStatus, error)
 	RemoteMetrics(context.Context, string) (domain.Metric, error)
@@ -71,7 +71,7 @@ func Listen(ctx context.Context, address string, backend Backend, bindMode confi
 func (s *Server) Address() string { return s.listener.Addr().String() }
 
 // PairingCode is the current code a device must send to /api/pair to get a
-// session cookie under WebBindLocal/WebBindBoth. Rendered in the TUI.
+// project cookie under WebBindLocal/WebBindBoth. Rendered in the TUI.
 func (s *Server) PairingCode() string { return s.pairing.Code() }
 
 // RegeneratePairingCode invalidates the current pairing code (already-paired

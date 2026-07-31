@@ -33,8 +33,8 @@ func (s *Store) Enqueue(ctx context.Context, item domain.QueueItem) (domain.Queu
 		return item, err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO queue_items(id,session_id,executor_id,state,priority,idempotency_key,payload,created_at,updated_at)
-VALUES(?,?,?,?,?,?,?,?,?)`, item.ID, item.SessionID, item.ExecutorID, item.State,
+INSERT INTO queue_items(id,project_id,executor_id,state,priority,idempotency_key,payload,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?)`, item.ID, item.ProjectID, item.ExecutorID, item.State,
 		item.Priority, item.IdempotencyKey, data, now.Format(time.RFC3339Nano),
 		now.Format(time.RFC3339Nano))
 	if err != nil {
@@ -43,10 +43,10 @@ VALUES(?,?,?,?,?,?,?,?,?)`, item.ID, item.SessionID, item.ExecutorID, item.State
 	return item, nil
 }
 
-func (s *Store) ListQueue(ctx context.Context, sessionID string) ([]domain.QueueItem, error) {
+func (s *Store) ListQueue(ctx context.Context, projectID string) ([]domain.QueueItem, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT payload,state FROM queue_items WHERE session_id=?
-ORDER BY priority DESC, created_at`, sessionID)
+SELECT payload,state FROM queue_items WHERE project_id=?
+ORDER BY priority DESC, created_at`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list queue: %w", err)
 	}
@@ -70,7 +70,7 @@ ORDER BY priority DESC, created_at`, sessionID)
 
 // ClaimNextQueue atomically claims one eligible pending item and reserves its
 // idempotency key before the caller writes to a PTY.
-func (s *Store) ClaimNextQueue(ctx context.Context, sessionID string) (*domain.QueueItem, error) {
+func (s *Store) ClaimNextQueue(ctx context.Context, projectID string) (*domain.QueueItem, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin queue claim: %w", err)
@@ -78,8 +78,8 @@ func (s *Store) ClaimNextQueue(ctx context.Context, sessionID string) (*domain.Q
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx, `
 SELECT payload FROM queue_items
-WHERE session_id=? AND state='pending'
-ORDER BY priority DESC, created_at`, sessionID)
+WHERE project_id=? AND state='pending'
+ORDER BY priority DESC, created_at`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("read queue candidates: %w", err)
 	}
@@ -247,11 +247,11 @@ func (s *Store) SaveSchedule(ctx context.Context, schedule domain.Schedule) (dom
 		next = schedule.NextRun.UTC().Format(time.RFC3339Nano)
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO schedules(id,session_id,enabled,next_run,payload,created_at,updated_at)
+INSERT INTO schedules(id,project_id,enabled,next_run,payload,created_at,updated_at)
 VALUES(?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,next_run=excluded.next_run,
  payload=excluded.payload,updated_at=excluded.updated_at`,
-		schedule.ID, schedule.SessionID, schedule.Enabled, next, data,
+		schedule.ID, schedule.ProjectID, schedule.Enabled, next, data,
 		schedule.CreatedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 	if err != nil {
 		return schedule, fmt.Errorf("save schedule: %w", err)
@@ -282,10 +282,10 @@ ORDER BY next_run`, at.UTC().Format(time.RFC3339Nano))
 	return out, rows.Err()
 }
 
-func (s *Store) ListSchedules(ctx context.Context, sessionID string) ([]domain.Schedule, error) {
+func (s *Store) ListSchedules(ctx context.Context, projectID string) ([]domain.Schedule, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT payload FROM schedules WHERE session_id=?
-ORDER BY created_at`, sessionID)
+SELECT payload FROM schedules WHERE project_id=?
+ORDER BY created_at`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list schedules: %w", err)
 	}
@@ -394,9 +394,9 @@ func (s *Store) SavePipeline(
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO pipelines(id,session_id,name,state,template,payload,created_at,updated_at)
+INSERT INTO pipelines(id,project_id,name,state,template,payload,created_at,updated_at)
 VALUES(?,?,?,?,?,?,?,?)`,
-		pipeline.ID, pipeline.SessionID, pipeline.Name, pipeline.State,
+		pipeline.ID, pipeline.ProjectID, pipeline.Name, pipeline.State,
 		pipeline.Template, pipelineData, pipeline.CreatedAt.Format(time.RFC3339Nano),
 		now.Format(time.RFC3339Nano))
 	if err != nil {
@@ -429,10 +429,10 @@ INSERT INTO step_dependencies(step_id,dependency_id) VALUES(?,?)`,
 	return pipeline, steps, nil
 }
 
-func (s *Store) ListPipelines(ctx context.Context, sessionID string) ([]domain.Pipeline, error) {
+func (s *Store) ListPipelines(ctx context.Context, projectID string) ([]domain.Pipeline, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT payload FROM pipelines WHERE session_id=?
-ORDER BY created_at`, sessionID)
+SELECT payload FROM pipelines WHERE project_id=?
+ORDER BY created_at`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list pipelines: %w", err)
 	}
@@ -754,7 +754,7 @@ func (s *Store) generatePipelineReport(ctx context.Context, pipelineID string, s
 	if err != nil {
 		return err
 	}
-	_, err = s.SaveReport(ctx, pipeline.SessionID, "pipeline", pipelineID, map[string]any{
+	_, err = s.SaveReport(ctx, pipeline.ProjectID, "pipeline", pipelineID, map[string]any{
 		"request": pipeline.Request, "pipeline": pipeline.Name, "state": state,
 		"steps": steps, "metrics": metric, "verdict": state,
 	})
@@ -833,7 +833,7 @@ func (s *Store) ReleaseWorkspaceLock(ctx context.Context, workspace, ownerID str
 	return err
 }
 
-func (s *Store) AggregateMetrics(ctx context.Context, sessionID string) (domain.Metric, error) {
+func (s *Store) AggregateMetrics(ctx context.Context, projectID string) (domain.Metric, error) {
 	var out domain.Metric
 	query := `
 SELECT COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),
@@ -841,10 +841,10 @@ SELECT COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),
  COALESCE(SUM(duration_ms),0),COALESCE(SUM(cost_micros_usd),0)
 FROM metrics`
 	var row *sql.Row
-	if sessionID == "" {
+	if projectID == "" {
 		row = s.db.QueryRowContext(ctx, query)
 	} else {
-		row = s.db.QueryRowContext(ctx, query+` WHERE session_id=?`, sessionID)
+		row = s.db.QueryRowContext(ctx, query+` WHERE project_id=?`, projectID)
 	}
 	err := row.Scan(&out.InputTokens, &out.OutputTokens, &out.CacheRead,
 		&out.CacheWrite, &out.Duration, &out.CostMicrosUSD)
@@ -895,15 +895,15 @@ func (s *Store) SetPipelineState(ctx context.Context, pipelineID string, state d
 	return err
 }
 
-func (s *Store) ListLogs(ctx context.Context, sessionID string, limit int) ([]domain.LogEntry, error) {
+func (s *Store) ListLogs(ctx context.Context, projectID string, limit int) ([]domain.LogEntry, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	query := `SELECT id,COALESCE(session_id,''),level,kind,message,fields,created_at FROM logs`
+	query := `SELECT id,COALESCE(project_id,''),level,kind,message,fields,created_at FROM logs`
 	args := []any{}
-	if sessionID != "" {
-		query += ` WHERE session_id=?`
-		args = append(args, sessionID)
+	if projectID != "" {
+		query += ` WHERE project_id=?`
+		args = append(args, projectID)
 	}
 	query += ` ORDER BY sequence DESC LIMIT ?`
 	args = append(args, limit)
@@ -917,7 +917,7 @@ func (s *Store) ListLogs(ctx context.Context, sessionID string, limit int) ([]do
 		var v domain.LogEntry
 		var fields []byte
 		var created string
-		if err := rows.Scan(&v.ID, &v.SessionID, &v.Level, &v.Kind,
+		if err := rows.Scan(&v.ID, &v.ProjectID, &v.Level, &v.Kind,
 			&v.Message, &fields, &created); err != nil {
 			return nil, err
 		}

@@ -60,7 +60,7 @@ func TestTerminalRelativeCoords(t *testing.T) {
 		width:         100,
 		height:        30,
 		sidebar:       true,
-		activeSession: 0,
+		activeProject: 0,
 	}
 
 	// Sidebar = 26 cols, top bar + tab bar = 2 rows
@@ -126,17 +126,17 @@ func TestTabLabelWidth(t *testing.T) {
 }
 
 // TestRenderTopStaysSingleLine guards against a regression where a long
-// session/workspace/branch combo made lipgloss word-wrap the top bar onto a
+// project/workspace/branch combo made lipgloss word-wrap the top bar onto a
 // second line. Every row below it (crucially the tab bar, whose click
 // detection hardcodes y==1) assumes renderTop() is exactly one line, so a
 // wrap there silently broke tab switching once real (non-placeholder)
-// session names were configured.
+// project names were configured.
 func TestRenderTopStaysSingleLine(t *testing.T) {
 	m := Model{
 		width:         80,
-		activeSession: 0,
-		sessions: []domain.Session{
-			{ID: "s1", Name: "a-fairly-long-session-name-for-testing", Workspace: "/some/long/workspace/path/here"},
+		activeProject: 0,
+		projects: []domain.Project{
+			{ID: "s1", Name: "a-fairly-long-project-name-for-testing", Root: "/some/long/workspace/path/here"},
 		},
 	}
 	out := m.renderTop()
@@ -188,6 +188,3 @@ func TestParseAltShortcut(t *testing.T) {
 		}
 	}
 }
-
-
-

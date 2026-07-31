@@ -6,6 +6,35 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-07-31 15:22:46 -03:00
+
+### Changed
+
+- Replaced the runtime Session domain and `session_id` schema with Project and `project_id`, while retaining `terminal.Session` exclusively for PTY objects.
+- Added portable `.shproject` manifests with stable UUIDs, safe discovery, atomic writes, path-containment validation and a local non-destructive project catalogue.
+- Migrated remote project frames and the Web Panel to the incompatible `/api/v2/projects/{projectID}/...` contract, including project-scoped SSE payloads.
+- Updated TUI and Web Panel terminology and project-root handling; Web Panel assets are rebuilt from the Project API client.
+
+Bumps version to 0.4.4.
+
+## [0.4.3] - 2026-07-31 15:04:01 -03:00
+
+### Changed
+
+- Simplified the Project-First implementation plan for pre-release development: Projects directly replace Sessions with no legacy schema, compatibility routes, migration wizard, dual read/write path or standalone-module fallback.
+- Added the successor plan for native, project-scoped Task Manager and Code Registry services, interfaces and Web Panel pages backed by `.shproject`.
+
+Bumps version to 0.4.3.
+
+## [0.4.2] - 2026-07-31 14:57:00 -03:00
+
+### Changed
+
+- Added the approved Project-First architecture plan: Projects replace Sessions as the primary workspace unit; project setup, executor slots, automation definitions, tasks and registry configuration move to `.shproject`, while global Executor profiles, Settings and sensitive runtime state remain local to Session Hub.
+- Defined the staged migration of runtime `session_id` data, TUI, Web Panel and remote protocol to `project_id` before Task Manager and Code Registry implementation begins.
+
+Bumps version to 0.4.2.
+
 ## [0.4.1] - 2026-07-31 14:23:04 -03:00
 
 ### Added

@@ -17,7 +17,7 @@ func TestMigrationsAndRecovery(t *testing.T) {
 	}
 	defer func() { _ = s.Close() }()
 
-	session, err := s.SaveSession(ctx, domain.Session{Name: "test", Workspace: t.TempDir()})
+	project, err := s.SaveProject(ctx, domain.Project{Name: "test", Root: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestMigrationsAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	inst, err := s.CreateInstance(ctx, domain.Instance{
-		SessionID: session.ID, ExecutorID: cfg.ID, State: domain.StateRunning,
+		ProjectID: project.ID, ExecutorID: cfg.ID, State: domain.StateRunning,
 	})
 	if err != nil {
 		t.Fatal(err)

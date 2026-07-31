@@ -215,8 +215,8 @@ func (a *App) RemoteHostAddress() string {
 	return a.remoteHost.Address()
 }
 
-func (a *App) RemoteSessions(ctx context.Context) ([]domain.Session, error) {
-	return a.Store.ListSessions(ctx)
+func (a *App) RemoteProjects(ctx context.Context) ([]domain.Project, error) {
+	return a.Projects.List()
 }
 
 func (a *App) RemoteExecutors(ctx context.Context) ([]domain.ExecutorConfig, error) {
@@ -228,15 +228,15 @@ func (a *App) RemoteExecutorStatuses(ctx context.Context) ([]remote.ExecutorStat
 	if err != nil {
 		return nil, err
 	}
-	sessions, err := a.Store.ListSessions(ctx)
+	projects, err := a.Projects.List()
 	if err != nil {
 		return nil, err
 	}
 	statuses := make([]remote.ExecutorStatus, 0, len(executors))
 	for _, cfg := range executors {
 		live := false
-		for _, session := range sessions {
-			if a.Executors.IsActive(session.ID, cfg.ID) {
+		for _, project := range projects {
+			if a.Executors.IsActive(project.ID, cfg.ID) {
 				live = true
 				break
 			}
@@ -246,8 +246,8 @@ func (a *App) RemoteExecutorStatuses(ctx context.Context) ([]remote.ExecutorStat
 	return statuses, nil
 }
 
-func (a *App) RemoteStartTerminal(ctx context.Context, sessionID, executorID string, width, height int) (domain.Instance, error) {
-	_, instance, err := a.Executors.StartOrReuse(ctx, sessionID, executorID, width, height)
+func (a *App) RemoteStartTerminal(ctx context.Context, projectID, executorID string, width, height int) (domain.Instance, error) {
+	_, instance, err := a.Executors.StartOrReuse(ctx, projectID, executorID, width, height)
 	return instance, err
 }
 
@@ -255,23 +255,23 @@ func (a *App) RemoteTerminal(instanceID string) (*terminal.Session, bool) {
 	return a.Terminals.Get(instanceID)
 }
 
-func (a *App) RemoteMetrics(ctx context.Context, sessionID string) (domain.Metric, error) {
-	return a.Store.AggregateMetrics(ctx, sessionID)
+func (a *App) RemoteMetrics(ctx context.Context, projectID string) (domain.Metric, error) {
+	return a.Store.AggregateMetrics(ctx, projectID)
 }
 
-func (a *App) RemoteLogs(ctx context.Context, sessionID string, limit int) ([]domain.LogEntry, error) {
-	return a.Store.ListLogs(ctx, sessionID, limit)
+func (a *App) RemoteLogs(ctx context.Context, projectID string, limit int) ([]domain.LogEntry, error) {
+	return a.Store.ListLogs(ctx, projectID, limit)
 }
 
-func (a *App) RemoteCheckpoint(ctx context.Context, sessionID, name string) (domain.Checkpoint, error) {
+func (a *App) RemoteCheckpoint(ctx context.Context, projectID, name string) (domain.Checkpoint, error) {
 	if name == "" {
 		name = "Remote checkpoint"
 	}
-	return a.Context.Checkpoint(ctx, sessionID, name, false)
+	return a.Context.Checkpoint(ctx, projectID, name, false)
 }
 
-func (a *App) RemoteRunQueue(ctx context.Context, sessionID string) error {
-	return a.Automation.RunQueueOnce(ctx, sessionID)
+func (a *App) RemoteRunQueue(ctx context.Context, projectID string) error {
+	return a.Automation.RunQueueOnce(ctx, projectID)
 }
 
 func (a *App) RemoteDecideApproval(

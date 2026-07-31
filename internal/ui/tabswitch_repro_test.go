@@ -51,9 +51,9 @@ func TestAltDigitSwitchesBetweenTwoTabs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	session := domain.Session{Name: "teste", Workspace: root}
-	session.SetExecutorIDs([]string{"exec_a", "exec_b"})
-	session, err = application.Store.SaveSession(ctx, session)
+	project := domain.Project{Name: "teste", Root: root}
+	project.SetExecutorIDs([]string{"exec_a", "exec_b"})
+	project, err = application.Store.SaveProject(ctx, project)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +100,8 @@ func TestAltDigitSwitchesBetweenTwoTabs(t *testing.T) {
 	// Initial data load, like Init would trigger.
 	drain(model.(Model).reload())
 
-	if got := model.(Model).activeSession; got < 0 {
-		t.Fatalf("expected an active session after reload, got %d", got)
+	if got := model.(Model).activeProject; got < 0 {
+		t.Fatalf("expected an active project after reload, got %d", got)
 	}
 
 	altDigit := func(d rune) tea.KeyPressMsg {
@@ -174,17 +174,17 @@ func TestRenderTabsMarksAutomationActivatedTerminalOnline(t *testing.T) {
 	if err := application.Store.SaveExecutor(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
-	session := domain.Session{Name: "automation", Workspace: root}
-	session.SetExecutorIDs([]string{cfg.ID})
-	session, err = application.Store.SaveSession(ctx, session)
+	project := domain.Project{Name: "automation", Root: root}
+	project.SetExecutorIDs([]string{cfg.ID})
+	project, err = application.Store.SaveProject(ctx, project)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	model := New(application)
 	model.width, model.height = 120, 40
-	model.sessions, model.executors, model.activeSession = []domain.Session{session}, []domain.ExecutorConfig{cfg}, 0
-	if _, _, err := application.Executors.Start(ctx, session.ID, cfg.ID, 80, 24); err != nil {
+	model.projects, model.executors, model.activeProject = []domain.Project{project}, []domain.ExecutorConfig{cfg}, 0
+	if _, _, err := application.Executors.Start(ctx, project.ID, cfg.ID, 80, 24); err != nil {
 		t.Fatal(err)
 	}
 	if got := model.renderTabs(); !strings.Contains(got, "● Automation CLI") {

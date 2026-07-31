@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version   = "0.4.1"
+	version   = "0.4.4"
 	commit    = "none"
 	buildDate = "unknown"
 )
@@ -28,7 +28,7 @@ func main() {
 
 func run() error {
 	showVersion := flag.Bool("version", false, "print version and build metadata")
-	dataDir := flag.String("data-dir", "", "override the Session Hub data directory")
+	dataDir := flag.String("data-dir", "", "override the Project Hub data directory")
 	remoteHost := flag.String("remote-host", "", "deprecated: Remote Mode starts and discovers peers automatically")
 	flag.Parse()
 	if *showVersion {

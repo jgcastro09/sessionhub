@@ -1,4 +1,4 @@
-import type { ExecutorConfig, ExecutorStatus, LogEntry, Metric, Pipeline, QueueItem, Schedule, Session } from './types'
+import type { ExecutorConfig, LogEntry, Metric, Pipeline, QueueItem, Schedule, Project } from './types'
 
 export class UnauthorizedError extends Error {
   constructor() {
@@ -32,13 +32,11 @@ export function pair(code: string): Promise<void> {
 }
 
 export const api = {
-  sessions: () => get<Session[]>('/api/sessions'),
-  executors: () => get<ExecutorConfig[]>('/api/executors'),
-  executorStatuses: () => get<ExecutorStatus[]>('/api/executors/status'),
-  metrics: (sessionId?: string) => get<Metric>(`/api/metrics${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`),
-  logs: (sessionId?: string, limit = 100) =>
-    get<LogEntry[]>(`/api/logs?limit=${limit}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`),
-  queue: (sessionId?: string) => get<QueueItem[]>(`/api/queue${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`),
-  schedules: (sessionId?: string) => get<Schedule[]>(`/api/schedules${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`),
-  pipelines: (sessionId?: string) => get<Pipeline[]>(`/api/pipelines${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`),
+	projects: () => get<Project[]>('/api/v2/projects'),
+	executors: (projectId: string) => get<ExecutorConfig[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/executors`),
+	metrics: (projectId: string) => get<Metric>(`/api/v2/projects/${encodeURIComponent(projectId)}/metrics`),
+	logs: (projectId: string, limit = 100) => get<LogEntry[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/logs?limit=${limit}`),
+	queue: (projectId: string) => get<QueueItem[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/queue`),
+	schedules: (projectId: string) => get<Schedule[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/automations`),
+	pipelines: (projectId: string) => get<Pipeline[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/pipelines`),
 }

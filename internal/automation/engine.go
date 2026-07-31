@@ -33,8 +33,8 @@ func NewEngine(repository *store.Store, dispatcher PromptDispatcher, concurrency
 	}
 }
 
-func (e *Engine) RunQueueOnce(ctx context.Context, sessionID string) error {
-	item, err := e.store.ClaimNextQueue(ctx, sessionID)
+func (e *Engine) RunQueueOnce(ctx context.Context, projectID string) error {
+	item, err := e.store.ClaimNextQueue(ctx, projectID)
 	if err != nil || item == nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func (e *Engine) RunQueueOnce(ctx context.Context, sessionID string) error {
 		return e.store.CompleteQueue(ctx, item.ID, domain.StateFailed, "dispatcher", nil,
 			"no prompt dispatcher is active")
 	}
-	err = e.dispatcher.DispatchPrompt(ctx, item.ID, item.SessionID, item.ExecutorID, item.Prompt)
+	err = e.dispatcher.DispatchPrompt(ctx, item.ID, item.ProjectID, item.ExecutorID, item.Prompt)
 	if err != nil {
 		return e.store.CompleteQueue(ctx, item.ID, domain.StateWaiting, "control", nil,
 			"PTY input was not sent: "+err.Error())
@@ -132,7 +132,7 @@ func (e *Engine) executeStep(ctx context.Context, step domain.PipelineStep, work
 		}
 	case domain.StepPrompt:
 		var config struct {
-			SessionID  string `json:"session_id"`
+			ProjectID  string `json:"project_id"`
 			ExecutorID string `json:"executor_id"`
 			Prompt     string `json:"prompt"`
 		}
@@ -144,7 +144,7 @@ func (e *Engine) executeStep(ctx context.Context, step domain.PipelineStep, work
 			outcome, message = domain.StateFailed, "no prompt dispatcher is active"
 			break
 		}
-		if err := e.dispatcher.DispatchPrompt(ctx, step.ID, config.SessionID, config.ExecutorID, config.Prompt); err != nil {
+		if err := e.dispatcher.DispatchPrompt(ctx, step.ID, config.ProjectID, config.ExecutorID, config.Prompt); err != nil {
 			outcome, message = domain.StateWaiting, "PTY input was not sent: "+err.Error()
 		} else {
 			outcome, message = domain.StateWaiting, "prompt sent; awaiting completion evidence"
@@ -152,7 +152,7 @@ func (e *Engine) executeStep(ctx context.Context, step domain.PipelineStep, work
 	case domain.StepApproval:
 		outcome, message = domain.StateWaiting, "manual approval required"
 		var config struct {
-			SessionID string `json:"session_id"`
+			ProjectID string `json:"project_id"`
 			Reason    string `json:"reason"`
 		}
 		_ = json.Unmarshal(step.Config, &config)
@@ -160,7 +160,7 @@ func (e *Engine) executeStep(ctx context.Context, step domain.PipelineStep, work
 			config.Reason = step.Name
 		}
 		if _, err := e.store.CreateApproval(ctx, domain.Approval{
-			SessionID: config.SessionID, TargetType: "pipeline_step",
+			ProjectID: config.ProjectID, TargetType: "pipeline_step",
 			TargetID: step.ID, Reason: config.Reason,
 		}); err != nil {
 			outcome, message = domain.StateFailed, "create approval: "+err.Error()
@@ -203,7 +203,7 @@ func (e *Engine) ProcessSchedules(ctx context.Context, at time.Time) error {
 				return fmt.Errorf("decode schedule %q target: %w", schedule.Name, err)
 			}
 			_, err = e.store.Enqueue(ctx, domain.QueueItem{
-				SessionID: schedule.SessionID, ExecutorID: target.ExecutorID,
+				ProjectID: schedule.ProjectID, ExecutorID: target.ExecutorID,
 				Prompt: target.Prompt, MaxAttempts: 1,
 				IdempotencyKey: fmt.Sprintf("schedule:%s:%s", schedule.ID, schedule.NextRun.UTC().Format(time.RFC3339Nano)),
 			})

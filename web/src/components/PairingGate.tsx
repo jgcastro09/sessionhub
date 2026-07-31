@@ -14,7 +14,7 @@ export function PairingGate({ onPaired }: { onPaired: () => void }) {
       await pair(code)
       onPaired()
     } catch {
-      setError('Código inválido. Confira o código exibido na aba Settings do SessionHub.')
+      setError('Código inválido. Confira o código exibido na aba Settings do ProjectHub.')
     } finally {
       setSubmitting(false)
     }
@@ -24,7 +24,7 @@ export function PairingGate({ onPaired }: { onPaired: () => void }) {
     <div className="pairing-screen">
       <form className="pairing-card" onSubmit={submit}>
         <h1>Parear este dispositivo</h1>
-        <p>Digite o código de 6 dígitos exibido em Settings no SessionHub.</p>
+        <p>Digite o código de 6 dígitos exibido em Settings no ProjectHub.</p>
         <input
           className="pairing-input"
           inputMode="numeric"

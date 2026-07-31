@@ -1,22 +1,22 @@
 import { useState } from 'react'
 import { PairingGate } from './components/PairingGate'
-import { SessionsView } from './views/SessionsView'
+import { ProjectsView } from './views/ProjectsView'
 import { MetricsView } from './views/MetricsView'
 import { LogsView } from './views/LogsView'
 import { QueueView } from './views/QueueView'
 import { useLiveTick } from './hooks/useLiveTick'
 
-type Tab = 'sessions' | 'metrics' | 'logs' | 'queue'
+type Tab = 'projects' | 'metrics' | 'logs' | 'queue'
 
 const TABS: { id: Tab; label: string; glyph: string }[] = [
-  { id: 'sessions', label: 'Sessões', glyph: '▣' },
+	{ id: 'projects', label: 'Projetos', glyph: '▣' },
   { id: 'metrics', label: 'Métricas', glyph: '▲' },
   { id: 'logs', label: 'Logs', glyph: '≡' },
   { id: 'queue', label: 'Fila', glyph: '▤' },
 ]
 
 function App() {
-  const [tab, setTab] = useState<Tab>('sessions')
+  const [tab, setTab] = useState<Tab>('projects')
   const [needsPairing, setNeedsPairing] = useState(false)
   const { tick, connected } = useLiveTick()
 
@@ -31,7 +31,7 @@ function App() {
       <nav className="sidebar">
         <header className="app-header">
           <div className="app-title">
-            <span className="prompt">$</span> sessionhub
+			<span className="prompt">$</span> sessionhub
           </div>
           <span className={`connection-dot ${connected ? 'online' : 'offline'}`} title={connected ? 'conectado' : 'sem conexão'} />
         </header>
@@ -50,7 +50,7 @@ function App() {
         </div>
       </nav>
       <main className="content">
-        {tab === 'sessions' && <SessionsView tick={tick} onUnauthorized={handleUnauthorized} />}
+        {tab === 'projects' && <ProjectsView tick={tick} onUnauthorized={handleUnauthorized} />}
         {tab === 'metrics' && <MetricsView tick={tick} onUnauthorized={handleUnauthorized} />}
         {tab === 'logs' && <LogsView tick={tick} onUnauthorized={handleUnauthorized} />}
         {tab === 'queue' && <QueueView tick={tick} onUnauthorized={handleUnauthorized} />}

@@ -16,7 +16,7 @@ import (
 
 const (
 	pairingCookieName = "sessionhub_web_token"
-	pairingTokenTTL    = 30 * 24 * time.Hour
+	pairingTokenTTL   = 30 * 24 * time.Hour
 )
 
 // pairing is the web panel's lightweight substitute for user accounts: a

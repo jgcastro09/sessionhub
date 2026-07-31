@@ -11,14 +11,14 @@ import (
 // monitoring-only in v1, so it has no equivalents for the write-capable
 // Remote* methods (RemoteStartTerminal, RemoteDecideApproval, etc).
 
-func (a *App) WebQueue(ctx context.Context, sessionID string) ([]domain.QueueItem, error) {
-	return a.Store.ListQueue(ctx, sessionID)
+func (a *App) WebQueue(ctx context.Context, projectID string) ([]domain.QueueItem, error) {
+	return a.Store.ListQueue(ctx, projectID)
 }
 
-func (a *App) WebSchedules(ctx context.Context, sessionID string) ([]domain.Schedule, error) {
-	return a.Store.ListSchedules(ctx, sessionID)
+func (a *App) WebSchedules(ctx context.Context, projectID string) ([]domain.Schedule, error) {
+	return a.Store.ListSchedules(ctx, projectID)
 }
 
-func (a *App) WebPipelines(ctx context.Context, sessionID string) ([]domain.Pipeline, error) {
-	return a.Store.ListPipelines(ctx, sessionID)
+func (a *App) WebPipelines(ctx context.Context, projectID string) ([]domain.Pipeline, error) {
+	return a.Store.ListPipelines(ctx, projectID)
 }

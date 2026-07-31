@@ -146,7 +146,7 @@ func TestControllerOutlivesSetupTimeout(t *testing.T) {
 	}
 	defer controller.Close()
 	<-setup.Done()
-	if _, err := controller.Sessions(context.Background()); err != nil {
+	if _, err := controller.Projects(context.Background()); err != nil {
 		t.Fatalf("controller should survive setup timeout: %v", err)
 	}
 }
@@ -172,7 +172,7 @@ func TestControllerNavigationMirrorsOnHostAndCanBeRevoked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer controller.Close()
-	view := ViewState{Section: "Sessions", SessionID: "session-1", ExecutorID: "codex", TerminalFocused: true}
+	view := ViewState{Section: "Projects", ProjectID: "project-1", ExecutorID: "codex", TerminalFocused: true}
 	if err := controller.Navigate(context.Background(), view); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestControllerNavigationMirrorsOnHostAndCanBeRevoked(t *testing.T) {
 
 type remoteTestBackend struct{ statuses []ExecutorStatus }
 
-func (remoteTestBackend) RemoteSessions(context.Context) ([]domain.Session, error) { return nil, nil }
+func (remoteTestBackend) RemoteProjects(context.Context) ([]domain.Project, error) { return nil, nil }
 func (remoteTestBackend) RemoteExecutors(context.Context) ([]domain.ExecutorConfig, error) {
 	return nil, nil
 }

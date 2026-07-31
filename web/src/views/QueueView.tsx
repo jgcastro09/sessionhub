@@ -4,9 +4,11 @@ import { StatusBadge } from '../components/StatusBadge'
 import { formatRelativeTime } from '../format'
 
 export function QueueView({ tick, onUnauthorized }: { tick: number; onUnauthorized: () => void }) {
-  const { data: queue, error: queueError } = usePoll(() => api.queue(), 20000, onUnauthorized, [tick])
-  const { data: schedules, error: schedulesError } = usePoll(() => api.schedules(), 20000, onUnauthorized, [tick])
-  const { data: pipelines, error: pipelinesError } = usePoll(() => api.pipelines(), 20000, onUnauthorized, [tick])
+	const { data: projects } = usePoll(() => api.projects(), 20000, onUnauthorized, [tick])
+	const ids = projects?.map((project) => project.id) ?? []
+	const { data: queue, error: queueError } = usePoll(() => Promise.all(ids.map((id) => api.queue(id))).then((items) => items.flat()), 20000, onUnauthorized, [tick, ids.join(',')])
+	const { data: schedules, error: schedulesError } = usePoll(() => Promise.all(ids.map((id) => api.schedules(id))).then((items) => items.flat()), 20000, onUnauthorized, [tick, ids.join(',')])
+	const { data: pipelines, error: pipelinesError } = usePoll(() => Promise.all(ids.map((id) => api.pipelines(id))).then((items) => items.flat()), 20000, onUnauthorized, [tick, ids.join(',')])
   const error = queueError ?? schedulesError ?? pipelinesError
 
   const nothing = queue?.length === 0 && schedules?.length === 0 && pipelines?.length === 0

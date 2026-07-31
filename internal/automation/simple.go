@@ -67,7 +67,7 @@ const automationRetryDelay = 10 * time.Second
 type SimpleAutomation struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
-	SessionID   string         `json:"sessionId"`
+	ProjectID   string         `json:"project_id"`
 	Enabled     bool           `json:"enabled"`
 	Schedule    SimpleSchedule `json:"schedule"`
 	Steps       []SimpleStep   `json:"steps"`
@@ -290,8 +290,8 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 	}
 	failedStep, runErr := "", error(nil)
 	previews := make([]string, 0, len(item.Steps))
-	if _, err := s.store.GetSession(ctx, item.SessionID); err != nil {
-		runErr = fmt.Errorf("session %q was not found: %w", item.SessionID, err)
+	if _, err := s.store.GetProject(ctx, item.ProjectID); err != nil {
+		runErr = fmt.Errorf("project %q was not found: %w", item.ProjectID, err)
 	}
 	for i, step := range item.Steps {
 		if runErr != nil {
@@ -303,7 +303,7 @@ func (s *Scheduler) execute(ctx context.Context, automationID string) {
 		}
 		for attempt := 1; ; attempt++ {
 			s.setCurrentStep(automationID, i+1)
-			result, err := s.executors.RunAutomationStepWithProgress(ctx, id.New("automation-work"), item.SessionID, step.ExecutorID, step.Prompt, 120, 36,
+			result, err := s.executors.RunAutomationStepWithProgress(ctx, id.New("automation-work"), item.ProjectID, step.ExecutorID, step.Prompt, 120, 36,
 				func(_ string, output string) { s.setLiveOutput(automationID, output) })
 			if err == nil {
 				if output := automationOutputPreview(result.Screen, result.Output); output != "" {
@@ -532,7 +532,7 @@ func (s *Scheduler) normalize(now time.Time) error {
 		}
 		if next == nil && item.Schedule.Type == ScheduleOnce {
 			item.Enabled, item.NextRun, item.Status = false, nil, StatusMissed
-			item.LastRun.Status, item.LastRun.Error = StatusMissed, "scheduled time passed while Session Hub was closed"
+			item.LastRun.Status, item.LastRun.Error = StatusMissed, "scheduled time passed while Project Hub was closed"
 		} else {
 			item.NextRun, item.Status = next, StatusScheduled
 		}
@@ -585,8 +585,8 @@ func validateSimple(item SimpleAutomation) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return fmt.Errorf("name is required")
 	}
-	if strings.TrimSpace(item.SessionID) == "" {
-		return fmt.Errorf("session is required")
+	if strings.TrimSpace(item.ProjectID) == "" {
+		return fmt.Errorf("project is required")
 	}
 	if len(item.Steps) == 0 {
 		return fmt.Errorf("at least one step is required")

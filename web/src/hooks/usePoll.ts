@@ -7,7 +7,8 @@ interface PollResult<T> {
   loading: boolean
 }
 
-// Placeholder for live data until task 5 wires up SSE (/api/events) — plain
+// Project-scoped SSE lives at /api/v2/projects/{projectID}/events; polling
+// remains a fallback for the global catalogue.
 // polling keeps the monitoring views useful in the meantime and SSE can
 // simply replace the interval later without changing any view component.
 export function usePoll<T>(fetcher: () => Promise<T>, intervalMs: number, onUnauthorized: () => void, deps: unknown[] = []): PollResult<T> {

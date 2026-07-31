@@ -25,10 +25,10 @@ CREATE TABLE IF NOT EXISTS executors (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS executors_name_ci ON executors(lower(name));
 
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    workspace TEXT NOT NULL,
+    root TEXT NOT NULL,
     active_instance_id TEXT NOT NULL DEFAULT '',
     settings BLOB NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS instances (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     executor_id TEXT NOT NULL REFERENCES executors(id) ON DELETE RESTRICT,
     state TEXT NOT NULL,
     payload BLOB NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS instances (
     ended_at TEXT,
     updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS instances_session_state ON instances(session_id, state);
+CREATE INDEX IF NOT EXISTS instances_project_state ON instances(project_id, state);
 
 CREATE TABLE IF NOT EXISTS terminal_history (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,20 +57,20 @@ CREATE TABLE IF NOT EXISTS terminal_history (
 CREATE INDEX IF NOT EXISTS terminal_history_instance_seq ON terminal_history(instance_id, sequence);
 
 CREATE TABLE IF NOT EXISTS contexts (
-    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
     payload BLOB NOT NULL,
     updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS checkpoints (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     automatic INTEGER NOT NULL,
     snapshot BLOB NOT NULL,
     created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS checkpoints_session_created ON checkpoints(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS checkpoints_project_created ON checkpoints(project_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS prices (
     id TEXT PRIMARY KEY,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS prices (
 
 CREATE TABLE IF NOT EXISTS metrics (
     id TEXT PRIMARY KEY,
-    session_id TEXT,
+    project_id TEXT,
     executor_id TEXT,
     instance_id TEXT,
     automation_id TEXT,
@@ -98,11 +98,11 @@ CREATE TABLE IF NOT EXISTS metrics (
     payload BLOB NOT NULL,
     created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS metrics_scope ON metrics(session_id, executor_id, created_at);
+CREATE INDEX IF NOT EXISTS metrics_scope ON metrics(project_id, executor_id, created_at);
 
 CREATE TABLE IF NOT EXISTS queue_items (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     executor_id TEXT NOT NULL REFERENCES executors(id) ON DELETE RESTRICT,
     state TEXT NOT NULL,
     priority INTEGER NOT NULL,
@@ -111,11 +111,11 @@ CREATE TABLE IF NOT EXISTS queue_items (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS queue_eligibility ON queue_items(session_id, state, priority DESC, created_at);
+CREATE INDEX IF NOT EXISTS queue_eligibility ON queue_items(project_id, state, priority DESC, created_at);
 
 CREATE TABLE IF NOT EXISTS schedules (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     enabled INTEGER NOT NULL,
     next_run TEXT,
     payload BLOB NOT NULL,
@@ -126,7 +126,7 @@ CREATE INDEX IF NOT EXISTS schedules_due ON schedules(enabled, next_run);
 
 CREATE TABLE IF NOT EXISTS pipelines (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     state TEXT NOT NULL,
     template INTEGER NOT NULL,
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS step_dependencies (
 
 CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     target_type TEXT NOT NULL,
     target_id TEXT NOT NULL,
     state TEXT NOT NULL,
@@ -168,7 +168,7 @@ CREATE INDEX IF NOT EXISTS approvals_pending ON approvals(state, requested_at);
 
 CREATE TABLE IF NOT EXISTS automation_runs (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     automation_type TEXT NOT NULL,
     automation_id TEXT NOT NULL,
     state TEXT NOT NULL,
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS workspace_locks (
 
 CREATE TABLE IF NOT EXISTS watchers (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     enabled INTEGER NOT NULL,
     workspace TEXT NOT NULL,
     last_event_hash TEXT NOT NULL DEFAULT '',
@@ -213,18 +213,18 @@ CREATE TABLE IF NOT EXISTS watchers (
 CREATE TABLE IF NOT EXISTS logs (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
-    session_id TEXT,
+    project_id TEXT,
     level TEXT NOT NULL,
     kind TEXT NOT NULL,
     message TEXT NOT NULL,
     fields BLOB,
     created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS logs_session_created ON logs(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS logs_project_created ON logs(project_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS reports (
     id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     target_type TEXT NOT NULL,
     target_id TEXT NOT NULL,
     payload BLOB NOT NULL,

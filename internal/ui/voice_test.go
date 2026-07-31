@@ -14,8 +14,8 @@ func TestVoiceTranscriptDelta(t *testing.T) {
 		want     string
 	}{
 		{name: "first live result", current: "hello world", want: "hello world"},
-		{name: "appends only new words", previous: "hello world", current: "hello world from Session Hub", want: " from Session Hub"},
-		{name: "does not repeat a revised prefix", previous: "hello word", current: "hello world from Session Hub", want: " from Session Hub"},
+		{name: "appends only new words", previous: "hello world", current: "hello world from Project Hub", want: " from Project Hub"},
+		{name: "does not repeat a revised prefix", previous: "hello word", current: "hello world from Project Hub", want: " from Project Hub"},
 		{name: "does not duplicate a shorter result", previous: "hello world", current: "hello", want: ""},
 	}
 

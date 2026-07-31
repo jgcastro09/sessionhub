@@ -9,7 +9,11 @@ const LEVEL_COLOR: Record<string, string> = {
 }
 
 export function LogsView({ tick, onUnauthorized }: { tick: number; onUnauthorized: () => void }) {
-  const { data: logs, error, loading } = usePoll(() => api.logs(undefined, 100), 20000, onUnauthorized, [tick])
+	const { data: projects } = usePoll(() => api.projects(), 20000, onUnauthorized, [tick])
+	const { data: logs, error, loading } = usePoll(
+		async () => (await Promise.all((projects ?? []).map((project) => api.logs(project.id, 100)))).flat(),
+		20000, onUnauthorized, [tick, projects?.map((project) => project.id).join(',')],
+	)
 
   return (
     <>

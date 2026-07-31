@@ -58,9 +58,9 @@ func TestViewLatencyUnderHeavyOutput(t *testing.T) {
 	if err := application.Store.SaveExecutor(ctx, execA); err != nil {
 		t.Fatal(err)
 	}
-	session := domain.Session{Name: "teste", Workspace: root}
-	session.SetExecutorIDs([]string{"exec_a"})
-	if _, err := application.Store.SaveSession(ctx, session); err != nil {
+	project := domain.Project{Name: "teste", Root: root}
+	project.SetExecutorIDs([]string{"exec_a"})
+	if _, err := application.Store.SaveProject(ctx, project); err != nil {
 		t.Fatal(err)
 	}
 

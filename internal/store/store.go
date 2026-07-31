@@ -213,51 +213,51 @@ func (s *Store) DeleteExecutor(ctx context.Context, executorID string) error {
 	return tx.Commit()
 }
 
-func (s *Store) SaveSession(ctx context.Context, session domain.Session) (domain.Session, error) {
-	if err := session.Validate(); err != nil {
-		return domain.Session{}, err
+func (s *Store) SaveProject(ctx context.Context, project domain.Project) (domain.Project, error) {
+	if err := project.Validate(); err != nil {
+		return domain.Project{}, err
 	}
 	now := nowUTC()
-	if session.ID == "" {
-		session.ID = id.New("sess")
+	if project.ID == "" {
+		project.ID = id.New("sess")
 	}
-	if session.CreatedAt.IsZero() {
-		session.CreatedAt = now
+	if project.CreatedAt.IsZero() {
+		project.CreatedAt = now
 	}
-	session.UpdatedAt = now
-	if len(session.Settings) == 0 {
-		session.Settings = json.RawMessage(`{}`)
+	project.UpdatedAt = now
+	if len(project.Settings) == 0 {
+		project.Settings = json.RawMessage(`{}`)
 	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sessions(id,name,workspace,active_instance_id,settings,created_at,updated_at)
+INSERT INTO projects(id,name,root,active_instance_id,settings,created_at,updated_at)
 VALUES(?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET
- name=excluded.name, workspace=excluded.workspace,
+ name=excluded.name, root=excluded.root,
  active_instance_id=excluded.active_instance_id, settings=excluded.settings,
  updated_at=excluded.updated_at`,
-		session.ID, session.Name, session.Workspace, session.ActiveInstance,
-		session.Settings, session.CreatedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+		project.ID, project.Name, project.Root, project.ActiveInstance,
+		project.Settings, project.CreatedAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 	if err != nil {
-		return domain.Session{}, fmt.Errorf("save session %q: %w", session.Name, err)
+		return domain.Project{}, fmt.Errorf("save project %q: %w", project.Name, err)
 	}
-	return session, nil
+	return project, nil
 }
 
-func (s *Store) ListSessions(ctx context.Context) ([]domain.Session, error) {
+func (s *Store) ListProjects(ctx context.Context) ([]domain.Project, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id,name,workspace,active_instance_id,settings,created_at,updated_at
-FROM sessions ORDER BY updated_at DESC`)
+SELECT id,name,root,active_instance_id,settings,created_at,updated_at
+FROM projects ORDER BY updated_at DESC`)
 	if err != nil {
-		return nil, fmt.Errorf("list sessions: %w", err)
+		return nil, fmt.Errorf("list projects: %w", err)
 	}
 	defer rows.Close()
-	var out []domain.Session
+	var out []domain.Project
 	for rows.Next() {
-		var v domain.Session
+		var v domain.Project
 		var created, updated string
-		if err := rows.Scan(&v.ID, &v.Name, &v.Workspace, &v.ActiveInstance,
+		if err := rows.Scan(&v.ID, &v.Name, &v.Root, &v.ActiveInstance,
 			&v.Settings, &created, &updated); err != nil {
-			return nil, fmt.Errorf("scan session: %w", err)
+			return nil, fmt.Errorf("scan project: %w", err)
 		}
 		v.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 		v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
@@ -266,36 +266,36 @@ FROM sessions ORDER BY updated_at DESC`)
 	return out, rows.Err()
 }
 
-func (s *Store) GetSession(ctx context.Context, sessionID string) (domain.Session, error) {
-	var v domain.Session
+func (s *Store) GetProject(ctx context.Context, projectID string) (domain.Project, error) {
+	var v domain.Project
 	var created, updated string
 	err := s.db.QueryRowContext(ctx, `
-SELECT id,name,workspace,active_instance_id,settings,created_at,updated_at
-FROM sessions WHERE id=?`, sessionID).Scan(&v.ID, &v.Name, &v.Workspace,
+SELECT id,name,root,active_instance_id,settings,created_at,updated_at
+FROM projects WHERE id=?`, projectID).Scan(&v.ID, &v.Name, &v.Root,
 		&v.ActiveInstance, &v.Settings, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrNotFound
 	}
 	if err != nil {
-		return v, fmt.Errorf("get session: %w", err)
+		return v, fmt.Errorf("get project: %w", err)
 	}
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	return v, nil
 }
 
-// DeleteSession removes a session. Every other table that scopes to a
-// session (instances, contexts, checkpoints, queue_items, schedules,
+// DeleteProject removes a project. Every other table that scopes to a
+// project (instances, contexts, checkpoints, queue_items, schedules,
 // pipelines, approvals, automation_runs, watchers, reports) references
-// sessions(id) ON DELETE CASCADE, so this cleans up transitively.
-func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id=?`, sessionID)
+// projects(id) ON DELETE CASCADE, so this cleans up transitively.
+func (s *Store) DeleteProject(ctx context.Context, projectID string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM projects WHERE id=?`, projectID)
 	if err != nil {
-		return fmt.Errorf("delete session: %w", err)
+		return fmt.Errorf("delete project: %w", err)
 	}
 	n, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("delete session: %w", err)
+		return fmt.Errorf("delete project: %w", err)
 	}
 	if n == 0 {
 		return ErrNotFound
@@ -317,8 +317,8 @@ func (s *Store) CreateInstance(ctx context.Context, v domain.Instance) (domain.I
 		return v, err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO instances(id,session_id,executor_id,state,payload,updated_at)
-VALUES(?,?,?,?,?,?)`, v.ID, v.SessionID, v.ExecutorID, v.State, data,
+INSERT INTO instances(id,project_id,executor_id,state,payload,updated_at)
+VALUES(?,?,?,?,?,?)`, v.ID, v.ProjectID, v.ExecutorID, v.State, data,
 		now.Format(time.RFC3339Nano))
 	if err != nil {
 		return v, fmt.Errorf("create executor instance: %w", err)
@@ -372,9 +372,9 @@ func (s *Store) GetInstance(ctx context.Context, instanceID string) (domain.Inst
 	return value, err
 }
 
-func (s *Store) ListInstances(ctx context.Context, sessionID string) ([]domain.Instance, error) {
+func (s *Store) ListInstances(ctx context.Context, projectID string) ([]domain.Instance, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT payload,state FROM instances WHERE session_id=? ORDER BY updated_at DESC`, sessionID)
+		`SELECT payload,state FROM instances WHERE project_id=? ORDER BY updated_at DESC`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list instances: %w", err)
 	}
@@ -417,20 +417,20 @@ func (s *Store) SaveContext(ctx context.Context, value domain.GlobalContext) err
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO contexts(session_id,payload,updated_at) VALUES(?,?,?)
-ON CONFLICT(session_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at`,
-		value.SessionID, data, value.UpdatedAt.Format(time.RFC3339Nano))
+INSERT INTO contexts(project_id,payload,updated_at) VALUES(?,?,?)
+ON CONFLICT(project_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at`,
+		value.ProjectID, data, value.UpdatedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("save global context: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) LoadContext(ctx context.Context, sessionID string) (domain.GlobalContext, error) {
+func (s *Store) LoadContext(ctx context.Context, projectID string) (domain.GlobalContext, error) {
 	var data []byte
-	err := s.db.QueryRowContext(ctx, `SELECT payload FROM contexts WHERE session_id=?`, sessionID).Scan(&data)
+	err := s.db.QueryRowContext(ctx, `SELECT payload FROM contexts WHERE project_id=?`, projectID).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
-		return domain.GlobalContext{SessionID: sessionID}, nil
+		return domain.GlobalContext{ProjectID: projectID}, nil
 	}
 	if err != nil {
 		return domain.GlobalContext{}, fmt.Errorf("load global context: %w", err)
@@ -446,8 +446,8 @@ func (s *Store) CreateCheckpoint(ctx context.Context, cp domain.Checkpoint) (dom
 		cp.CreatedAt = nowUTC()
 	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO checkpoints(id,session_id,name,automatic,snapshot,created_at)
-VALUES(?,?,?,?,?,?)`, cp.ID, cp.SessionID, cp.Name, cp.Automatic, cp.Snapshot,
+INSERT INTO checkpoints(id,project_id,name,automatic,snapshot,created_at)
+VALUES(?,?,?,?,?,?)`, cp.ID, cp.ProjectID, cp.Name, cp.Automatic, cp.Snapshot,
 		cp.CreatedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return cp, fmt.Errorf("create checkpoint: %w", err)
@@ -467,11 +467,11 @@ func (s *Store) SaveMetric(ctx context.Context, metric domain.Metric) error {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO metrics(id,session_id,executor_id,instance_id,automation_id,pipeline_step_id,
+INSERT INTO metrics(id,project_id,executor_id,instance_id,automation_id,pipeline_step_id,
  model,input_tokens,output_tokens,cache_read,cache_write,duration_ms,cost_micros_usd,
  precision,payload,created_at)
 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		metric.ID, nullString(metric.SessionID), nullString(metric.ExecutorID),
+		metric.ID, nullString(metric.ProjectID), nullString(metric.ExecutorID),
 		nullString(metric.InstanceID), nullString(metric.AutomationID),
 		nullString(metric.PipelineStepID), metric.Model, metric.InputTokens,
 		metric.OutputTokens, metric.CacheRead, metric.CacheWrite, metric.Duration,
@@ -498,8 +498,8 @@ func (s *Store) Log(ctx context.Context, entry domain.LogEntry) error {
 		entry.CreatedAt = nowUTC()
 	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO logs(id,session_id,level,kind,message,fields,created_at)
-VALUES(?,?,?,?,?,?,?)`, entry.ID, nullString(entry.SessionID), entry.Level,
+INSERT INTO logs(id,project_id,level,kind,message,fields,created_at)
+VALUES(?,?,?,?,?,?,?)`, entry.ID, nullString(entry.ProjectID), entry.Level,
 		entry.Kind, entry.Message, entry.Fields, entry.CreatedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("write log entry: %w", err)

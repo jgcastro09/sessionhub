@@ -12,10 +12,10 @@ export type State =
   | 'waiting_approval'
   | string
 
-export interface Session {
+export interface Project {
   id: string
   name: string
-  workspace: string
+	root: string
   active_instance?: string
   created_at: string
   updated_at: string
@@ -37,7 +37,7 @@ export interface ExecutorStatus {
 }
 
 export interface Metric {
-  session_id?: string
+  project_id?: string
   executor_id?: string
   input_tokens: number
   output_tokens: number
@@ -50,7 +50,7 @@ export interface Metric {
 
 export interface LogEntry {
   id: string
-  session_id?: string
+  project_id?: string
   level: string
   kind: string
   message: string
@@ -59,7 +59,7 @@ export interface LogEntry {
 
 export interface QueueItem {
   id: string
-  session_id: string
+  project_id: string
   executor_id: string
   prompt: string
   priority: number
@@ -69,7 +69,7 @@ export interface QueueItem {
 
 export interface Schedule {
   id: string
-  session_id: string
+  project_id: string
   name: string
   kind: string
   spec: string
@@ -80,7 +80,7 @@ export interface Schedule {
 
 export interface Pipeline {
   id: string
-  session_id: string
+  project_id: string
   name: string
   state: State
   started_at?: string

@@ -161,17 +161,17 @@ func (s *Service) handleEvent(event terminal.Event) {
 	}
 	if event.Kind == terminal.EventError && event.Err != nil {
 		_ = s.store.Log(context.Background(), domain.LogEntry{
-			SessionID: instance.SessionID, Level: "error", Kind: "terminal",
+			ProjectID: instance.ProjectID, Level: "error", Kind: "terminal",
 			Message: event.Err.Error(),
 		})
 	}
 }
 
-// StartOrReuse uses the normal Session Hub instance lifecycle. An existing
-// live terminal for the same session/executor is retained; otherwise Start
-// creates it with the session workspace and normal PTY manager.
-func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string, width, height int) (*terminal.Session, domain.Instance, error) {
-	term, instance, _, err := s.startOrReuse(ctx, sessionID, executorID, width, height)
+// StartOrReuse uses the normal Project Hub instance lifecycle. An existing
+// live terminal for the same project/executor is retained; otherwise Start
+// creates it with the project workspace and normal PTY manager.
+func (s *Service) StartOrReuse(ctx context.Context, projectID, executorID string, width, height int) (*terminal.Session, domain.Instance, error) {
+	term, instance, _, err := s.startOrReuse(ctx, projectID, executorID, width, height)
 	return term, instance, err
 }
 
@@ -179,20 +179,20 @@ func (s *Service) StartOrReuse(ctx context.Context, sessionID, executorID string
 // to start the process. Automation uses that detail to wait for the newly
 // spawned CLI's first screen before it writes a prompt; the normal UI does
 // not need to wait because the person sees that screen as it renders.
-func (s *Service) startOrReuse(ctx context.Context, sessionID, executorID string, width, height int) (*terminal.Session, domain.Instance, bool, error) {
-	if live, instance, ok := s.FindActive(ctx, sessionID, executorID); ok {
+func (s *Service) startOrReuse(ctx context.Context, projectID, executorID string, width, height int) (*terminal.Session, domain.Instance, bool, error) {
+	if live, instance, ok := s.FindActive(ctx, projectID, executorID); ok {
 		return live, instance, false, nil
 	}
-	term, instance, err := s.Start(ctx, sessionID, executorID, width, height)
+	term, instance, err := s.Start(ctx, projectID, executorID, width, height)
 	return term, instance, err == nil, err
 }
 
-// FindActive returns the live PTY backing a session/executor tab, including
+// FindActive returns the live PTY backing a project/executor tab, including
 // one activated by Automation before the UI attached it to tabInstances.
-func (s *Service) FindActive(ctx context.Context, sessionID, executorID string) (*terminal.Session, domain.Instance, bool) {
+func (s *Service) FindActive(ctx context.Context, projectID, executorID string) (*terminal.Session, domain.Instance, bool) {
 	s.mu.RLock()
 	for _, instance := range s.instances {
-		if instance.SessionID == sessionID && instance.ExecutorID == executorID &&
+		if instance.ProjectID == projectID && instance.ExecutorID == executorID &&
 			(instance.State == domain.StateRunning || instance.State == domain.StateWaiting) {
 			if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
 				s.mu.RUnlock()
@@ -201,7 +201,7 @@ func (s *Service) FindActive(ctx context.Context, sessionID, executorID string) 
 		}
 	}
 	s.mu.RUnlock()
-	instances, err := s.store.ListInstances(ctx, sessionID)
+	instances, err := s.store.ListInstances(ctx, projectID)
 	if err != nil {
 		return nil, domain.Instance{}, false
 	}
@@ -224,15 +224,15 @@ func (s *Service) FindActive(ctx context.Context, sessionID, executorID string) 
 }
 
 // IsActive reports whether this process currently owns a live PTY for the
-// session/executor pair. It is intentionally memory-only and cheap enough
+// project/executor pair. It is intentionally memory-only and cheap enough
 // for the 60fps UI tab bar: unlike FindActive it never queries persistence or
 // changes service state. Automation registers an instance through Start, so
 // this makes an automation-started lazy tab visibly online immediately.
-func (s *Service) IsActive(sessionID, executorID string) bool {
+func (s *Service) IsActive(projectID, executorID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, instance := range s.instances {
-		if instance.SessionID != sessionID || instance.ExecutorID != executorID {
+		if instance.ProjectID != projectID || instance.ExecutorID != executorID {
 			continue
 		}
 		if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
@@ -243,13 +243,13 @@ func (s *Service) IsActive(sessionID, executorID string) bool {
 }
 
 // ReuseOpenTerminal returns the exact CLI tab that is already open in this
-// Session Hub process. Automation deliberately uses this path instead of
+// Project Hub process. Automation deliberately uses this path instead of
 // StartOrReuse: scheduling a prompt must never create a second, unseen CLI
 // conversation while the operator expects the selected tab to receive it.
-func (s *Service) ReuseOpenTerminal(ctx context.Context, sessionID, executorID string) (*terminal.Session, domain.Instance, error) {
+func (s *Service) ReuseOpenTerminal(ctx context.Context, projectID, executorID string) (*terminal.Session, domain.Instance, error) {
 	s.mu.RLock()
 	for _, instance := range s.instances {
-		if instance.SessionID == sessionID && instance.ExecutorID == executorID {
+		if instance.ProjectID == projectID && instance.ExecutorID == executorID {
 			if live, ok := s.terminals.Get(instance.ID); ok && live.State() == domain.StateRunning {
 				s.mu.RUnlock()
 				return live, instance, nil
@@ -261,7 +261,7 @@ func (s *Service) ReuseOpenTerminal(ctx context.Context, sessionID, executorID s
 	// A tab may have been restored from persisted instances before this
 	// Service recorded it in-memory. Resolve it through the existing store
 	// and terminal manager rather than launching another process.
-	instances, err := s.store.ListInstances(ctx, sessionID)
+	instances, err := s.store.ListInstances(ctx, projectID)
 	if err != nil {
 		return nil, domain.Instance{}, err
 	}
@@ -280,32 +280,32 @@ func (s *Service) ReuseOpenTerminal(ctx context.Context, sessionID, executorID s
 			return live, instance, nil
 		}
 	}
-	return nil, domain.Instance{}, fmt.Errorf("no open CLI tab for executor %q in this session; open the selected tab first", executorID)
+	return nil, domain.Instance{}, fmt.Errorf("no open CLI tab for executor %q in this project; open the selected tab first", executorID)
 }
 
 // RunAutomationStep is the sequential, in-process automation bridge. It
 // intentionally delegates process creation, PTY writes, terminal leases and
 // recognition to Service rather than reimplementing any of those concerns.
-func (s *Service) RunAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int) (WorkResult, error) {
-	return s.runAutomationStep(ctx, workID, sessionID, executorID, prompt, "", width, height, nil)
+func (s *Service) RunAutomationStep(ctx context.Context, workID, projectID, executorID, prompt string, width, height int) (WorkResult, error) {
+	return s.runAutomationStep(ctx, workID, projectID, executorID, prompt, "", width, height, nil)
 }
 
 // RunAutomationStepWithProgress is RunAutomationStep plus best-effort live
 // PTY feedback for the Automation UI. It does not expose a second terminal
 // control path or change recognition semantics.
-func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, sessionID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
-	return s.runAutomationStep(ctx, workID, sessionID, executorID, automationPrompt(prompt), AutomationCompletionToken, width, height, progress)
+func (s *Service) RunAutomationStepWithProgress(ctx context.Context, workID, projectID, executorID, prompt string, width, height int, progress AutomationProgress) (WorkResult, error) {
+	return s.runAutomationStep(ctx, workID, projectID, executorID, automationPrompt(prompt), AutomationCompletionToken, width, height, progress)
 }
 
-func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, executorID, prompt, completionToken string, width, height int, progress AutomationProgress) (WorkResult, error) {
+func (s *Service) runAutomationStep(ctx context.Context, workID, projectID, executorID, prompt, completionToken string, width, height int, progress AutomationProgress) (WorkResult, error) {
 	// Activate a lazy tab through the same Start flow used by a topbar click
 	// when it is not already running, then reuse that exact PTY afterwards.
-	term, instance, started, err := s.startOrReuse(ctx, sessionID, executorID, width, height)
+	term, instance, started, err := s.startOrReuse(ctx, projectID, executorID, width, height)
 	if err != nil {
 		return WorkResult{}, err
 	}
 	owner := terminal.Owner{Kind: "automation", ID: workID}
-	// An automation deliberately works in the session's already-open CLI
+	// An automation deliberately works in the project's already-open CLI
 	// tab. Hub mode can leave that tab leased to the local operator even
 	// though the person is looking at Automation, so hand that specific
 	// local lease to the automation rather than retrying forever. Remote and
@@ -333,7 +333,7 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 	// Control is only exclusive while the automation initializes the CLI and
 	// writes its prompt. Once that write succeeds, terminal output can be
 	// observed without a lease, so return the selected tab to the operator
-	// immediately instead of blocking normal Session Hub interaction for the
+	// immediately instead of blocking normal Project Hub interaction for the
 	// entire duration of the executor response.
 	defer restoreOperatorControl()
 	if started {
@@ -396,7 +396,7 @@ func (s *Service) runAutomationStep(ctx context.Context, workID, sessionID, exec
 			}
 			s.mu.Unlock()
 			// Stop is the established, process-tree-safe cancellation path. It
-			// is also used when an automation is cancelled or Session Hub closes.
+			// is also used when an automation is cancelled or Project Hub closes.
 			_ = s.Stop(context.Background(), instance.ID)
 			return WorkResult{InstanceID: instance.ID, Outcome: domain.StateCanceled, Reason: ctx.Err().Error()}, ctx.Err()
 		case <-updates.C:
@@ -422,26 +422,26 @@ func automationPrompt(userPrompt string) string {
 
 func (s *Service) Start(
 	ctx context.Context,
-	sessionID, executorID string,
+	projectID, executorID string,
 	width, height int,
 ) (*terminal.Session, domain.Instance, error) {
 	cfg, err := s.store.GetExecutor(ctx, executorID)
 	if err != nil {
 		return nil, domain.Instance{}, err
 	}
-	if sessionID != "" {
-		if sess, err := s.store.GetSession(ctx, sessionID); err == nil && strings.TrimSpace(sess.Workspace) != "" {
-			cfg.WorkingDir = strings.TrimSpace(sess.Workspace)
+	if projectID != "" {
+		if sess, err := s.store.GetProject(ctx, projectID); err == nil && strings.TrimSpace(sess.Root) != "" {
+			cfg.WorkingDir = strings.TrimSpace(sess.Root)
 		}
 	}
 	instance, err := s.store.CreateInstance(ctx, domain.Instance{
-		ID: id.New("inst"), SessionID: sessionID, ExecutorID: executorID,
+		ID: id.New("inst"), ProjectID: projectID, ExecutorID: executorID,
 		State: domain.StatePending,
 	})
 	if err != nil {
 		return nil, domain.Instance{}, err
 	}
-	session, err := s.terminals.Start(instance.ID, cfg, width, height)
+	project, err := s.terminals.Start(instance.ID, cfg, width, height)
 	if err != nil {
 		instance.State, instance.Error = domain.StateFailed, err.Error()
 		_ = s.store.UpdateInstance(ctx, instance)
@@ -457,7 +457,7 @@ func (s *Service) Start(
 	s.instances[instance.ID] = instance
 	s.configs[instance.ID] = cfg
 	s.mu.Unlock()
-	return session, instance, nil
+	return project, instance, nil
 }
 
 func (s *Service) Stop(ctx context.Context, instanceID string) error {
@@ -486,12 +486,12 @@ func (s *Service) Active(instanceID string) (*terminal.Session, bool) {
 // the same PTY as the operator and respects the terminal's explicit lease.
 func (s *Service) DispatchPrompt(
 	ctx context.Context,
-	workID, sessionID, executorID, prompt string,
+	workID, projectID, executorID, prompt string,
 ) error {
 	s.mu.RLock()
 	var selected domain.Instance
 	for _, instance := range s.instances {
-		if instance.SessionID == sessionID && instance.ExecutorID == executorID &&
+		if instance.ProjectID == projectID && instance.ExecutorID == executorID &&
 			(instance.State == domain.StateRunning || instance.State == domain.StateWaiting) {
 			selected = instance
 			break
@@ -499,7 +499,7 @@ func (s *Service) DispatchPrompt(
 	}
 	s.mu.RUnlock()
 	if selected.ID == "" {
-		return fmt.Errorf("no active terminal for executor %q in session %q", executorID, sessionID)
+		return fmt.Errorf("no active terminal for executor %q in project %q", executorID, projectID)
 	}
 	term, ok := s.terminals.Get(selected.ID)
 	if !ok {
@@ -637,14 +637,14 @@ func (s *Service) finishWork(instanceID string, recognition Recognition) {
 			recognition.RuleID, result, recognition.Reason)
 		if err != nil {
 			_ = s.store.Log(context.Background(), domain.LogEntry{
-				SessionID: instance.SessionID, Level: "error", Kind: "recognition",
+				ProjectID: instance.ProjectID, Level: "error", Kind: "recognition",
 				Message: err.Error(),
 			})
 		}
 	}
 	metric := s.calculator.Measure(work.Prompt, string(work.Output), config.Tokenizer, metrics.Usage{})
-	metric.SessionID, metric.ExecutorID, metric.InstanceID =
-		instance.SessionID, instance.ExecutorID, instanceID
+	metric.ProjectID, metric.ExecutorID, metric.InstanceID =
+		instance.ProjectID, instance.ExecutorID, instanceID
 	metric.Duration = time.Since(work.StartedAt).Milliseconds()
 	metric.PromptCount, metric.ResponseCount = 1, 1
 	if config.PriceID != "" {

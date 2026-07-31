@@ -28,8 +28,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
+	projectID := r.PathValue("projectID")
 	writeTick := func() bool {
-		if _, err := fmt.Fprintf(w, "event: tick\ndata: {}\n\n"); err != nil {
+		if _, err := fmt.Fprintf(w, "event: tick\ndata: {\"project_id\":%q}\n\n", projectID); err != nil {
 			return false
 		}
 		flusher.Flush()

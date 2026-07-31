@@ -33,15 +33,15 @@ func TestNewTerminalAutoAttachesToActiveSessionTopbar(t *testing.T) {
 	}
 	defer application.Close()
 
-	session := domain.Session{Name: "session1", Workspace: root}
-	session, err = application.Store.SaveSession(ctx, session)
+	project := domain.Project{Name: "session1", Root: root}
+	project, err = application.Store.SaveProject(ctx, project)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	model := New(application)
-	model.sessions = []domain.Session{session}
-	model.activeSession = 0
+	model.projects = []domain.Project{project}
+	model.activeProject = 0
 
 	// Register a new system terminal executor
 	execCfg := domain.ExecutorConfig{
@@ -51,19 +51,19 @@ func TestNewTerminalAutoAttachesToActiveSessionTopbar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Append to active session as done in form submit
-	updatedSession := model.sessions[0]
+	// Append to active project as done in form submit
+	updatedSession := model.projects[0]
 	updatedSession.SetExecutorIDs(append(updatedSession.ExecutorIDs(), execCfg.ID))
-	if _, err := application.Store.SaveSession(ctx, updatedSession); err != nil {
+	if _, err := application.Store.SaveProject(ctx, updatedSession); err != nil {
 		t.Fatal(err)
 	}
 
 	model.executors = []domain.ExecutorConfig{execCfg}
-	model.sessions = []domain.Session{updatedSession}
+	model.projects = []domain.Project{updatedSession}
 
 	renderedTabs := model.renderTabs()
 	if !containsString(updatedSession.ExecutorIDs(), "exec_zsh") {
-		t.Errorf("expected exec_zsh in session ExecutorIDs")
+		t.Errorf("expected exec_zsh in project ExecutorIDs")
 	}
 	if len(renderedTabs) == 0 {
 		t.Errorf("renderedTabs should not be empty")

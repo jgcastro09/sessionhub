@@ -19,7 +19,7 @@ import (
 )
 
 type Backend interface {
-	RemoteSessions(context.Context) ([]domain.Session, error)
+	RemoteProjects(context.Context) ([]domain.Project, error)
 	RemoteExecutors(context.Context) ([]domain.ExecutorConfig, error)
 	RemoteExecutorStatuses(context.Context) ([]ExecutorStatus, error)
 	RemoteStartTerminal(context.Context, string, string, int, int) (domain.Instance, error)
@@ -176,9 +176,9 @@ func (p *peer) handle(frame Frame) Frame {
 		}
 		p.host.setView(p, view)
 		return Frame{Type: "ui_navigation_ack"}
-	case "list_sessions":
-		items, err := p.backend.RemoteSessions(ctx)
-		return response("sessions", items, err)
+	case "list_projects":
+		items, err := p.backend.RemoteProjects(ctx)
+		return response("projects", items, err)
 	case "list_executors":
 		items, err := p.backend.RemoteExecutors(ctx)
 		for i := range items {
@@ -190,7 +190,7 @@ func (p *peer) handle(frame Frame) Frame {
 		return response("executor_status", items, err)
 	case "start_terminal":
 		var request struct {
-			SessionID  string `json:"session_id"`
+			ProjectID  string `json:"project_id"`
 			ExecutorID string `json:"executor_id"`
 			Width      int    `json:"width"`
 			Height     int    `json:"height"`
@@ -204,7 +204,7 @@ func (p *peer) handle(frame Frame) Frame {
 		if request.Height < 2 {
 			request.Height = 24
 		}
-		instance, err := p.backend.RemoteStartTerminal(ctx, request.SessionID, request.ExecutorID, request.Width, request.Height)
+		instance, err := p.backend.RemoteStartTerminal(ctx, request.ProjectID, request.ExecutorID, request.Width, request.Height)
 		if err != nil {
 			return Frame{Type: "error", Error: err.Error()}
 		}
@@ -217,17 +217,17 @@ func (p *peer) handle(frame Frame) Frame {
 		p.observed = frame.InstanceID
 		return Frame{Type: "terminal_opened", InstanceID: frame.InstanceID}
 	case "request_control":
-		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		project, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
 		owner := terminal.Owner{Kind: "remote", ID: p.id}
-		err := session.Acquire(owner)
+		err := project.Acquire(owner)
 		// A person may have left a local tab focused before walking away. A
 		// Remote Mode connection explicitly transfers that local lease, but it
 		// never steals an automation or another remote controller's lease.
-		if err != nil && session.Owner().Kind == "local" {
-			err = session.Transfer(session.Owner(), owner)
+		if err != nil && project.Owner().Kind == "local" {
+			err = project.Transfer(project.Owner(), owner)
 		}
 		if err != nil {
 			return Frame{Type: "control_denied", InstanceID: frame.InstanceID, Error: err.Error()}
@@ -235,14 +235,14 @@ func (p *peer) handle(frame Frame) Frame {
 		p.observed = frame.InstanceID
 		return Frame{Type: "control_granted", InstanceID: frame.InstanceID}
 	case "release_control":
-		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		project, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
-		err := session.Release(terminal.Owner{Kind: "remote", ID: p.id})
+		err := project.Release(terminal.Owner{Kind: "remote", ID: p.id})
 		return response("control_released", nil, err)
 	case "terminal_input":
-		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		project, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
@@ -254,14 +254,14 @@ func (p *peer) handle(frame Frame) Frame {
 		}
 		data, err := base64.StdEncoding.DecodeString(input.Data)
 		if err == nil {
-			err = session.Write(terminal.Owner{Kind: "remote", ID: p.id}, data)
+			err = project.Write(terminal.Owner{Kind: "remote", ID: p.id}, data)
 		}
 		if err != nil {
 			return Frame{Type: "input_rejected", Sequence: frame.Sequence, Error: err.Error()}
 		}
 		return Frame{Type: "input_ack", InstanceID: frame.InstanceID, Sequence: frame.Sequence}
 	case "terminal_key":
-		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		project, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
@@ -274,13 +274,13 @@ func (p *peer) handle(frame Frame) Frame {
 		}
 		var err error
 		if request.Release {
-			err = session.SendKey(terminal.Owner{Kind: "remote", ID: p.id}, uv.KeyReleaseEvent(request.Key))
+			err = project.SendKey(terminal.Owner{Kind: "remote", ID: p.id}, uv.KeyReleaseEvent(request.Key))
 		} else {
-			err = session.SendKey(terminal.Owner{Kind: "remote", ID: p.id}, uv.KeyPressEvent(request.Key))
+			err = project.SendKey(terminal.Owner{Kind: "remote", ID: p.id}, uv.KeyPressEvent(request.Key))
 		}
 		return response("key_ack", nil, err)
 	case "terminal_paste":
-		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		project, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
@@ -290,13 +290,13 @@ func (p *peer) handle(frame Frame) Frame {
 		if err := json.Unmarshal(frame.Payload, &request); err != nil {
 			return Frame{Type: "error", Error: err.Error()}
 		}
-		return response("paste_ack", nil, session.Paste(terminal.Owner{Kind: "remote", ID: p.id}, request.Text))
+		return response("paste_ack", nil, project.Paste(terminal.Owner{Kind: "remote", ID: p.id}, request.Text))
 	case "resize":
-		session, ok := p.backend.RemoteTerminal(frame.InstanceID)
+		project, ok := p.backend.RemoteTerminal(frame.InstanceID)
 		if !ok {
 			return Frame{Type: "error", Error: "terminal is not active"}
 		}
-		if !session.Owner().Equal(terminal.Owner{Kind: "remote", ID: p.id}) {
+		if !project.Owner().Equal(terminal.Owner{Kind: "remote", ID: p.id}) {
 			return Frame{Type: "error", Error: "remote peer does not control this terminal"}
 		}
 		var size struct {
@@ -305,40 +305,40 @@ func (p *peer) handle(frame Frame) Frame {
 		if err := json.Unmarshal(frame.Payload, &size); err != nil {
 			return Frame{Type: "error", Error: err.Error()}
 		}
-		return response("resized", nil, session.Resize(size.Width, size.Height))
+		return response("resized", nil, project.Resize(size.Width, size.Height))
 	case "metrics":
 		var request struct {
-			SessionID string `json:"session_id"`
+			ProjectID string `json:"project_id"`
 		}
 		_ = json.Unmarshal(frame.Payload, &request)
-		value, err := p.backend.RemoteMetrics(ctx, request.SessionID)
+		value, err := p.backend.RemoteMetrics(ctx, request.ProjectID)
 		return response("metrics", value, err)
 	case "logs":
 		var request struct {
-			SessionID string `json:"session_id"`
+			ProjectID string `json:"project_id"`
 			Limit     int    `json:"limit"`
 		}
 		_ = json.Unmarshal(frame.Payload, &request)
-		value, err := p.backend.RemoteLogs(ctx, request.SessionID, request.Limit)
+		value, err := p.backend.RemoteLogs(ctx, request.ProjectID, request.Limit)
 		return response("logs", value, err)
 	case "checkpoint":
 		var request struct {
-			SessionID string `json:"session_id"`
+			ProjectID string `json:"project_id"`
 			Name      string `json:"name"`
 		}
 		if err := json.Unmarshal(frame.Payload, &request); err != nil {
 			return Frame{Type: "error", Error: err.Error()}
 		}
-		value, err := p.backend.RemoteCheckpoint(ctx, request.SessionID, request.Name)
+		value, err := p.backend.RemoteCheckpoint(ctx, request.ProjectID, request.Name)
 		return response("checkpoint_created", value, err)
 	case "run_queue":
 		var request struct {
-			SessionID string `json:"session_id"`
+			ProjectID string `json:"project_id"`
 		}
 		if err := json.Unmarshal(frame.Payload, &request); err != nil {
 			return Frame{Type: "error", Error: err.Error()}
 		}
-		return response("queue_started", nil, p.backend.RemoteRunQueue(ctx, request.SessionID))
+		return response("queue_started", nil, p.backend.RemoteRunQueue(ctx, request.ProjectID))
 	case "decide_approval":
 		var request struct {
 			ApprovalID string `json:"approval_id"`
@@ -371,12 +371,12 @@ type Status struct {
 }
 
 // ViewState is the small amount of UI state shared with the controlled
-// SessionHub. It keeps both people looking at the same section, session and
+// SessionHub. It keeps both people looking at the same section, project and
 // terminal without giving the controlled screen any local input while the
 // remote lease is active.
 type ViewState struct {
 	Section         string `json:"section"`
-	SessionID       string `json:"session_id,omitempty"`
+	ProjectID       string `json:"project_id,omitempty"`
 	ExecutorID      string `json:"executor_id,omitempty"`
 	TerminalFocused bool   `json:"terminal_focused"`
 }
@@ -461,11 +461,11 @@ func (p *peer) stream() {
 			if p.observed == "" {
 				continue
 			}
-			session, ok := p.backend.RemoteTerminal(p.observed)
+			project, ok := p.backend.RemoteTerminal(p.observed)
 			if !ok {
 				continue
 			}
-			snapshot := session.Snapshot()
+			snapshot := project.Snapshot()
 			if snapshot == previous {
 				continue
 			}
@@ -474,8 +474,8 @@ func (p *peer) stream() {
 			if err := p.write(Frame{
 				Type: "terminal_snapshot", InstanceID: p.observed,
 				Sequence: p.sequence, Payload: payload(map[string]any{
-					"screen": snapshot, "state": session.State(),
-					"owner": session.Owner(), "alternate_screen": session.IsAltScreen(),
+					"screen": snapshot, "state": project.State(),
+					"owner": project.Owner(), "alternate_screen": project.IsAltScreen(),
 				}),
 			}); err != nil {
 				return
@@ -488,10 +488,10 @@ func (p *peer) releaseObservedControl() {
 	if p.observed == "" {
 		return
 	}
-	if session, ok := p.backend.RemoteTerminal(p.observed); ok {
+	if project, ok := p.backend.RemoteTerminal(p.observed); ok {
 		owner := terminal.Owner{Kind: "remote", ID: p.id}
-		if session.Owner().Equal(owner) {
-			_ = session.Release(owner)
+		if project.Owner().Equal(owner) {
+			_ = project.Release(owner)
 		}
 	}
 }

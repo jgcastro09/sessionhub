@@ -26,6 +26,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/gitstate"
 	"github.com/jgcastro09/sessionhub/internal/id"
+	projecthub "github.com/jgcastro09/sessionhub/internal/project"
 	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	updatecheck "github.com/jgcastro09/sessionhub/internal/update"
@@ -33,14 +34,14 @@ import (
 )
 
 var sections = []string{
-	"Sessions", "Executors", "Queues", "Pipelines", "Automations",
+	"Projects", "Executors", "Queues", "Pipelines", "Automations",
 	"Metrics", "Logs", "Remote", "Settings",
 }
 
 const voicePartialInterval = 2 * time.Second
 
 type dataMsg struct {
-	sessions  []domain.Session
+	projects  []domain.Project
 	executors []domain.ExecutorConfig
 	instances []domain.Instance
 	metrics   domain.Metric
@@ -51,7 +52,7 @@ type dataMsg struct {
 type remoteConnectedMsg struct {
 	controller *remote.Controller
 	device     remote.Device
-	sessions   []domain.Session
+	projects   []domain.Project
 	executors  []domain.ExecutorConfig
 	statuses   []remote.ExecutorStatus
 	err        error
@@ -104,7 +105,7 @@ type savedMsg struct {
 }
 
 type startedMsg struct {
-	session  *terminal.Session
+	project  *terminal.Session
 	instance domain.Instance
 	err      error
 	// registerAfter carries the Executor config to save once this terminal
@@ -120,7 +121,7 @@ type startedMsg struct {
 	// to the post-install lookup, for CLIs whose installer doesn't support
 	// a custom directory (see executor.Provider.DefaultDirs).
 	installExtraDirs []string
-	// tabKey, when set, is the session|executor tab this instance backs, so
+	// tabKey, when set, is the project|executor tab this instance backs, so
 	// it can be recorded in Model.tabInstances for reattaching later.
 	tabKey string
 }
@@ -189,7 +190,7 @@ type formKind int
 
 const (
 	noForm formKind = iota
-	sessionForm
+	projectForm
 	executorForm
 	providerPickForm
 	installForm
@@ -218,7 +219,7 @@ type formModel struct {
 	err       string
 	editingID string
 	// executorChoices, when non-empty, adds one extra tab-stop after all
-	// text fields: a checklist of registered Executors (sessionForm only).
+	// text fields: a checklist of registered Executors (projectForm only).
 	executorChoices []executorChoice
 	choiceCursor    int
 	// providerNames, when non-empty, means this form (kind ==
@@ -239,9 +240,9 @@ type formModel struct {
 	selectedProvider *executor.Provider
 	details          string
 	// Automation uses a purpose-built, selection-first editor: only the
-	// prompt and time are typed; sessions, executors, schedule type and
+	// prompt and time are typed; projects, executors, schedule type and
 	// weekdays are chosen directly in the UI.
-	automationSessions  []automationChoice
+	automationProjects  []automationChoice
 	automationExecutors []automationChoice
 	automationSchedule  int
 	automationDays      [7]bool
@@ -283,10 +284,10 @@ type Model struct {
 	focus          bool
 	section        int
 	selected       int
-	sessions       []domain.Session
+	projects       []domain.Project
 	executors      []domain.ExecutorConfig
 	instances      []domain.Instance
-	activeSession  int
+	activeProject  int
 	activeTerminal *terminal.Session
 	// remoteController is present only while this UI is controlling another
 	// SessionHub. Local state is reloaded from the store immediately after
@@ -306,7 +307,7 @@ type Model struct {
 	form            formModel
 	confirm         *confirmRequest
 	pendingRegister *pendingRegistration
-	// tabInstances maps "sessionID|executorID" to the instanceID currently
+	// tabInstances maps "projectID|executorID" to the instanceID currently
 	// backing that tab, so selecting the tab again reattaches to the same
 	// running terminal instead of starting a duplicate.
 	tabInstances map[string]string
@@ -362,10 +363,10 @@ type pendingRegistration struct {
 	installExtraDirs []string
 }
 
-// confirmRequest gates a destructive action (deleting a session or
+// confirmRequest gates a destructive action (deleting a project or
 // executor) behind an explicit y/n prompt before it runs.
 type confirmRequest struct {
-	kind    string // "session" or "executor"
+	kind    string // "project" or "executor"
 	id      string
 	name    string
 	message string
@@ -374,12 +375,12 @@ type confirmRequest struct {
 func New(application *app.App) Model {
 	vp := viewport.New()
 	return Model{
-		app: application, sidebar: true, activeSession: -1,
+		app: application, sidebar: true, activeProject: -1,
 		viewport:             vp,
 		tabInstances:         make(map[string]string),
 		remoteTabInstances:   make(map[string]string),
 		remoteExecutorStatus: make(map[string]remote.ExecutorStatus),
-		status:               "click or use keys • ctrl+g command mode • n new session • q quit",
+		status:               "click or use keys • ctrl+g command mode • n new project • q quit",
 	}
 }
 
@@ -430,15 +431,15 @@ func tick() tea.Cmd {
 func (m Model) reload() tea.Cmd {
 	application := m.app
 	controller := m.remoteController
-	sessionID := ""
-	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-		sessionID = m.sessions[m.activeSession].ID
+	projectID := ""
+	if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+		projectID = m.projects[m.activeProject].ID
 	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		if controller != nil {
-			sessions, err := controller.Sessions(ctx)
+			projects, err := controller.Projects(ctx)
 			if err != nil {
 				return dataMsg{err: err}
 			}
@@ -446,9 +447,9 @@ func (m Model) reload() tea.Cmd {
 			if err != nil {
 				return dataMsg{err: err}
 			}
-			return dataMsg{sessions: sessions, executors: executors}
+			return dataMsg{projects: projects, executors: executors}
 		}
-		sessions, err := application.Store.ListSessions(ctx)
+		projects, err := application.Store.ListProjects(ctx)
 		if err != nil {
 			return dataMsg{err: err}
 		}
@@ -459,18 +460,18 @@ func (m Model) reload() tea.Cmd {
 		var instances []domain.Instance
 		var metric domain.Metric
 		var gitState *gitstate.State
-		if sessionID == "" && len(sessions) > 0 {
-			sessionID = sessions[0].ID
+		if projectID == "" && len(projects) > 0 {
+			projectID = projects[0].ID
 		}
-		if sessionID != "" {
-			instances, err = application.Store.ListInstances(ctx, sessionID)
+		if projectID != "" {
+			instances, err = application.Store.ListInstances(ctx, projectID)
 			if err != nil {
 				return dataMsg{err: err}
 			}
-			metric, _ = application.Store.AggregateMetrics(ctx, sessionID)
-			for _, session := range sessions {
-				if session.ID == sessionID {
-					if state, gitErr := gitstate.Inspect(ctx, session.Workspace); gitErr == nil {
+			metric, _ = application.Store.AggregateMetrics(ctx, projectID)
+			for _, project := range projects {
+				if project.ID == projectID {
+					if state, gitErr := gitstate.Inspect(ctx, project.Root); gitErr == nil {
 						gitState = &state
 					}
 					break
@@ -478,7 +479,7 @@ func (m Model) reload() tea.Cmd {
 			}
 		}
 		return dataMsg{
-			sessions: sessions, executors: executors, instances: instances,
+			projects: projects, executors: executors, instances: instances,
 			metrics: metric, git: gitState,
 		}
 	}
@@ -522,15 +523,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		currentID := ""
-		if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-			currentID = m.sessions[m.activeSession].ID
+		if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+			currentID = m.projects[m.activeProject].ID
 		}
-		m.sessions, m.executors, m.instances = msg.sessions, msg.executors, msg.instances
+		m.projects, m.executors, m.instances = msg.projects, msg.executors, msg.instances
 		m.metrics, m.git = msg.metrics, msg.git
-		m.activeSession = -1
-		for i := range m.sessions {
-			if currentID == "" || m.sessions[i].ID == currentID {
-				m.activeSession = i
+		m.activeProject = -1
+		for i := range m.projects {
+			if currentID == "" || m.projects[i].ID == currentID {
+				m.activeProject = i
 				break
 			}
 		}
@@ -539,7 +540,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for _, instance := range m.instances {
 			if m.isInstanceLive(instance) {
-				key := tabKeyFor(instance.SessionID, instance.ExecutorID)
+				key := tabKeyFor(instance.ProjectID, instance.ExecutorID)
 				if _, exists := m.tabInstances[key]; !exists {
 					m.tabInstances[key] = instance.ID
 				}
@@ -558,10 +559,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		for _, status := range msg.statuses {
 			m.remoteExecutorStatus[status.ExecutorID] = status
 		}
-		m.sessions, m.executors, m.instances = msg.sessions, msg.executors, nil
-		m.activeSession, m.activeTerminal, m.focus = -1, nil, false
-		if len(m.sessions) > 0 {
-			m.activeSession = 0
+		m.projects, m.executors, m.instances = msg.projects, msg.executors, nil
+		m.activeProject, m.activeTerminal, m.focus = -1, nil, false
+		if len(m.projects) > 0 {
+			m.activeProject = 0
 		}
 		m.status = fmt.Sprintf("REMOTE CONTROL • connected to %s • select a CLI tab", msg.device.Name)
 		m.toastMessage = "Remote control active — press d in Remote to return locally"
@@ -576,7 +577,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.remoteTabInstances == nil {
 			m.remoteTabInstances = make(map[string]string)
 		}
-		m.remoteTabInstances[tabKeyFor(msg.instance.SessionID, msg.instance.ExecutorID)] = msg.instance.ID
+		m.remoteTabInstances[tabKeyFor(msg.instance.ProjectID, msg.instance.ExecutorID)] = msg.instance.ID
 		m.activeTerminal = nil
 		m.activeInstance = msg.instance
 		m.focus, m.scrollOffset = true, 0
@@ -649,7 +650,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastExpires = time.Now().Add(5 * time.Second)
 			return m, nil
 		}
-		m.activeTerminal, m.activeInstance = msg.session, msg.instance
+		m.activeTerminal, m.activeInstance = msg.project, msg.instance
 		m.focus = true
 		m.scrollOffset = 0
 		if msg.tabKey != "" {
@@ -713,7 +714,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = fmt.Sprintf("Update %s available • Press 'u' to update now • %s", msg.release.TagName, msg.release.HTMLURL)
 		} else {
 			m.availableUpdate = nil
-			m.status = "Session Hub is up to date"
+			m.status = "Project Hub is up to date"
 		}
 	case selfUpdateResultMsg:
 		m.isUpdating = false
@@ -724,9 +725,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.toastExpires = time.Now().Add(10 * time.Second)
 		} else {
 			m.availableUpdate = nil
-			m.toastMessage = fmt.Sprintf("Session Hub updated to %s! Restart app to apply.", msg.version)
+			m.toastMessage = fmt.Sprintf("Project Hub updated to %s! Restart app to apply.", msg.version)
 			m.toastExpires = time.Now().Add(15 * time.Second)
-			m.status = fmt.Sprintf("Session Hub updated to %s • Restart app to apply", msg.version)
+			m.status = fmt.Sprintf("Project Hub updated to %s • Restart app to apply", msg.version)
 		}
 	case voiceReadyMsg:
 		m.voiceBusy = false
@@ -829,7 +830,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// terminal tabs use the remote PTY, while local configuration actions
 		// stay local and cannot accidentally edit the other computer's store.
 		if m.remoteController != nil && strings.Contains("n e i s x c r", msg.String()) && sections[m.section] != "Remote" {
-			m.status = "Remote control exposes sessions and CLI terminals only • return locally in Remote (d) to edit configuration"
+			m.status = "Remote control exposes projects and CLI terminals only • return locally in Remote (d) to edit configuration"
 			return m, nil
 		}
 		switch msg.String() {
@@ -862,19 +863,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected++
 			}
 		case "left":
-			if m.activeSession > 0 {
-				m.activeSession--
+			if m.activeProject > 0 {
+				m.activeProject--
 				return m, m.reload()
 			}
 		case "right":
-			if m.activeSession+1 < len(m.sessions) {
-				m.activeSession++
+			if m.activeProject+1 < len(m.projects) {
+				m.activeProject++
 				return m, m.reload()
 			}
 		case "n":
 			switch sections[m.section] {
-			case "Sessions":
-				m.form = newSessionForm(m.executors)
+			case "Projects":
+				m.form = newProjectForm(m.executors)
 			case "Executors":
 				m.form = newExecutorForm()
 			case "Queues":
@@ -882,7 +883,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "Remote":
 				m.status = "Remote discovery is automatic — select an online device and press Enter to connect"
 			case "Automations":
-				m.form = newAutomationForm(m.sessions, m.executors, m.activeSession)
+				m.form = newAutomationForm(m.projects, m.executors, m.activeProject)
 			case "Pipelines":
 				m.form = newPipelineForm()
 			case "Metrics":
@@ -896,13 +897,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				if m.selected < len(m.executors) {
 					m.form = editExecutorForm(m.executors[m.selected])
 				}
-			case "Sessions":
-				if m.selected < len(m.sessions) {
-					m.form = editSessionForm(m.sessions[m.selected], m.executors)
+			case "Projects":
+				if m.selected < len(m.projects) {
+					m.form = editProjectForm(m.projects[m.selected], m.executors)
 				}
 			case "Automations":
 				if item, ok := m.selectedAutomation(); ok {
-					m.form = editAutomationForm(item, m.sessions, m.executors)
+					m.form = editAutomationForm(item, m.projects, m.executors)
 				}
 			}
 		case "i":
@@ -933,12 +934,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 						message: fmt.Sprintf("Delete Executor %q? This also clears its past run history (instances/queue items).", cfg.Name),
 					}
 				}
-			case "Sessions":
-				if m.selected < len(m.sessions) {
-					session := m.sessions[m.selected]
+			case "Projects":
+				if m.selected < len(m.projects) {
+					project := m.projects[m.selected]
 					m.confirm = &confirmRequest{
-						kind: "session", id: session.ID, name: session.Name,
-						message: fmt.Sprintf("Delete session %q? This also clears its instances, checkpoints, queues, pipelines and schedules. The workspace files are untouched.", session.Name),
+						kind: "project", id: project.ID, name: project.Name,
+						message: fmt.Sprintf("Delete project %q? This also clears its instances, checkpoints, queues, pipelines and schedules. The workspace files are untouched.", project.Name),
 					}
 				}
 			case "Automations":
@@ -968,9 +969,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.activateSelected()
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-			if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-				session := m.sessions[m.activeSession]
-				executors := m.sessionExecutors(session)
+			if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+				project := m.projects[m.activeProject]
+				executors := m.projectExecutors(project)
 				idx := int(msg.String()[0] - '1')
 				if idx >= 0 && idx < len(executors) {
 					return m.selectTab(executors[idx])
@@ -978,9 +979,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		default:
 			if idx, ok := parseAltShortcut(msg.String()); ok {
-				if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-					session := m.sessions[m.activeSession]
-					executors := m.sessionExecutors(session)
+				if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+					project := m.projects[m.activeProject]
+					executors := m.projectExecutors(project)
 					if idx >= 0 && idx < len(executors) {
 						return m.selectTab(executors[idx])
 					}
@@ -1024,11 +1025,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if m.activeSession >= 0 {
-				sessionID := m.sessions[m.activeSession].ID
+			if m.activeProject >= 0 {
+				projectID := m.projects[m.activeProject].ID
 				appContext := m.app.Context
 				return m, func() tea.Msg {
-					_, err := appContext.Checkpoint(context.Background(), sessionID, "Manual checkpoint", false)
+					_, err := appContext.Checkpoint(context.Background(), projectID, "Manual checkpoint", false)
 					return savedMsg{kind: "checkpoint", err: err}
 				}
 			}
@@ -1041,7 +1042,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirm = &confirmRequest{
 					kind:    "update",
 					name:    m.availableUpdate.TagName,
-					message: fmt.Sprintf("Update Session Hub from %s to %s?", currentVer, m.availableUpdate.TagName),
+					message: fmt.Sprintf("Update Project Hub from %s to %s?", currentVer, m.availableUpdate.TagName),
 				}
 				return m, nil
 			}
@@ -1062,7 +1063,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					kind: "factory-reset-warn",
 					message: fmt.Sprintf(
 						"step 1 of 3 done (ctrl+r) — step 2 of 3: this permanently deletes every "+
-							"session, executor, login, log, and downloaded file, wiping %s back to a "+
+							"project, executor, login, log, and downloaded file, wiping %s back to a "+
 							"clean install. This cannot be undone.\n\nContinue to the final confirmation?",
 						m.app.Paths.Root),
 				}
@@ -1137,7 +1138,7 @@ func (m Model) routeMouseClick(msg tea.MouseClickMsg) (bool, tea.Model, tea.Cmd)
 		next, cmd := m.toggleDictation()
 		return true, next, cmd
 	}
-	if m.activeSession >= 0 && y == 1 {
+	if m.activeProject >= 0 && y == 1 {
 		if cfg, ok := m.tabAt(x, y); ok {
 			next, cmd := m.selectTab(cfg)
 			return true, next, cmd
@@ -1169,7 +1170,7 @@ func (m Model) voiceButtonLabel() string {
 
 func (m Model) voiceButtonBounds() (start, end int, ok bool) {
 	buttonWidth := ansi.StringWidth(m.voiceButtonLabel())
-	// Keep enough room for the Session Hub identity in narrow terminals. The
+	// Keep enough room for the Project Hub identity in narrow terminals. The
 	// keyboard shortcut remains available when there is no room for a button.
 	if m.width < buttonWidth+20 {
 		return 0, 0, false
@@ -1188,7 +1189,7 @@ func (m Model) terminalRelativeCoords(mouseX, mouseY int) (int, int, bool) {
 		leftOffset = 26
 	}
 	topOffset := 1
-	if m.activeSession >= 0 {
+	if m.activeProject >= 0 {
 		topOffset = 2
 	}
 	termWidth, termHeight := m.terminalSize()
@@ -1366,8 +1367,8 @@ func (m Model) updateTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 		m.clearSelection()
 		keyStr := msg.String()
 		if idx, ok := parseAltShortcut(keyStr); ok {
-			if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-				executors := m.sessionExecutors(m.sessions[m.activeSession])
+			if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+				executors := m.projectExecutors(m.projects[m.activeProject])
 				if idx >= 0 && idx < len(executors) {
 					next, cmd := m.selectTab(executors[idx])
 					return next.(Model), cmd, true
@@ -1703,7 +1704,7 @@ func (m Model) scanInstalledExecutors() tea.Cmd {
 // updateExecutorCLI re-runs the original install command recorded in the
 // executor's manifest.json, in a real PTY, to fetch the latest version.
 // Login/config is untouched (that's isolated separately in config/), and
-// the SAME executor ID is kept (SaveExecutor upserts), so every session/tab
+// the SAME executor ID is kept (SaveExecutor upserts), so every project/tab
 // referencing it keeps working — only Command gets re-resolved afterward.
 func (m Model) updateExecutorCLI(cfg domain.ExecutorConfig) tea.Cmd {
 	if cfg.InstallDir == "" {
@@ -1733,9 +1734,9 @@ func (m Model) updateExecutorCLI(cfg domain.ExecutorConfig) tea.Cmd {
 	manager := m.app.Terminals
 	registerAfter := cfg
 	return func() tea.Msg {
-		session, err := manager.StartEphemeral(instanceID, installCfg, width, height)
+		project, err := manager.StartEphemeral(instanceID, installCfg, width, height)
 		return startedMsg{
-			session: session,
+			project: project,
 			instance: domain.Instance{
 				ID: instanceID, ExecutorID: installCfg.ID, State: domain.StateRunning,
 			},
@@ -1806,18 +1807,18 @@ func (m *Model) checkPendingRegister() tea.Cmd {
 		if err != nil {
 			return savedMsg{kind: "executor", id: pending.cfg.ID, err: fmt.Errorf("save %q: %w", pending.cfg.Name, err)}
 		}
-		if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-			session := m.sessions[m.activeSession]
+		if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+			project := m.projects[m.activeProject]
 			found := false
-			for _, id := range session.ExecutorIDs() {
+			for _, id := range project.ExecutorIDs() {
 				if id == pending.cfg.ID {
 					found = true
 					break
 				}
 			}
 			if !found {
-				session.SetExecutorIDs(append(session.ExecutorIDs(), pending.cfg.ID))
-				_, _ = m.app.Store.SaveSession(context.Background(), session)
+				project.SetExecutorIDs(append(project.ExecutorIDs(), pending.cfg.ID))
+				_, _ = m.app.Store.SaveProject(context.Background(), project)
 			}
 		}
 		if pending.installDirs != nil {
@@ -1844,10 +1845,10 @@ func (m Model) updateConfirm(message tea.Msg) (tea.Model, tea.Cmd) {
 		req := *m.confirm
 		m.confirm = nil
 		switch req.kind {
-		case "session":
+		case "project":
 			return m, func() tea.Msg {
-				err := m.app.Store.DeleteSession(context.Background(), req.id)
-				return savedMsg{kind: "session", id: req.id, deleted: true, err: err}
+				err := m.app.Store.DeleteProject(context.Background(), req.id)
+				return savedMsg{kind: "project", id: req.id, deleted: true, err: err}
 			}
 		case "executor":
 			return m, func() tea.Msg {
@@ -1894,18 +1895,18 @@ func (m Model) updateConfirm(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 	switch sections[m.section] {
-	case "Sessions":
-		if m.selected < len(m.sessions) {
-			m.activeSession = m.selected
+	case "Projects":
+		if m.selected < len(m.projects) {
+			m.activeProject = m.selected
 			return m, m.reload()
 		}
 	case "Executors":
 		// Executors is a registry only: register, edit, validate (ctrl+t),
 		// install, delete. Actually running one for work happens through a
-		// session's tab bar, not from here.
+		// project's tab bar, not from here.
 		if m.selected < len(m.executors) {
 			m.status = fmt.Sprintf(
-				"%q is registered. Add it to a session (Sessions: n or e) to open it as a tab, or ctrl+t here to validate it.",
+				"%q is registered. Add it to a project (Projects: n or e) to open it as a tab, or ctrl+t here to validate it.",
 				m.executors[m.selected].Name)
 		}
 	case "Remote":
@@ -1934,7 +1935,7 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 			m.confirm = &confirmRequest{
 				kind:    "update",
 				name:    m.availableUpdate.TagName,
-				message: fmt.Sprintf("Update Session Hub from %s to %s?", currentVer, m.availableUpdate.TagName),
+				message: fmt.Sprintf("Update Project Hub from %s to %s?", currentVer, m.availableUpdate.TagName),
 			}
 			return m, nil
 		}
@@ -1959,12 +1960,12 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// sessionExecutors resolves a session's ExecutorIDs into the actual
+// projectExecutors resolves a project's ExecutorIDs into the actual
 // registered configs (in assigned order), skipping any that were since
 // deleted.
-func (m Model) sessionExecutors(session domain.Session) []domain.ExecutorConfig {
+func (m Model) projectExecutors(project domain.Project) []domain.ExecutorConfig {
 	var out []domain.ExecutorConfig
-	for _, execID := range session.ExecutorIDs() {
+	for _, execID := range project.ExecutorIDs() {
 		for _, cfg := range m.executors {
 			if cfg.ID == execID {
 				out = append(out, cfg)
@@ -1975,29 +1976,29 @@ func (m Model) sessionExecutors(session domain.Session) []domain.ExecutorConfig 
 	return out
 }
 
-func tabKeyFor(sessionID, executorID string) string {
-	return sessionID + "|" + executorID
+func tabKeyFor(projectID, executorID string) string {
+	return projectID + "|" + executorID
 }
 
-// selectTab focuses the tab for cfg within the active session: reattaching
+// selectTab focuses the tab for cfg within the active project: reattaching
 // to its already-running instance if one exists, or lazily starting a new
 // one on first selection.
 func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
-	if m.activeSession < 0 || m.activeSession >= len(m.sessions) {
+	if m.activeProject < 0 || m.activeProject >= len(m.projects) {
 		return m, nil
 	}
-	session := m.sessions[m.activeSession]
+	project := m.projects[m.activeProject]
 	if m.remoteController != nil {
 		width, height := m.terminalSize()
 		controller := m.remoteController
 		return m, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			instance, err := controller.StartTerminal(ctx, session.ID, cfg.ID, width, height)
+			instance, err := controller.StartTerminal(ctx, project.ID, cfg.ID, width, height)
 			return remoteStartedMsg{instance: instance, cfg: cfg, err: err}
 		}
 	}
-	key := tabKeyFor(session.ID, cfg.ID)
+	key := tabKeyFor(project.ID, cfg.ID)
 	if instanceID, ok := m.tabInstances[key]; ok {
 		if live, ok := m.app.Terminals.Get(instanceID); ok && live.State() == domain.StateRunning {
 			localOwner := terminal.Owner{Kind: "local", ID: "operator"}
@@ -2006,7 +2007,7 @@ func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
 			}
 			m.activeTerminal = live
 			m.activeInstance = domain.Instance{
-				ID: instanceID, SessionID: session.ID, ExecutorID: cfg.ID, State: domain.StateRunning,
+				ID: instanceID, ProjectID: project.ID, ExecutorID: cfg.ID, State: domain.StateRunning,
 			}
 			m.focus = true
 			m.scrollOffset = 0
@@ -2015,7 +2016,7 @@ func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	if live, instance, ok := m.app.Executors.FindActive(context.Background(), session.ID, cfg.ID); ok {
+	if live, instance, ok := m.app.Executors.FindActive(context.Background(), project.ID, cfg.ID); ok {
 		if m.tabInstances == nil {
 			m.tabInstances = make(map[string]string)
 		}
@@ -2032,11 +2033,11 @@ func (m Model) selectTab(cfg domain.ExecutorConfig) (tea.Model, tea.Cmd) {
 	}
 	width, height := m.terminalSize()
 	service := m.app.Executors
-	sessionID := session.ID
+	projectID := project.ID
 	executorID := cfg.ID
 	return m, func() tea.Msg {
-		live, instance, err := service.Start(context.Background(), sessionID, executorID, width, height)
-		return startedMsg{session: live, instance: instance, err: err, tabKey: key}
+		live, instance, err := service.Start(context.Background(), projectID, executorID, width, height)
+		return startedMsg{project: live, instance: instance, err: err, tabKey: key}
 	}
 }
 
@@ -2064,7 +2065,7 @@ func (m Model) connectRemote(device remote.Device) tea.Cmd {
 		if err != nil {
 			return remoteConnectedMsg{device: device, err: err}
 		}
-		sessions, err := controller.Sessions(ctx)
+		projects, err := controller.Projects(ctx)
 		if err != nil {
 			controller.Close()
 			return remoteConnectedMsg{device: device, err: err}
@@ -2079,7 +2080,7 @@ func (m Model) connectRemote(device remote.Device) tea.Cmd {
 			controller.Close()
 			return remoteConnectedMsg{device: device, err: err}
 		}
-		return remoteConnectedMsg{controller: controller, device: controller.Device(), sessions: sessions, executors: executors, statuses: statuses}
+		return remoteConnectedMsg{controller: controller, device: controller.Device(), projects: projects, executors: executors, statuses: statuses}
 	}
 }
 
@@ -2092,7 +2093,7 @@ func (m Model) isRemotelyControlled() bool {
 
 // updateRemoteControlled is intentionally tiny: the screen still receives
 // size/tick messages so it can mirror the controller, but local mouse and
-// keyboard input cannot affect sessions, CLIs or configuration.
+// keyboard input cannot affect projects, CLIs or configuration.
 func (m Model) updateRemoteControlled(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
@@ -2119,8 +2120,8 @@ func (m Model) updateRemoteControlled(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) remoteViewState() remote.ViewState {
 	view := remote.ViewState{Section: sections[m.section], TerminalFocused: m.focus}
-	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-		view.SessionID = m.sessions[m.activeSession].ID
+	if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+		view.ProjectID = m.projects[m.activeProject].ID
 	}
 	if m.focus && m.activeInstance.ExecutorID != "" {
 		view.ExecutorID = m.activeInstance.ExecutorID
@@ -2159,27 +2160,27 @@ func (m *Model) applyRemoteNavigation(view remote.ViewState) {
 			}
 		}
 	}
-	if view.SessionID != "" {
-		for index, session := range m.sessions {
-			if session.ID == view.SessionID {
-				m.activeSession = index
+	if view.ProjectID != "" {
+		for index, project := range m.projects {
+			if project.ID == view.ProjectID {
+				m.activeProject = index
 				break
 			}
 		}
 	}
 	m.focus = false
-	if !view.TerminalFocused || view.ExecutorID == "" || m.activeSession < 0 || m.activeSession >= len(m.sessions) || m.app == nil {
+	if !view.TerminalFocused || view.ExecutorID == "" || m.activeProject < 0 || m.activeProject >= len(m.projects) || m.app == nil {
 		return
 	}
-	session := m.sessions[m.activeSession]
-	live, instance, ok := m.app.Executors.FindActive(context.Background(), session.ID, view.ExecutorID)
+	project := m.projects[m.activeProject]
+	live, instance, ok := m.app.Executors.FindActive(context.Background(), project.ID, view.ExecutorID)
 	if !ok {
 		return
 	}
 	if m.tabInstances == nil {
 		m.tabInstances = make(map[string]string)
 	}
-	m.tabInstances[tabKeyFor(session.ID, view.ExecutorID)] = instance.ID
+	m.tabInstances[tabKeyFor(project.ID, view.ExecutorID)] = instance.ID
 	m.activeTerminal, m.activeInstance = live, instance
 	// The terminal stays blurred while the lock is up; renderCenter still
 	// shows its current output behind the modal, with no local input route.
@@ -2221,7 +2222,7 @@ func (m Model) terminalSize() (int, int) {
 	}
 	width := m.width - sidebarWidth
 	height := m.height - 2
-	if m.activeSession >= 0 {
+	if m.activeProject >= 0 {
 		height-- // tab bar row
 	}
 	if width < 2 {
@@ -2235,8 +2236,8 @@ func (m Model) terminalSize() (int, int) {
 
 func (m Model) sectionLength() int {
 	switch sections[m.section] {
-	case "Sessions":
-		return len(m.sessions)
+	case "Projects":
+		return len(m.projects)
 	case "Executors":
 		return len(m.executors)
 	case "Automations":
@@ -2259,22 +2260,22 @@ func (m Model) selectedAutomation() (automation.SimpleAutomation, bool) {
 	return items[m.selected], true
 }
 
-func (m Model) sessionName(sessionID string) string {
-	for _, session := range m.sessions {
-		if session.ID == sessionID {
-			return session.Name
+func (m Model) sessionName(projectID string) string {
+	for _, project := range m.projects {
+		if project.ID == projectID {
+			return project.Name
 		}
 	}
-	return "missing session"
+	return "missing project"
 }
 
 func (m Model) automationSessionChoices() string {
-	if len(m.sessions) == 0 {
+	if len(m.projects) == 0 {
 		return "(none)"
 	}
-	choices := make([]string, 0, len(m.sessions))
-	for _, session := range m.sessions {
-		choices = append(choices, session.Name+" ("+session.ID+")")
+	choices := make([]string, 0, len(m.projects))
+	for _, project := range m.projects {
+		choices = append(choices, project.Name+" ("+project.ID+")")
 	}
 	return strings.Join(choices, ", ")
 }
@@ -2306,7 +2307,7 @@ func (m Model) View() tea.View {
 
 func (m Model) render() string {
 	rows := []string{m.renderTop()}
-	if m.activeSession >= 0 {
+	if m.activeProject >= 0 {
 		rows = append(rows, m.renderTabs())
 	}
 	rows = append(rows, m.renderCenter(), m.renderBottom())
@@ -2334,8 +2335,8 @@ func (m Model) renderRemoteControlledPanel() string {
 		controller = "another device"
 	}
 	viewing := sections[m.section]
-	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-		viewing += " • " + m.sessions[m.activeSession].Name
+	if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+		viewing += " • " + m.projects[m.activeProject].Name
 	}
 	if m.activeInstance.ExecutorID != "" {
 		viewing += " • " + m.executorName(m.activeInstance.ExecutorID)
@@ -2480,19 +2481,19 @@ func overlayLine(baseLine, overlayStr string, startX, totalWidth int) string {
 	return sb.String()
 }
 
-// renderTabs shows one tab per Executor grouped under the active session —
+// renderTabs shows one tab per Executor grouped under the active project —
 // click one to focus it (starting it the first time). ● marks a tab with a
 // live process; ○ one not started yet.
 func (m Model) renderTabs() string {
-	session := m.sessions[m.activeSession]
-	executors := m.sessionExecutors(session)
+	project := m.projects[m.activeProject]
+	executors := m.projectExecutors(project)
 	if len(executors) == 0 {
-		return tabBarStyle.Width(max(0, m.width)).Render(mutedStyle.Render(" no Executors in this session — press e on Sessions to add some "))
+		return tabBarStyle.Width(max(0, m.width)).Render(mutedStyle.Render(" no Executors in this project — press e on Projects to add some "))
 	}
 	var parts []string
 	for i, cfg := range executors {
 		marker := "○"
-		key := tabKeyFor(session.ID, cfg.ID)
+		key := tabKeyFor(project.ID, cfg.ID)
 		running := false
 		if m.remoteController != nil {
 			if instanceID, ok := m.remoteTabInstances[key]; ok && instanceID != "" {
@@ -2510,7 +2511,7 @@ func (m Model) renderTabs() string {
 		// UI model. Ask the executor service's in-memory PTY registry as well;
 		// this keeps the online dot truthful without running database work on
 		// every screen refresh.
-		if !running && m.remoteController == nil && m.app != nil && m.app.Executors != nil && m.app.Executors.IsActive(session.ID, cfg.ID) {
+		if !running && m.remoteController == nil && m.app != nil && m.app.Executors != nil && m.app.Executors.IsActive(project.ID, cfg.ID) {
 			marker, running = "●", true
 		}
 		label := tabLabel(i, marker, cfg.Name)
@@ -2566,14 +2567,14 @@ func tabLabelWidth(index int, name string) int {
 }
 
 // tabAt returns the Executor whose tab occupies screen column x, when y is
-// the tab bar's row and a session is active.
+// the tab bar's row and a project is active.
 func (m Model) tabAt(x, y int) (domain.ExecutorConfig, bool) {
-	if m.activeSession < 0 || y != 1 {
+	if m.activeProject < 0 || y != 1 {
 		return domain.ExecutorConfig{}, false
 	}
-	session := m.sessions[m.activeSession]
+	project := m.projects[m.activeProject]
 	cursor := 0
-	for i, cfg := range m.sessionExecutors(session) {
+	for i, cfg := range m.projectExecutors(project) {
 		width := tabLabelWidth(i, cfg.Name)
 		if x >= cursor && x < cursor+width {
 			return cfg, true
@@ -2587,7 +2588,7 @@ func (m Model) renderConfirmPanel() string {
 	var b strings.Builder
 	title := "Confirm delete"
 	if m.confirm.kind == "update" {
-		title = "Update Session Hub"
+		title = "Update Project Hub"
 	}
 	if m.confirm.kind == "factory-reset-warn" {
 		title = "FACTORY RESET"
@@ -2653,10 +2654,10 @@ func overlayModal(base string, modalPanel string, width, height int) string {
 }
 
 func (m Model) renderTop() string {
-	session, workspace, executor, state := "No session", "", "No Executor", "idle"
-	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-		session = m.sessions[m.activeSession].Name
-		workspace = filepath.Base(m.sessions[m.activeSession].Workspace)
+	project, workspace, executor, state := "No project", "", "No Executor", "idle"
+	if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+		project = m.projects[m.activeProject].Name
+		workspace = filepath.Base(m.projects[m.activeProject].Root)
 	}
 	if m.activeTerminal != nil {
 		executor, state = m.executorName(m.activeInstance.ExecutorID), string(m.activeTerminal.State())
@@ -2681,7 +2682,7 @@ func (m Model) renderTop() string {
 	if ver != "" && !strings.HasPrefix(ver, "v") {
 		ver = "v" + ver
 	}
-	text := fmt.Sprintf(" SESSION HUB %s  %s  %s  %s  %s  %s ", ver, session, workspace, executor, branch, state)
+	text := fmt.Sprintf(" SESSION HUB %s  %s  %s  %s  %s  %s ", ver, project, workspace, executor, branch, state)
 	if banner := m.remoteBanner(); banner != "" {
 		text += banner
 	}
@@ -2691,7 +2692,7 @@ func (m Model) renderTop() string {
 		text += fmt.Sprintf("  UPDATE %s AVAILABLE (press 'u') ", m.availableUpdate.TagName)
 	}
 	// Style.Width() word-wraps content that's too long rather than
-	// truncating it — left unbounded, a long session/workspace/branch combo
+	// truncating it — left unbounded, a long project/workspace/branch combo
 	// would wrap the top bar onto a second line and silently shift every
 	// row below it (including the tab bar's hardcoded y==1 click target).
 	if start, _, ok := m.voiceButtonBounds(); ok {
@@ -2765,7 +2766,7 @@ const (
 	sidebarSection sidebarRowKind = iota
 	sidebarSpacer
 	sidebarHeader
-	sidebarSessionRow
+	sidebarProjectRow
 	sidebarExecutorRow
 	sidebarInstanceRow
 )
@@ -2790,9 +2791,9 @@ func (m Model) findLiveTerminal(executorID string) (*terminal.Session, domain.In
 	if m.app == nil || m.app.Terminals == nil {
 		return nil, domain.Instance{}, false
 	}
-	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-		session := m.sessions[m.activeSession]
-		key := tabKeyFor(session.ID, executorID)
+	if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+		project := m.projects[m.activeProject]
+		key := tabKeyFor(project.ID, executorID)
 		if instanceID, ok := m.tabInstances[key]; ok {
 			if term, alive := m.app.Terminals.Get(instanceID); alive && term.State() == domain.StateRunning {
 				for _, inst := range m.instances {
@@ -2800,7 +2801,7 @@ func (m Model) findLiveTerminal(executorID string) (*terminal.Session, domain.In
 						return term, inst, true
 					}
 				}
-				return term, domain.Instance{ID: instanceID, SessionID: session.ID, ExecutorID: executorID, State: domain.StateRunning}, true
+				return term, domain.Instance{ID: instanceID, ProjectID: project.ID, ExecutorID: executorID, State: domain.StateRunning}, true
 			}
 		}
 	}
@@ -2818,13 +2819,13 @@ func (m Model) findLiveTerminal(executorID string) (*terminal.Session, domain.In
 // sidebar and in what order — renderSidebar draws it, sidebarRowAt maps a
 // clicked screen row back into it, so the two can never drift apart.
 func (m Model) sidebarLayout() []sidebarRow {
-	rows := make([]sidebarRow, 0, len(sections)+len(m.sessions)+len(m.executors)+4)
+	rows := make([]sidebarRow, 0, len(sections)+len(m.projects)+len(m.executors)+4)
 	for i := range sections {
 		rows = append(rows, sidebarRow{kind: sidebarSection, index: i})
 	}
-	rows = append(rows, sidebarRow{kind: sidebarSpacer}, sidebarRow{kind: sidebarHeader, label: "Sessions"})
-	for i := range m.sessions {
-		rows = append(rows, sidebarRow{kind: sidebarSessionRow, index: i})
+	rows = append(rows, sidebarRow{kind: sidebarSpacer}, sidebarRow{kind: sidebarHeader, label: "Projects"})
+	for i := range m.projects {
+		rows = append(rows, sidebarRow{kind: sidebarProjectRow, index: i})
 	}
 	rows = append(rows, sidebarRow{kind: sidebarSpacer}, sidebarRow{kind: sidebarHeader, label: "Executors"})
 	for i := range m.executors {
@@ -2847,12 +2848,12 @@ func (m Model) renderSidebar() string {
 			b.WriteString("\n")
 		case sidebarHeader:
 			b.WriteString(mutedStyle.Render(row.label) + "\n")
-		case sidebarSessionRow:
+		case sidebarProjectRow:
 			prefix := "  "
-			if row.index == m.activeSession {
+			if row.index == m.activeProject {
 				prefix = "● "
 			}
-			b.WriteString(sideItemStyle.Render(prefix+truncate(m.sessions[row.index].Name, 20)) + "\n")
+			b.WriteString(sideItemStyle.Render(prefix+truncate(m.projects[row.index].Name, 20)) + "\n")
 		case sidebarExecutorRow:
 			prefix := "  "
 			if sections[m.section] == "Executors" && row.index == m.selected {
@@ -2885,11 +2886,11 @@ func (m Model) renderSidebar() string {
 }
 
 // sidebarRowAt maps a clicked screen row to the sidebar entry it lands on,
-// accounting for the top bar, the tab bar (only when a session is active),
+// accounting for the top bar, the tab bar (only when a project is active),
 // and the sidebar box's own top padding.
 func (m Model) sidebarRowAt(y int) (sidebarRow, bool) {
 	boxTop := 1
-	if m.activeSession >= 0 {
+	if m.activeProject >= 0 {
 		boxTop = 2
 	}
 	idx := y - boxTop - 1 // -1 for sidebarStyle's Padding(1,1) top line
@@ -2908,10 +2909,10 @@ func (m Model) clickSidebar(row sidebarRow) (tea.Model, tea.Cmd) {
 		m.section = row.index
 		m.selected = 0
 		m.lastErr = ""
-	case sidebarSessionRow:
+	case sidebarProjectRow:
 		m.focus = false
-		if row.index < len(m.sessions) {
-			m.activeSession = row.index
+		if row.index < len(m.projects) {
+			m.activeProject = row.index
 			return m, m.reload()
 		}
 	case sidebarExecutorRow:
@@ -2936,7 +2937,7 @@ func (m Model) clickSidebar(row sidebarRow) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.selected = row.index
-			if m.activeSession >= 0 {
+			if m.activeProject >= 0 {
 				return m.selectTab(cfg)
 			}
 		}
@@ -2948,30 +2949,30 @@ func (m Model) emptyContent(width, height int) string {
 	var body strings.Builder
 	body.WriteString(titleStyle.Render(sections[m.section]) + "\n\n")
 	switch sections[m.section] {
-	case "Sessions":
-		if len(m.sessions) == 0 {
-			body.WriteString("No sessions configured yet.\n\nPress " + keyStyle.Render("n") + " to create a new session (workspace + grouped CLI tabs).")
+	case "Projects":
+		if len(m.projects) == 0 {
+			body.WriteString("No projects configured yet.\n\nPress " + keyStyle.Render("n") + " to create a new project (workspace + grouped CLI tabs).")
 		} else {
-			for i, session := range m.sessions {
+			for i, project := range m.projects {
 				prefix := "  "
 				titleSt := sideItemStyle
 				if i == m.selected {
 					prefix = "› "
 					titleSt = sideActiveStyle
 				}
-				names := executorNamesForIDs(session.ExecutorIDs(), m.executors)
+				names := executorNamesForIDs(project.ExecutorIDs(), m.executors)
 				executorList := "no Executors assigned"
 				if len(names) > 0 {
 					executorList = strings.Join(names, ", ")
 				}
-				body.WriteString(fmt.Sprintf("%s%s\n", prefix, titleSt.Render(session.Name)))
+				body.WriteString(fmt.Sprintf("%s%s\n", prefix, titleSt.Render(project.Name)))
 				body.WriteString(fmt.Sprintf("    %s %s\n    %s %s\n\n",
-					mutedStyle.Render("Workspace:"), shortenPath(session.Workspace),
+					mutedStyle.Render("Workspace:"), shortenPath(project.Root),
 					mutedStyle.Render("Executors:"), executorList))
 			}
 			body.WriteString("\n" + titleStyle.Render("Shortcuts") + "\n")
 			body.WriteString("  " + keyStyle.Render("Enter") + mutedStyle.Render(" Activate") + "   " +
-				keyStyle.Render("n") + mutedStyle.Render(" New Session") + "   " +
+				keyStyle.Render("n") + mutedStyle.Render(" New Project") + "   " +
 				keyStyle.Render("e") + mutedStyle.Render(" Edit") + "   " +
 				keyStyle.Render("d") + mutedStyle.Render(" Delete"))
 		}
@@ -3016,7 +3017,7 @@ func (m Model) emptyContent(width, height int) string {
 			body.WriteString("  " + keyStyle.Render("s") + mutedStyle.Render(" Scan Disk") + "   " +
 				keyStyle.Render("n") + mutedStyle.Render(" Custom") + "   " +
 				keyStyle.Render("ctrl+t") + mutedStyle.Render(" Test PTY") + "   " +
-				mutedStyle.Render("(Add to a Session tab to use)"))
+				mutedStyle.Render("(Add to a Project tab to use)"))
 		}
 	case "Queues":
 		body.WriteString("Prompt queues are persisted and idempotent.\n\nPress n to add an item. Completion requires an Executor rule or manual confirmation.")
@@ -3046,7 +3047,7 @@ func (m Model) emptyContent(width, height int) string {
 					enabled = "enabled"
 				}
 				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render(item.Name), mutedStyle.Render("["+enabled+"]")))
-				body.WriteString(fmt.Sprintf("    Session: %s  •  %s  •  Next: %s  •  %d step(s)\n", m.sessionName(item.SessionID), item.Schedule.Type, next, len(item.Steps)))
+				body.WriteString(fmt.Sprintf("    Project: %s  •  %s  •  Next: %s  •  %d step(s)\n", m.sessionName(item.ProjectID), item.Schedule.Type, next, len(item.Steps)))
 				if item.Status == automation.StatusRunning && item.CurrentStep > 0 {
 					executorName := ""
 					if item.CurrentStep <= len(item.Steps) {
@@ -3084,7 +3085,7 @@ func (m Model) emptyContent(width, height int) string {
 	case "Remote":
 		if m.remoteController != nil {
 			body.WriteString(keyStyle.Render("REMOTE CONTROL ACTIVE") + "\n\n")
-			body.WriteString(fmt.Sprintf("You are controlling %s over %s. Its sessions and CLI tabs are now shown throughout the Hub.\n\n", m.remoteDevice.Name, m.remoteDevice.Network))
+			body.WriteString(fmt.Sprintf("You are controlling %s over %s. Its projects and CLI tabs are now shown throughout the Hub.\n\n", m.remoteDevice.Name, m.remoteDevice.Network))
 			body.WriteString(mutedStyle.Render("The controlled SessionHub is amber and shows an explicit control notice. Only this pair is connected; other discovered devices remain available."))
 			body.WriteString("\n\n" + keyStyle.Render("[d Return to local environment]"))
 			break
@@ -3209,7 +3210,7 @@ func (m Model) emptyContent(width, height int) string {
 			body.WriteString(fmt.Sprintf("  Release URL: %s\n", m.availableUpdate.HTMLURL))
 			body.WriteString("\n  " + keyStyle.Render("[u] [Enter]") + mutedStyle.Render(" Install update now."))
 		} else {
-			body.WriteString("  Status: ✓ Session Hub is up to date\n")
+			body.WriteString("  Status: ✓ Project Hub is up to date\n")
 			if !m.lastUpdateCheck.IsZero() {
 				body.WriteString(fmt.Sprintf("  Last checked: %s\n", m.lastUpdateCheck.Format("15:04:05")))
 			}
@@ -3217,7 +3218,7 @@ func (m Model) emptyContent(width, height int) string {
 		}
 
 		body.WriteString("\n\n" + titleStyle.Render("Danger Zone") + "\n")
-		body.WriteString("  " + keyStyle.Render("[ctrl+r]") + mutedStyle.Render(" Factory reset — wipes sessions, executors, logins, logs and downloads.") + "\n")
+		body.WriteString("  " + keyStyle.Render("[ctrl+r]") + mutedStyle.Render(" Factory reset — wipes projects, executors, logins, logs and downloads.") + "\n")
 		body.WriteString("  " + mutedStyle.Render("A y/n confirmation and typing "+strconv.Quote(factoryResetPhrase)+" are both required."))
 	}
 	return contentStyle.Width(width).Height(height).Render(body.String())
@@ -3255,26 +3256,26 @@ func (m Model) executorName(executorID string) string {
 	return "unknown"
 }
 
-var sessionLabels = []string{"Name", "Workspace"}
+var projectLabels = []string{"Name", "Workspace"}
 
-// newSessionForm creates a session: a workspace plus which registered
+// newProjectForm creates a project: a workspace plus which registered
 // Executors (CLIs) it groups together as tabs, picked from an actual
 // checklist (space toggles, ↑/↓ moves) rather than typed free text. The
-// session itself has no conversation "context" of its own.
-func newSessionForm(executors []domain.ExecutorConfig) formModel {
-	form := makeForm(sessionForm, "New session", sessionLabels,
+// project itself has no conversation "context" of its own.
+func newProjectForm(executors []domain.ExecutorConfig) formModel {
+	form := makeForm(projectForm, "New project", projectLabels,
 		[]string{"Defaults to workspace folder name", "Absolute or relative directory (required)"})
 	form.executorChoices = executorChoicesFrom(executors, nil)
 	return form
 }
 
-func editSessionForm(session domain.Session, executors []domain.ExecutorConfig) formModel {
-	form := makeForm(sessionForm, "Edit session: "+session.Name, sessionLabels,
+func editProjectForm(project domain.Project, executors []domain.ExecutorConfig) formModel {
+	form := makeForm(projectForm, "Edit project: "+project.Name, projectLabels,
 		[]string{"Defaults to workspace folder name", "Absolute or relative directory (required)"})
-	form.editingID = session.ID
-	form.fields[0].SetValue(session.Name)
-	form.fields[1].SetValue(session.Workspace)
-	form.executorChoices = executorChoicesFrom(executors, session.ExecutorIDs())
+	form.editingID = project.ID
+	form.fields[0].SetValue(project.Name)
+	form.fields[1].SetValue(project.Root)
+	form.executorChoices = executorChoicesFrom(executors, project.ExecutorIDs())
 	return form
 }
 
@@ -3367,7 +3368,7 @@ var executorCoreLabels = []string{
 }
 
 var executorCorePlaceholders = []string{
-	"My CLI", "executable and args, e.g. codex --yolo", "defaults to session workspace",
+	"My CLI", "executable and args, e.g. codex --yolo", "defaults to project workspace",
 }
 
 var executorAdvancedLabels = []string{
@@ -3513,14 +3514,14 @@ func newScheduleForm(executors []domain.ExecutorConfig) formModel {
 		[]string{"Daily task", "once|daily|weekdays|interval", "13:30", "America/Sao_Paulo", executor, "Prompt sent by PTY", "skip|run_once|ask"})
 }
 
-func newAutomationForm(sessions []domain.Session, executors []domain.ExecutorConfig, activeSession int) formModel {
+func newAutomationForm(projects []domain.Project, executors []domain.ExecutorConfig, activeProject int) formModel {
 	form := makeForm(automationForm, "New Automation", []string{"Prompt", "Time"}, []string{"What should the executor do?", "14:00"})
-	form.automationSessions = make([]automationChoice, len(sessions))
-	for i, session := range sessions {
-		form.automationSessions[i] = automationChoice{id: session.ID, name: session.Name, selected: i == activeSession || (activeSession < 0 && i == 0)}
+	form.automationProjects = make([]automationChoice, len(projects))
+	for i, project := range projects {
+		form.automationProjects[i] = automationChoice{id: project.ID, name: project.Name, selected: i == activeProject || (activeProject < 0 && i == 0)}
 	}
-	if len(sessions) > 0 && !automationChoiceSelected(form.automationSessions) {
-		form.automationSessions[0].selected = true
+	if len(projects) > 0 && !automationChoiceSelected(form.automationProjects) {
+		form.automationProjects[0].selected = true
 	}
 	form.automationExecutors = make([]automationChoice, len(executors))
 	for i, cfg := range executors {
@@ -3532,11 +3533,11 @@ func newAutomationForm(sessions []domain.Session, executors []domain.ExecutorCon
 	return form
 }
 
-func editAutomationForm(item automation.SimpleAutomation, sessions []domain.Session, executors []domain.ExecutorConfig) formModel {
-	form := newAutomationForm(sessions, executors, -1)
+func editAutomationForm(item automation.SimpleAutomation, projects []domain.Project, executors []domain.ExecutorConfig) formModel {
+	form := newAutomationForm(projects, executors, -1)
 	form.title, form.editingID = "Edit Automation: "+item.Name, item.ID
-	for i := range form.automationSessions {
-		form.automationSessions[i].selected = form.automationSessions[i].id == item.SessionID
+	for i := range form.automationProjects {
+		form.automationProjects[i].selected = form.automationProjects[i].id == item.ProjectID
 	}
 	for i := range form.automationExecutors {
 		form.automationExecutors[i].selected = len(item.Steps) > 0 && form.automationExecutors[i].id == item.Steps[0].ExecutorID
@@ -3636,7 +3637,7 @@ func automationFromValues(values []string, editingID string) (automation.SimpleA
 		}
 		steps = append(steps, automation.SimpleStep{ExecutorID: strings.TrimSpace(parts[0]), Prompt: strings.TrimSpace(parts[1])})
 	}
-	return automation.SimpleAutomation{ID: editingID, Name: strings.TrimSpace(values[0]), SessionID: strings.TrimSpace(values[1]), Enabled: enabled, Schedule: schedule, Steps: steps}, nil
+	return automation.SimpleAutomation{ID: editingID, Name: strings.TrimSpace(values[0]), ProjectID: strings.TrimSpace(values[1]), Enabled: enabled, Schedule: schedule, Steps: steps}, nil
 }
 
 func automationFromEditor(form formModel) (automation.SimpleAutomation, error) {
@@ -3648,7 +3649,7 @@ func automationFromEditor(form formModel) (automation.SimpleAutomation, error) {
 		}
 		return automationChoice{}, fmt.Errorf("select a %s", label)
 	}
-	session, err := selected(form.automationSessions, "session")
+	project, err := selected(form.automationProjects, "project")
 	if err != nil {
 		return automation.SimpleAutomation{}, err
 	}
@@ -3687,7 +3688,7 @@ func automationFromEditor(form formModel) (automation.SimpleAutomation, error) {
 			return automation.SimpleAutomation{}, errors.New("select at least one weekday")
 		}
 	}
-	return automation.SimpleAutomation{ID: form.editingID, Name: truncate(prompt, 42), SessionID: session.id, Enabled: true,
+	return automation.SimpleAutomation{ID: form.editingID, Name: truncate(prompt, 42), ProjectID: project.id, Enabled: true,
 		Schedule: schedule, Steps: []automation.SimpleStep{{ExecutorID: executorChoice.id, Prompt: prompt}}}, nil
 }
 
@@ -3793,7 +3794,7 @@ func (m Model) updateAutomationEditor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case "up", "k":
 		switch m.form.automationFocus {
 		case 0:
-			moveCursor(-1, len(m.form.automationSessions))
+			moveCursor(-1, len(m.form.automationProjects))
 		case 1:
 			moveCursor(-1, len(m.form.automationExecutors))
 		case 2:
@@ -3807,7 +3808,7 @@ func (m Model) updateAutomationEditor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case "down", "j":
 		switch m.form.automationFocus {
 		case 0:
-			moveCursor(1, len(m.form.automationSessions))
+			moveCursor(1, len(m.form.automationProjects))
 		case 1:
 			moveCursor(1, len(m.form.automationExecutors))
 		case 2:
@@ -3831,9 +3832,9 @@ func (m Model) updateAutomationEditor(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case " ", "enter":
 		switch m.form.automationFocus {
 		case 0:
-			if len(m.form.automationSessions) > 0 {
-				for i := range m.form.automationSessions {
-					m.form.automationSessions[i].selected = i == m.form.automationCursor
+			if len(m.form.automationProjects) > 0 {
+				for i := range m.form.automationProjects {
+					m.form.automationProjects[i].selected = i == m.form.automationCursor
 				}
 			}
 		case 1:
@@ -3878,7 +3879,7 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.form = formModel{}
-		m.activeTerminal, m.activeInstance = msg.session, msg.instance
+		m.activeTerminal, m.activeInstance = msg.project, msg.instance
 		m.focus = true
 		m.scrollOffset = 0
 		if msg.registerAfter != nil {
@@ -3985,9 +3986,9 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 				instanceID := id.New("test")
 				manager := m.app.Terminals
 				return m, func() tea.Msg {
-					session, err := manager.StartEphemeral(instanceID, cfg, width, height)
+					project, err := manager.StartEphemeral(instanceID, cfg, width, height)
 					return startedMsg{
-						session: session,
+						project: project,
 						instance: domain.Instance{
 							ID: instanceID, ExecutorID: cfg.ID, State: domain.StateRunning,
 						},
@@ -4011,7 +4012,7 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		values[i] = m.form.fields[i].Value()
 	}
 	switch m.form.kind {
-	case sessionForm:
+	case projectForm:
 		name, workspace := strings.TrimSpace(values[0]), strings.TrimSpace(values[1])
 		workspace = strings.Trim(workspace, `"'`)
 		if workspace == "" {
@@ -4037,11 +4038,19 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 				executorIDs = append(executorIDs, choice.id)
 			}
 		}
-		session := domain.Session{ID: m.form.editingID, Name: name, Workspace: absolute}
-		session.SetExecutorIDs(executorIDs)
 		return m, func() tea.Msg {
-			saved, err := m.app.Store.SaveSession(context.Background(), session)
-			return savedMsg{kind: "session", id: saved.ID, err: err}
+			project, err := projecthub.Init(absolute, name)
+			if err == nil {
+				_, err = m.app.Projects.Attach(absolute)
+			}
+			if err != nil {
+				return savedMsg{kind: "project", err: err}
+			}
+			// The local index mirrors only identity/root for runtime lookups.
+			// Portable setup remains under .shproject.
+			project.SetExecutorIDs(executorIDs)
+			saved, err := m.app.Store.SaveProject(context.Background(), project)
+			return savedMsg{kind: "project", id: saved.ID, err: err}
 		}
 	case executorForm:
 		cfg, err := executorFromValues(m.form.labels, values, m)
@@ -4054,18 +4063,18 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		}
 		return m, func() tea.Msg {
 			err := m.app.Store.SaveExecutor(context.Background(), cfg)
-			if err == nil && m.form.editingID == "" && m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-				session := m.sessions[m.activeSession]
+			if err == nil && m.form.editingID == "" && m.activeProject >= 0 && m.activeProject < len(m.projects) {
+				project := m.projects[m.activeProject]
 				found := false
-				for _, id := range session.ExecutorIDs() {
+				for _, id := range project.ExecutorIDs() {
 					if id == cfg.ID {
 						found = true
 						break
 					}
 				}
 				if !found {
-					session.SetExecutorIDs(append(session.ExecutorIDs(), cfg.ID))
-					_, _ = m.app.Store.SaveSession(context.Background(), session)
+					project.SetExecutorIDs(append(project.ExecutorIDs(), cfg.ID))
+					_, _ = m.app.Store.SaveProject(context.Background(), project)
 				}
 			}
 			return savedMsg{kind: "executor", id: cfg.ID, err: err}
@@ -4082,8 +4091,8 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		workingDir := ""
-		if m.activeSession >= 0 {
-			workingDir = m.sessions[m.activeSession].Workspace
+		if m.activeProject >= 0 {
+			workingDir = m.projects[m.activeProject].Root
 		}
 		slug := executor.Slug(name)
 		dirs, err := executor.EnsureInstallDirs(m.app.Paths.Executors, slug)
@@ -4129,18 +4138,18 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 				if err != nil {
 					return savedMsg{kind: "executor", id: cfg.ID, err: fmt.Errorf("save %q: %w", cfg.Name, err)}
 				}
-				if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
-					session := m.sessions[m.activeSession]
+				if m.activeProject >= 0 && m.activeProject < len(m.projects) {
+					project := m.projects[m.activeProject]
 					found := false
-					for _, id := range session.ExecutorIDs() {
+					for _, id := range project.ExecutorIDs() {
 						if id == cfg.ID {
 							found = true
 							break
 						}
 					}
 					if !found {
-						session.SetExecutorIDs(append(session.ExecutorIDs(), cfg.ID))
-						_, _ = m.app.Store.SaveSession(context.Background(), session)
+						project.SetExecutorIDs(append(project.ExecutorIDs(), cfg.ID))
+						_, _ = m.app.Store.SaveProject(context.Background(), project)
 					}
 				}
 				if err := executor.WriteManifest(dirs, executor.Manifest{
@@ -4166,9 +4175,9 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		instanceID := id.New("install")
 		manager := m.app.Terminals
 		return m, func() tea.Msg {
-			session, err := manager.StartEphemeral(instanceID, installCfg, width, height)
+			project, err := manager.StartEphemeral(instanceID, installCfg, width, height)
 			return startedMsg{
-				session: session,
+				project: project,
 				instance: domain.Instance{
 					ID: instanceID, ExecutorID: installCfg.ID, State: domain.StateRunning,
 				},
@@ -4180,8 +4189,8 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			}
 		}
 	case queueForm:
-		if m.activeSession < 0 {
-			m.form.err = "select a session first"
+		if m.activeProject < 0 {
+			m.form.err = "select a project first"
 			return m, nil
 		}
 		priority, err := strconv.Atoi(defaultString(values[2], "0"))
@@ -4200,7 +4209,7 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		item := domain.QueueItem{
-			SessionID: m.sessions[m.activeSession].ID, ExecutorID: values[1],
+			ProjectID: m.projects[m.activeProject].ID, ExecutorID: values[1],
 			Prompt: values[0], Priority: priority, Timeout: timeout,
 			MaxAttempts: attempts,
 		}
@@ -4215,12 +4224,12 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			return savedMsg{kind: "remote host", id: address, err: err}
 		}
 	case scheduleForm:
-		if m.activeSession < 0 {
-			m.form.err = "select a session first"
+		if m.activeProject < 0 {
+			m.form.err = "select a project first"
 			return m, nil
 		}
 		schedule := domain.Schedule{
-			SessionID: m.sessions[m.activeSession].ID, Name: values[0],
+			ProjectID: m.projects[m.activeProject].ID, Name: values[0],
 			Kind: domain.ScheduleKind(values[1]), Spec: values[2],
 			Timezone: defaultString(values[3], "UTC"), TargetType: "prompt",
 			Target:  payloadJSON(map[string]string{"executor_id": values[4], "prompt": values[5]}),
@@ -4252,8 +4261,8 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			return savedMsg{kind: "automation", id: item.ID, err: err}
 		}
 	case pipelineForm:
-		if m.activeSession < 0 {
-			m.form.err = "select a session first"
+		if m.activeProject < 0 {
+			m.form.err = "select a project first"
 			return m, nil
 		}
 		var steps []domain.PipelineStep
@@ -4270,7 +4279,7 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		}
 		template, _ := strconv.ParseBool(defaultString(values[4], "false"))
 		pipeline := domain.Pipeline{
-			SessionID: m.sessions[m.activeSession].ID, Name: values[0],
+			ProjectID: m.projects[m.activeProject].ID, Name: values[0],
 			Request: values[1], Budget: budget, Template: template,
 		}
 		return m, func() tea.Msg {
@@ -4404,8 +4413,8 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 	}
 
 	workingDir := strings.TrimSpace(field("Working directory"))
-	if workingDir == "" && m.activeSession >= 0 {
-		workingDir = m.sessions[m.activeSession].Workspace
+	if workingDir == "" && m.activeProject >= 0 {
+		workingDir = m.projects[m.activeProject].Root
 	}
 
 	suffix := orig.PromptSuffix
@@ -4675,7 +4684,7 @@ func (m Model) renderFormPanel() string {
 		b.WriteString(mutedStyle.Render(label) + "\n")
 		b.WriteString(m.form.fields[i].View() + "\n")
 	}
-	if m.form.kind == sessionForm {
+	if m.form.kind == projectForm {
 		label := "Executors (space toggles, ↑↓ moves)"
 		if m.form.onChecklist() {
 			label = "› " + label
@@ -4711,7 +4720,7 @@ func (m Model) renderFormPanel() string {
 		}
 	case installForm:
 		hint = "ctrl+s checks, installs only if missing, then registers • esc cancel"
-	case sessionForm:
+	case projectForm:
 		hint = "tab next • space toggles Executor, ↑↓ moves within the list • ctrl+s save • esc cancel"
 	case factoryResetForm:
 		hint = fmt.Sprintf("type %q exactly, then ctrl+s to WIPE EVERYTHING • esc cancels", factoryResetPhrase)
@@ -4740,11 +4749,11 @@ func (m Model) renderAutomationEditor() string {
 		return prefix + mark + " " + choice.name
 	}
 	b.WriteString(titleStyle.Render(m.form.title) + "\n\n")
-	focus(0, "Session")
-	if len(m.form.automationSessions) == 0 {
-		b.WriteString(errorStyle.Render("    No sessions available. Create one first.") + "\n")
+	focus(0, "Project")
+	if len(m.form.automationProjects) == 0 {
+		b.WriteString(errorStyle.Render("    No projects available. Create one first.") + "\n")
 	}
-	for i, choice := range m.form.automationSessions {
+	for i, choice := range m.form.automationProjects {
 		style := sideItemStyle
 		if m.form.automationFocus == 0 && i == m.form.automationCursor {
 			style = sideActiveStyle

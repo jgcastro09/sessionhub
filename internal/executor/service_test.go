@@ -18,7 +18,7 @@ import (
 // reentrant, so that self-deadlocked the goroutine permanently — freezing
 // Service.Run()'s single event loop while still holding the same lock
 // Start() needs at its end to register any future instance. In practice:
-// the first terminal in a session would start fine, but the moment any
+// the first terminal in a project would start fine, but the moment any
 // process anywhere exited, starting a second terminal would hang forever.
 func TestHandleEventExitCodeDoesNotDeadlock(t *testing.T) {
 	ctx := context.Background()
@@ -32,7 +32,7 @@ func TestHandleEventExitCodeDoesNotDeadlock(t *testing.T) {
 	svc := New(ctx, st, terminals)
 
 	const instanceID = "inst-exit-test"
-	svc.instances[instanceID] = domain.Instance{ID: instanceID, SessionID: "s1", ExecutorID: "e1"}
+	svc.instances[instanceID] = domain.Instance{ID: instanceID, ProjectID: "s1", ExecutorID: "e1"}
 	svc.configs[instanceID] = domain.ExecutorConfig{ID: "e1"}
 
 	exitCode := 1
@@ -64,7 +64,7 @@ func TestRulelessAutomationCompletesAfterSettledOutput(t *testing.T) {
 	svc := New(ctx, st, terminal.NewManager(ctx, nil, 100))
 	instanceID := "inst-automation-idle"
 	done := make(chan WorkResult, 1)
-	svc.instances[instanceID] = domain.Instance{ID: instanceID, SessionID: "s1", ExecutorID: "e1"}
+	svc.instances[instanceID] = domain.Instance{ID: instanceID, ProjectID: "s1", ExecutorID: "e1"}
 	svc.configs[instanceID] = domain.ExecutorConfig{ID: "e1"}
 	svc.work[instanceID] = &activeWork{
 		ID:           "work-1",
@@ -99,7 +99,7 @@ func TestAutomationCompletionTokenFinishesWorkImmediately(t *testing.T) {
 	svc := New(ctx, st, terminal.NewManager(ctx, nil, 100))
 	instanceID := "inst-automation-token"
 	done := make(chan WorkResult, 1)
-	svc.instances[instanceID] = domain.Instance{ID: instanceID, SessionID: "s1", ExecutorID: "e1"}
+	svc.instances[instanceID] = domain.Instance{ID: instanceID, ProjectID: "s1", ExecutorID: "e1"}
 	svc.configs[instanceID] = domain.ExecutorConfig{ID: "e1"}
 	svc.work[instanceID] = &activeWork{
 		ID: "work-token", InstanceID: instanceID, Prompt: "build it",

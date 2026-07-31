@@ -10,7 +10,7 @@ import (
 )
 
 type Repository interface {
-	GetSession(context.Context, string) (domain.Session, error)
+	GetProject(context.Context, string) (domain.Project, error)
 	LoadContext(context.Context, string) (domain.GlobalContext, error)
 	ListInstances(context.Context, string) ([]domain.Instance, error)
 	AggregateMetrics(context.Context, string) (domain.Metric, error)
@@ -30,27 +30,27 @@ type Snapshot struct {
 
 func (s *Service) Checkpoint(
 	ctx context.Context,
-	sessionID, name string,
+	projectID, name string,
 	automatic bool,
 ) (domain.Checkpoint, error) {
-	session, err := s.repository.GetSession(ctx, sessionID)
+	project, err := s.repository.GetProject(ctx, projectID)
 	if err != nil {
 		return domain.Checkpoint{}, err
 	}
-	global, err := s.repository.LoadContext(ctx, sessionID)
+	global, err := s.repository.LoadContext(ctx, projectID)
 	if err != nil {
 		return domain.Checkpoint{}, err
 	}
-	instances, err := s.repository.ListInstances(ctx, sessionID)
+	instances, err := s.repository.ListInstances(ctx, projectID)
 	if err != nil {
 		return domain.Checkpoint{}, err
 	}
-	metric, err := s.repository.AggregateMetrics(ctx, sessionID)
+	metric, err := s.repository.AggregateMetrics(ctx, projectID)
 	if err != nil {
 		return domain.Checkpoint{}, err
 	}
 	snapshot := Snapshot{Context: global, Instances: instances, Metrics: metric}
-	if state, gitErr := gitstate.Inspect(ctx, session.Workspace); gitErr == nil {
+	if state, gitErr := gitstate.Inspect(ctx, project.Root); gitErr == nil {
 		snapshot.Git = &state
 	}
 	data, err := json.Marshal(snapshot)
@@ -58,7 +58,7 @@ func (s *Service) Checkpoint(
 		return domain.Checkpoint{}, fmt.Errorf("encode checkpoint: %w", err)
 	}
 	return s.repository.CreateCheckpoint(ctx, domain.Checkpoint{
-		SessionID: sessionID, Name: name, Automatic: automatic, Snapshot: data,
+		ProjectID: projectID, Name: name, Automatic: automatic, Snapshot: data,
 	})
 }
 

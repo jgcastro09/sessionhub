@@ -85,8 +85,8 @@ func (s *Store) CreateApproval(ctx context.Context, approval domain.Approval) (d
 		return approval, err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO approvals(id,session_id,target_type,target_id,state,payload,requested_at)
-VALUES(?,?,?,?,?,?,?)`, approval.ID, approval.SessionID, approval.TargetType,
+INSERT INTO approvals(id,project_id,target_type,target_id,state,payload,requested_at)
+VALUES(?,?,?,?,?,?,?)`, approval.ID, approval.ProjectID, approval.TargetType,
 		approval.TargetID, approval.State, data, approval.RequestedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return approval, fmt.Errorf("create approval: %w", err)
@@ -192,9 +192,9 @@ WHERE target_type='pipeline_step' AND target_id=? AND state='waiting'`,
 	return approval, err
 }
 
-func (s *Store) ListApprovals(ctx context.Context, sessionID string) ([]domain.Approval, error) {
+func (s *Store) ListApprovals(ctx context.Context, projectID string) ([]domain.Approval, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT payload,state FROM approvals WHERE session_id=? ORDER BY requested_at DESC`, sessionID)
+		`SELECT payload,state FROM approvals WHERE project_id=? ORDER BY requested_at DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,11 +230,11 @@ func (s *Store) SaveWatcher(ctx context.Context, watcher domain.Watcher) (domain
 		return watcher, err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO watchers(id,session_id,enabled,workspace,last_event_hash,payload,created_at,updated_at)
+INSERT INTO watchers(id,project_id,enabled,workspace,last_event_hash,payload,created_at,updated_at)
 VALUES(?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,workspace=excluded.workspace,
  last_event_hash=excluded.last_event_hash,payload=excluded.payload,updated_at=excluded.updated_at`,
-		watcher.ID, watcher.SessionID, watcher.Enabled, watcher.Workspace,
+		watcher.ID, watcher.ProjectID, watcher.Enabled, watcher.Workspace,
 		watcher.LastEventHash, data, watcher.CreatedAt.Format(time.RFC3339Nano),
 		now.Format(time.RFC3339Nano))
 	if err != nil {
@@ -245,7 +245,7 @@ ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,workspace=excluded.worksp
 
 func (s *Store) SaveReport(
 	ctx context.Context,
-	sessionID, targetType, targetID string,
+	projectID, targetType, targetID string,
 	report any,
 ) (string, error) {
 	reportID := id.New("report")
@@ -254,8 +254,8 @@ func (s *Store) SaveReport(
 		return "", err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO reports(id,session_id,target_type,target_id,payload,created_at)
-VALUES(?,?,?,?,?,?)`, reportID, sessionID, targetType, targetID, data,
+INSERT INTO reports(id,project_id,target_type,target_id,payload,created_at)
+VALUES(?,?,?,?,?,?)`, reportID, projectID, targetType, targetID, data,
 		nowUTC().Format(time.RFC3339Nano))
 	return reportID, err
 }

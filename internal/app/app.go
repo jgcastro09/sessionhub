@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/domain"
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/metrics"
+	projecthub "github.com/jgcastro09/sessionhub/internal/project"
 	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/store"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
@@ -24,6 +26,7 @@ type App struct {
 	Version             string
 	Paths               config.Paths
 	Store               *store.Store
+	Projects            *projecthub.Catalog
 	Terminals           *terminal.Manager
 	Executors           *executor.Service
 	Context             *contexthub.Service
@@ -50,6 +53,16 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 	if err != nil {
 		cancel()
 		return nil, err
+	}
+	projectsRoot := paths.Projects
+	if projectsRoot == "" {
+		projectsRoot = filepath.Join(paths.Root, "projects")
+	}
+	projects, err := projecthub.OpenCatalog(projectsRoot)
+	if err != nil {
+		_ = repository.Close()
+		cancel()
+		return nil, fmt.Errorf("open project catalog: %w", err)
 	}
 	recovered, err := repository.Recover(ctx)
 	if err != nil {
@@ -79,7 +92,7 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		return nil, err
 	}
 	a := &App{
-		Version: version, Paths: paths, Store: repository,
+		Version: version, Paths: paths, Store: repository, Projects: projects,
 		Terminals: terminals, Executors: executors,
 		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
 		Automation: automationEngine, AutomationScheduler: automationScheduler,

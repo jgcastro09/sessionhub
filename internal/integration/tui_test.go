@@ -20,11 +20,11 @@ func TestTUIStartsInRealPTYAndQuits(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := make(chan terminal.Event, 128)
-	session, err := terminal.Start(
+	project, err := terminal.Start(
 		context.Background(),
 		"tui-integration",
 		domain.ExecutorConfig{
-			Name: "Session Hub integration",
+			Name: "Project Hub integration",
 			Command: "go",
 			Args: []string{"run", "./cmd/sessionhub"},
 			WorkingDir: root,
@@ -37,22 +37,22 @@ func TestTUIStartsInRealPTYAndQuits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close(2 * time.Second)
+	defer project.Close(2 * time.Second)
 
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		if strings.Contains(session.Snapshot(), "SESSION HUB") {
-			if err := session.Write(terminal.Owner{Kind: "local", ID: "operator"}, []byte("q")); err != nil {
+		if strings.Contains(project.Snapshot(), "SESSION HUB") {
+			if err := project.Write(terminal.Owner{Kind: "local", ID: "operator"}, []byte("q")); err != nil {
 				t.Fatal(err)
 			}
 			exitDeadline := time.Now().Add(10 * time.Second)
 			for time.Now().Before(exitDeadline) {
-				if state := session.State(); state == domain.StateFinished {
+				if state := project.State(); state == domain.StateFinished {
 					return
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
-			t.Fatalf("TUI did not quit after q; state=%s", session.State())
+			t.Fatalf("TUI did not quit after q; state=%s", project.State())
 		}
 		select {
 		case event := <-events:
@@ -62,5 +62,5 @@ func TestTUIStartsInRealPTYAndQuits(t *testing.T) {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	t.Fatalf("TUI did not render expected header; snapshot=%q", session.Snapshot())
+	t.Fatalf("TUI did not render expected header; snapshot=%q", project.Snapshot())
 }

@@ -99,7 +99,7 @@ func TestSchedulerStartupMarksPastOnceAsMissed(t *testing.T) {
 	}
 	past := time.Now().In(time.Local).Add(-time.Minute)
 	s.items["a"] = SimpleAutomation{
-		ID: "a", Name: "past", SessionID: "session", Enabled: true,
+		ID: "a", Name: "past", ProjectID: "project", Enabled: true,
 		Schedule: SimpleSchedule{Type: ScheduleOnce, Date: past.Format("2006-01-02"), Time: past.Format("15:04")},
 		Steps:    []SimpleStep{{ID: "step", ExecutorID: "executor", Prompt: "hello"}},
 	}

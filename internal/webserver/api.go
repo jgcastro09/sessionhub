@@ -16,18 +16,18 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/pair", s.handlePair)
 
 	api := http.NewServeMux()
-	api.HandleFunc("GET /api/sessions", s.handleSessions)
-	api.HandleFunc("GET /api/executors", s.handleExecutors)
-	api.HandleFunc("GET /api/executors/status", s.handleExecutorStatuses)
-	api.HandleFunc("GET /api/metrics", s.handleMetrics)
-	api.HandleFunc("GET /api/logs", s.handleLogs)
-	api.HandleFunc("GET /api/queue", s.handleQueue)
-	api.HandleFunc("GET /api/schedules", s.handleSchedules)
-	api.HandleFunc("GET /api/pipelines", s.handlePipelines)
-	api.HandleFunc("GET /api/events", s.handleEvents)
-	mux.Handle("/api/", s.requireTrusted(api))
+	api.HandleFunc("GET /api/v2/projects", s.handleProjects)
+	api.HandleFunc("GET /api/v2/projects/{projectID}", s.handleProject)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/executors", s.handleExecutors)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/metrics", s.handleMetrics)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/logs", s.handleLogs)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/queue", s.handleQueue)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/pipelines", s.handlePipelines)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/automations", s.handleSchedules)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/events", s.handleEvents)
+	mux.Handle("/api/v2/", s.requireTrusted(api))
 
-	// The SPA shell itself carries no session data — only the /api/*
+	// The SPA shell itself carries no project data — only the /api/*
 	// endpoints above do — so it stays reachable pre-pairing. That's what
 	// lets an unpaired LAN device load the page far enough to see the
 	// PairingGate screen in the first place.
@@ -45,12 +45,28 @@ func writeJSON(w http.ResponseWriter, value any, err error) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	items, err := s.backend.RemoteSessions(r.Context())
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	items, err := s.backend.RemoteProjects(r.Context())
 	if items == nil && err == nil {
-		items = []domain.Session{}
+		items = []domain.Project{}
 	}
 	writeJSON(w, items, err)
+}
+
+func (s *Server) handleProject(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("projectID")
+	items, err := s.backend.RemoteProjects(r.Context())
+	if err != nil {
+		writeJSON(w, nil, err)
+		return
+	}
+	for _, item := range items {
+		if item.ID == projectID {
+			writeJSON(w, item, nil)
+			return
+		}
+	}
+	http.Error(w, "project not found", http.StatusNotFound)
 }
 
 func (s *Server) handleExecutors(w http.ResponseWriter, r *http.Request) {
@@ -70,20 +86,20 @@ func (s *Server) handleExecutorStatuses(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
-	metric, err := s.backend.RemoteMetrics(r.Context(), sessionID)
+	projectID := r.PathValue("projectID")
+	metric, err := s.backend.RemoteMetrics(r.Context(), projectID)
 	writeJSON(w, metric, err)
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
+	projectID := r.PathValue("projectID")
 	limit := 100
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			limit = parsed
 		}
 	}
-	items, err := s.backend.RemoteLogs(r.Context(), sessionID, limit)
+	items, err := s.backend.RemoteLogs(r.Context(), projectID, limit)
 	if items == nil && err == nil {
 		items = []domain.LogEntry{}
 	}
@@ -91,9 +107,9 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
+	projectID := r.PathValue("projectID")
 	out := []domain.QueueItem{}
-	err := s.forEachSession(r.Context(), sessionID, func(ctx context.Context, id string) error {
+	err := s.forEachProject(r.Context(), projectID, func(ctx context.Context, id string) error {
 		items, err := s.backend.WebQueue(ctx, id)
 		out = append(out, items...)
 		return err
@@ -102,9 +118,9 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
+	projectID := r.PathValue("projectID")
 	out := []domain.Schedule{}
-	err := s.forEachSession(r.Context(), sessionID, func(ctx context.Context, id string) error {
+	err := s.forEachProject(r.Context(), projectID, func(ctx context.Context, id string) error {
 		items, err := s.backend.WebSchedules(ctx, id)
 		out = append(out, items...)
 		return err
@@ -113,9 +129,9 @@ func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePipelines(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
+	projectID := r.PathValue("projectID")
 	out := []domain.Pipeline{}
-	err := s.forEachSession(r.Context(), sessionID, func(ctx context.Context, id string) error {
+	err := s.forEachProject(r.Context(), projectID, func(ctx context.Context, id string) error {
 		items, err := s.backend.WebPipelines(ctx, id)
 		out = append(out, items...)
 		return err
@@ -123,19 +139,19 @@ func (s *Server) handlePipelines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out, err)
 }
 
-// forEachSession runs fn once for sessionID, or once per known session when
-// sessionID is empty — the dashboard's "all sessions" view for data that
-// internal/store only ever queries per-session.
-func (s *Server) forEachSession(ctx context.Context, sessionID string, fn func(context.Context, string) error) error {
-	ids := []string{sessionID}
-	if sessionID == "" {
-		sessions, err := s.backend.RemoteSessions(ctx)
+// forEachProject runs fn once for projectID, or once per known project when
+// projectID is empty — the dashboard's "all projects" view for data that
+// internal/store only ever queries per-project.
+func (s *Server) forEachProject(ctx context.Context, projectID string, fn func(context.Context, string) error) error {
+	ids := []string{projectID}
+	if projectID == "" {
+		projects, err := s.backend.RemoteProjects(ctx)
 		if err != nil {
 			return err
 		}
-		ids = make([]string, len(sessions))
-		for i, session := range sessions {
-			ids[i] = session.ID
+		ids = make([]string, len(projects))
+		for i, project := range projects {
+			ids[i] = project.ID
 		}
 	}
 	for _, id := range ids {

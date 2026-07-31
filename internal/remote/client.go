@@ -29,17 +29,17 @@ func Connect(ctx context.Context, address string) (*Client, Frame, error) {
 	dialer := net.Dialer{Timeout: 5 * time.Second}
 	connection, err := dialer.DialContext(ctx, "tcp", validated.String())
 	if err != nil {
-		return nil, Frame{}, fmt.Errorf("connect to Session Hub host: %w", err)
+		return nil, Frame{}, fmt.Errorf("connect to Project Hub host: %w", err)
 	}
 	client := &Client{conn: connection, reader: bufio.NewReader(connection)}
 	hello, err := ReadFrame(client.reader)
 	if err != nil {
 		_ = connection.Close()
-		return nil, Frame{}, fmt.Errorf("read Session Hub handshake: %w", err)
+		return nil, Frame{}, fmt.Errorf("read Project Hub handshake: %w", err)
 	}
 	if hello.Type != "hello" {
 		_ = connection.Close()
-		return nil, Frame{}, fmt.Errorf("unexpected Session Hub handshake %q", hello.Type)
+		return nil, Frame{}, fmt.Errorf("unexpected Project Hub handshake %q", hello.Type)
 	}
 	return client, hello, nil
 }
@@ -210,12 +210,12 @@ func (c *Controller) request(ctx context.Context, frame Frame) (Frame, error) {
 	}
 }
 
-func (c *Controller) Sessions(ctx context.Context) ([]domain.Session, error) {
-	frame, err := c.request(ctx, Frame{Type: "list_sessions"})
+func (c *Controller) Projects(ctx context.Context) ([]domain.Project, error) {
+	frame, err := c.request(ctx, Frame{Type: "list_projects"})
 	if err != nil {
 		return nil, err
 	}
-	var value []domain.Session
+	var value []domain.Project
 	return value, json.Unmarshal(frame.Payload, &value)
 }
 
@@ -237,8 +237,8 @@ func (c *Controller) ExecutorStatuses(ctx context.Context) ([]ExecutorStatus, er
 	return value, json.Unmarshal(frame.Payload, &value)
 }
 
-func (c *Controller) StartTerminal(ctx context.Context, sessionID, executorID string, width, height int) (domain.Instance, error) {
-	frame, err := c.request(ctx, Frame{Type: "start_terminal", Payload: payload(map[string]any{"session_id": sessionID, "executor_id": executorID, "width": width, "height": height})})
+func (c *Controller) StartTerminal(ctx context.Context, projectID, executorID string, width, height int) (domain.Instance, error) {
+	frame, err := c.request(ctx, Frame{Type: "start_terminal", Payload: payload(map[string]any{"project_id": projectID, "executor_id": executorID, "width": width, "height": height})})
 	if err != nil {
 		return domain.Instance{}, err
 	}
