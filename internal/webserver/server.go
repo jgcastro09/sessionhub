@@ -14,7 +14,10 @@ import (
 
 	"github.com/jgcastro09/sessionhub/internal/config"
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/events"
+	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/tasks"
 )
 
 // Backend is the read-only subset of data a monitoring dashboard needs. Its
@@ -30,6 +33,31 @@ type Backend interface {
 	WebQueue(context.Context, string) ([]domain.QueueItem, error)
 	WebSchedules(context.Context, string) ([]domain.Schedule, error)
 	WebPipelines(context.Context, string) ([]domain.Pipeline, error)
+
+	WebTasksList(ctx context.Context, projectID string, filter tasks.Filter) ([]tasks.Card, error)
+	WebTasksGet(ctx context.Context, projectID, taskID string) (tasks.Card, error)
+	WebTasksCreate(ctx context.Context, projectID string, input tasks.CreateInput) (tasks.Card, error)
+	WebTasksUpdate(ctx context.Context, projectID, taskID string, patch tasks.Patch) (tasks.Card, error)
+	WebTasksSetStatus(ctx context.Context, projectID, taskID string, status tasks.Status) (tasks.Card, error)
+	WebTasksAudit(ctx context.Context, projectID, taskID string) (tasks.AuditReport, error)
+	WebTasksClaims(ctx context.Context, projectID string) ([]tasks.Claim, error)
+	WebTasksClaim(ctx context.Context, projectID, taskID, executorID, terminalID string) ([]tasks.Claim, error)
+	WebTasksReleaseClaim(ctx context.Context, projectID, terminalID string) ([]tasks.Claim, error)
+
+	WebRegistryList(ctx context.Context, projectID string) ([]registry.Entry, error)
+	WebRegistryGet(ctx context.Context, projectID, entryID string) (registry.Entry, error)
+	WebRegistrySearch(ctx context.Context, projectID, query string, limit int) ([]registry.SearchResult, error)
+	WebRegistrySemanticSearch(ctx context.Context, projectID, query string, limit int) ([]registry.SearchResult, error)
+	WebRegistryScan(ctx context.Context, projectID string) ([]registry.Entry, error)
+	WebRegistryHealth(ctx context.Context, projectID string) (registry.CoverageReport, error)
+	WebRegistryReview(ctx context.Context, projectID, entryID string, input registry.ReviewInput) (registry.Entry, error)
+	WebRegistrySource(ctx context.Context, projectID, entryID string) (string, error)
+	WebRegistryGitStatus(ctx context.Context, projectID string) (registry.GitCorrelation, error)
+
+	// Subscribe opens a live feed of Task/Registry events for one project,
+	// backing handleEvents. The returned cancel func must be called once the
+	// SSE connection ends.
+	Subscribe(projectID string) (<-chan events.Event, func())
 }
 
 // Server hosts the web panel's HTTP API (and, once embedded, its static

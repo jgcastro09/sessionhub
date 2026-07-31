@@ -24,9 +24,9 @@ func TestTUIStartsInRealPTYAndQuits(t *testing.T) {
 		context.Background(),
 		"tui-integration",
 		domain.ExecutorConfig{
-			Name: "Project Hub integration",
-			Command: "go",
-			Args: []string{"run", "./cmd/sessionhub"},
+			Name:       "Project Hub integration",
+			Command:    "go",
+			Args:       []string{"run", "./cmd/sessionhub"},
 			WorkingDir: root,
 			Environment: []domain.SecretEnv{{
 				Name: "SESSIONHUB_DATA_DIR", Value: t.TempDir(),

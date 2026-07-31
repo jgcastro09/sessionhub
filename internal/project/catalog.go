@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/jgcastro09/sessionhub/internal/atomicfile"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
@@ -55,6 +56,24 @@ func (c *Catalog) Attach(root string) (domain.Project, error) {
 	return project, c.save(items)
 }
 
+// Get resolves a single attached project by ID. Callers that need a
+// project's Root (every .shproject-scoped service does) should go through
+// this instead of scanning List themselves.
+func (c *Catalog) Get(projectID string) (domain.Project, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	items, err := c.load()
+	if err != nil {
+		return domain.Project{}, err
+	}
+	for _, item := range items {
+		if item.ID == projectID {
+			return item, nil
+		}
+	}
+	return domain.Project{}, fmt.Errorf("project %q is not attached", projectID)
+}
+
 func (c *Catalog) Detach(projectID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -93,4 +112,4 @@ func (c *Catalog) load() ([]domain.Project, error) {
 	return items, nil
 }
 
-func (c *Catalog) save(items []domain.Project) error { return writeJSON(c.path, items) }
+func (c *Catalog) save(items []domain.Project) error { return atomicfile.WriteJSON(c.path, items) }

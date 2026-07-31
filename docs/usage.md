@@ -20,10 +20,61 @@ Core keys:
 | `ctrl+c` | Quit (Hub mode only); while terminal-focused it is passed to the CLI |
 | `q` | Quit from Hub mode |
 
-Command mode exposes Sessions, Executors, Queues, Pipelines, Automations,
-Metrics, Logs, Remote, and Settings. Destructive actions distinguish stopping
-a process, removing its session association, and deleting persisted history.
-They require separate confirmation.
+Command mode exposes Projects, Executors, Queues, Tasks, Registry, Pipelines,
+Automations, Metrics, Logs, Remote, and Settings. Destructive actions
+distinguish stopping a process, removing its session association, and
+deleting persisted history. They require separate confirmation.
+
+## Task Manager
+
+The Tasks section lists the active project's cards (`← →` picks the
+project). Keys: `n` new task, `enter` read the full card, `c` change status
+(the workflow itself is validated by `internal/tasks`, not the UI — an
+illegal transition just comes back as an error), `a` run the card's Audit
+Contract and show the report, `/` filter by id/title. A task only ever
+auto-completes from a passing Audit Contract, never from a status you set by
+hand plus a guess.
+
+The Web Panel's Tasks page (`/projects/:id/tasks`) adds what the TUI
+deliberately doesn't: a drag-and-drop Kanban board, a full card editor
+(sections, impacted areas, dependencies), a "Contexto técnico" panel that
+resolves and lets you attach Registry references by searching, and a
+read-only view of which Executor/terminal currently claims a task (that claim
+is runtime-only — it's never written to `.shproject` or Git).
+
+Scriptable equivalents: `sessionhub tasks list|create|show|status|search|audit`
+(add `--json` for machine-readable output), run from anywhere inside a
+project the same way `git` finds its repo.
+
+## Code Registry
+
+The Registry section shows the active project's coverage (does every scanned
+file have an entry?) and lets you scan (`s`), read an entry (`enter`), filter
+by path/module (`/`), or run a real semantic search over the filtered query
+(`m` — "meaning"). Lexical search is instant and always available; semantic
+search downloads and starts a small local embedding engine the first time
+it's used (see below) and falls back to lexical automatically if that engine
+isn't available yet.
+
+The Web Panel's Registry page (`/projects/:id/registry`) adds a file Reader,
+a review form for describing/classifying an entry (preserved across future
+scans), and related-entries navigation.
+
+Scriptable equivalents: `sessionhub registry scan|build|validate|search|context|review|git`.
+`registry search --semantic` uses the same local embedding engine as the TUI
+and Web Panel; `registry git` shows branch/upstream/ahead-behind/conflict
+state correlated with which Registry entries the working tree currently
+touches.
+
+Semantic search is completely local and offline: the first use downloads a
+self-contained copy of [llama.cpp](https://github.com/ggml-org/llama.cpp)
+running in `--embedding` mode plus a small (~24MB) MiniLM embedding model
+into `tools/` under Session Hub's data directory
+(`~/.sessionhub/tools/llama/` and `~/.sessionhub/tools/embedding-models/`),
+verified by a hardcoded checksum before use — the same pattern voice
+dictation already uses for Whisper. It talks to itself over loopback only;
+nothing is sent to any cloud API, and nothing outside `localhost` can reach
+it.
 
 ## Factory Reset
 

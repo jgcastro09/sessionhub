@@ -14,12 +14,22 @@ import (
 )
 
 var (
-	version   = "0.4.4"
+	version   = "0.5.0"
 	commit    = "none"
 	buildDate = "unknown"
 )
 
 func main() {
+	// "tasks" and "registry" are scriptable subcommands (plan section 6.1):
+	// they run in this process and exit, without starting the TUI or any
+	// listener, exactly like `git <subcommand>` never opens an editor.
+	if len(os.Args) > 1 && (os.Args[1] == "tasks" || os.Args[1] == "registry") {
+		if err := runCLI(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "sessionhub:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "sessionhub:", err)
 		os.Exit(1)

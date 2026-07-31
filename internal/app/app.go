@@ -12,11 +12,15 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/config"
 	contexthub "github.com/jgcastro09/sessionhub/internal/context"
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/embedding"
+	"github.com/jgcastro09/sessionhub/internal/events"
 	"github.com/jgcastro09/sessionhub/internal/executor"
 	"github.com/jgcastro09/sessionhub/internal/metrics"
 	projecthub "github.com/jgcastro09/sessionhub/internal/project"
+	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/store"
+	"github.com/jgcastro09/sessionhub/internal/tasks"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	"github.com/jgcastro09/sessionhub/internal/voice"
 	"github.com/jgcastro09/sessionhub/internal/webserver"
@@ -34,6 +38,10 @@ type App struct {
 	Automation          *automation.Engine
 	AutomationScheduler *automation.Scheduler
 	Voice               *voice.Manager
+	Events              *events.Bus
+	Tasks               *tasks.Service
+	Registry            *registry.Service
+	Embedding           *embedding.Manager
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	closeOnce           sync.Once
@@ -91,12 +99,24 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		cancel()
 		return nil, err
 	}
+	eventBus := events.NewBus()
+	tasksService := tasks.New(projects, eventBus, projectsRoot)
+	registryService := registry.New(projects, eventBus)
+	tasksService.SetRegistryChecker(registryService)
+	tasksService.SetRecipeRunner(automation.NewRecipeRunner(projects))
+	embeddingManager := embedding.NewManager(paths.Tools)
+	registryService.SetEmbedder(embeddingEmbedder{embeddingManager})
+
 	a := &App{
 		Version: version, Paths: paths, Store: repository, Projects: projects,
 		Terminals: terminals, Executors: executors,
 		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
 		Automation: automationEngine, AutomationScheduler: automationScheduler,
 		Voice:           voice.NewManager(paths.Tools),
+		Events:          eventBus,
+		Tasks:           tasksService,
+		Registry:        registryService,
+		Embedding:       embeddingManager,
 		networkSettings: networkSettings,
 		webSettings:     webSettings,
 		ctx:             ctx, cancel: cancel, recovered: recovered,
@@ -144,7 +164,19 @@ func (a *App) Close() error {
 		a.AutomationScheduler.Close()
 		a.cancel()
 		a.Automation.Wait()
-		result = errors.Join(a.StopRemoteHost(), a.StopWebPanel(), a.Terminals.Close(), a.Voice.Close(), a.Store.Close())
+		result = errors.Join(a.StopRemoteHost(), a.StopWebPanel(), a.Terminals.Close(), a.Voice.Close(), a.Embedding.Close(), a.Store.Close())
 	})
 	return result
+}
+
+// embeddingEmbedder adapts *embedding.Manager to registry.Embedder: Ensure
+// is cheap to call every time (a no-op once the engine is already running),
+// so callers never need to remember to warm it up first.
+type embeddingEmbedder struct{ manager *embedding.Manager }
+
+func (e embeddingEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	if err := e.manager.Ensure(ctx); err != nil {
+		return nil, err
+	}
+	return e.manager.Embed(ctx, text)
 }

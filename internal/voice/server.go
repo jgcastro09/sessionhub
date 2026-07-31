@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/jgcastro09/sessionhub/internal/procserver"
 )
 
 // Manager owns one lazily-started, long-lived whisper-server.exe process:
@@ -68,7 +69,7 @@ func (m *Manager) EnsureWithProgress(ctx context.Context, report ProgressReporte
 		return err
 	}
 
-	port, err := freePort()
+	port, err := procserver.FreePort()
 	if err != nil {
 		return fmt.Errorf("find a free port for whisper-server: %w", err)
 	}
@@ -89,7 +90,7 @@ func (m *Manager) EnsureWithProgress(ctx context.Context, report ProgressReporte
 	}
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	if err := waitForServer(ctx, baseURL, 30*time.Second); err != nil {
+	if err := procserver.WaitForHTTP(ctx, baseURL, "/", 30*time.Second); err != nil {
 		_ = cmd.Process.Kill()
 		return fmt.Errorf("whisper-server didn't come up: %w (output: %s)", err, output.String())
 	}
@@ -172,34 +173,4 @@ func (m *Manager) Close() error {
 		return nil
 	}
 	return cmd.Process.Kill()
-}
-
-func freePort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer listener.Close()
-	return listener.Addr().(*net.TCPAddr).Port, nil
-}
-
-// waitForServer polls until whisper-server's HTTP port accepts a connection
-// (model loading is the slow part before it starts listening).
-func waitForServer(ctx context.Context, baseURL string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/", nil)
-		if err == nil {
-			if response, err := http.DefaultClient.Do(request); err == nil {
-				response.Body.Close()
-				return nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
-	return fmt.Errorf("timed out after %s", timeout)
 }

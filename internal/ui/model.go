@@ -27,26 +27,31 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/gitstate"
 	"github.com/jgcastro09/sessionhub/internal/id"
 	projecthub "github.com/jgcastro09/sessionhub/internal/project"
+	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
+	"github.com/jgcastro09/sessionhub/internal/tasks"
 	"github.com/jgcastro09/sessionhub/internal/terminal"
 	updatecheck "github.com/jgcastro09/sessionhub/internal/update"
 	"github.com/jgcastro09/sessionhub/internal/voice"
 )
 
 var sections = []string{
-	"Projects", "Executors", "Queues", "Pipelines", "Automations",
+	"Projects", "Executors", "Queues", "Tasks", "Registry", "Pipelines", "Automations",
 	"Metrics", "Logs", "Remote", "Settings",
 }
 
 const voicePartialInterval = 2 * time.Second
 
 type dataMsg struct {
-	projects  []domain.Project
-	executors []domain.ExecutorConfig
-	instances []domain.Instance
-	metrics   domain.Metric
-	git       *gitstate.State
-	err       error
+	projects        []domain.Project
+	executors       []domain.ExecutorConfig
+	instances       []domain.Instance
+	metrics         domain.Metric
+	git             *gitstate.State
+	taskCards       []tasks.Card
+	registryEntries []registry.Entry
+	registryHealth  registry.CoverageReport
+	err             error
 }
 
 type remoteConnectedMsg struct {
@@ -101,6 +106,17 @@ type savedMsg struct {
 	kind    string
 	id      string
 	deleted bool
+	err     error
+}
+
+type taskAuditedMsg struct {
+	taskID string
+	report tasks.AuditReport
+	err    error
+}
+
+type registrySemanticMsg struct {
+	entries []registry.Entry
 	err     error
 }
 
@@ -202,6 +218,10 @@ const (
 	pipelineForm
 	priceForm
 	factoryResetForm
+	taskForm
+	taskStatusForm
+	taskSearchForm
+	registrySearchForm
 )
 
 // factoryResetPhrase is the exact text the operator must type to actually
@@ -300,13 +320,24 @@ type Model struct {
 	activeInstance       domain.Instance
 	// scrollOffset is how many lines back into the active terminal's
 	// scrollback the view currently shows (0 = live tail).
-	scrollOffset    int
-	metrics         domain.Metric
-	git             *gitstate.State
-	viewport        viewport.Model
-	form            formModel
-	confirm         *confirmRequest
-	pendingRegister *pendingRegistration
+	scrollOffset        int
+	metrics             domain.Metric
+	git                 *gitstate.State
+	taskCards           []tasks.Card
+	registryEntries     []registry.Entry
+	registryHealth      registry.CoverageReport
+	taskFilterQuery     string
+	registryFilterQuery string
+	// registrySemanticResults, when non-nil, is the last "m" (meaning
+	// search) result and takes over from the lexical filter in
+	// filteredRegistryEntries until the next scan, project switch, or new
+	// lexical query clears it.
+	registrySemanticResults []registry.Entry
+	registrySemanticPending bool
+	viewport                viewport.Model
+	form                    formModel
+	confirm                 *confirmRequest
+	pendingRegister         *pendingRegistration
 	// tabInstances maps "projectID|executorID" to the instanceID currently
 	// backing that tab, so selecting the tab again reattaches to the same
 	// running terminal instead of starting a duplicate.
@@ -460,6 +491,9 @@ func (m Model) reload() tea.Cmd {
 		var instances []domain.Instance
 		var metric domain.Metric
 		var gitState *gitstate.State
+		var taskCards []tasks.Card
+		var registryEntries []registry.Entry
+		var registryHealth registry.CoverageReport
 		if projectID == "" && len(projects) > 0 {
 			projectID = projects[0].ID
 		}
@@ -477,10 +511,18 @@ func (m Model) reload() tea.Cmd {
 					break
 				}
 			}
+			// Tasks/Registry are .shproject-backed, not Store-backed; a project
+			// only just created (or not yet attached to the local catalogue) may
+			// not resolve here yet, so these two are best-effort and never fail
+			// the whole reload.
+			taskCards, _ = application.Tasks.List(projectID, tasks.Filter{})
+			registryEntries, _ = application.Registry.List(projectID, false)
+			registryHealth, _ = application.Registry.Validate(projectID)
 		}
 		return dataMsg{
 			projects: projects, executors: executors, instances: instances,
 			metrics: metric, git: gitState,
+			taskCards: taskCards, registryEntries: registryEntries, registryHealth: registryHealth,
 		}
 	}
 }
@@ -528,6 +570,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.projects, m.executors, m.instances = msg.projects, msg.executors, msg.instances
 		m.metrics, m.git = msg.metrics, msg.git
+		m.taskCards, m.registryEntries, m.registryHealth = msg.taskCards, msg.registryEntries, msg.registryHealth
 		m.activeProject = -1
 		for i := range m.projects {
 			if currentID == "" || m.projects[i].ID == currentID {
@@ -642,6 +685,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.kind + " saved"
 		}
 		return m, m.reload()
+	case taskAuditedMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
+			return m, nil
+		}
+		verdict := "evidência incompleta ou pendente"
+		if msg.report.ReproduciblePass {
+			verdict = "evidência reproduzível completa"
+		}
+		m.form = formModel{kind: automationDetailsView, title: "Audit: " + msg.taskID, details: tasks.RenderAuditReport(msg.report)}
+		m.status = fmt.Sprintf("audit for %s: %s", msg.taskID, verdict)
+		return m, m.reload()
+	case registrySemanticMsg:
+		m.registrySemanticPending = false
+		if msg.err != nil {
+			m.lastErr = "semantic search: " + msg.err.Error()
+			return m, nil
+		}
+		m.registrySemanticResults = msg.entries
+		m.selected = 0
+		m.status = fmt.Sprintf("semantic search: %d result(s)", len(msg.entries))
+		return m, nil
 	case startedMsg:
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
@@ -865,11 +930,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "left":
 			if m.activeProject > 0 {
 				m.activeProject--
+				m.registrySemanticResults = nil
 				return m, m.reload()
 			}
 		case "right":
 			if m.activeProject+1 < len(m.projects) {
 				m.activeProject++
+				m.registrySemanticResults = nil
 				return m, m.reload()
 			}
 		case "n":
@@ -880,6 +947,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.form = newExecutorForm()
 			case "Queues":
 				m.form = newQueueForm(m.executors)
+			case "Tasks":
+				if m.activeProject < 0 {
+					m.status = "Select a project first (← →)"
+				} else {
+					m.form = newTaskForm()
+				}
 			case "Remote":
 				m.status = "Remote discovery is automatic — select an online device and press Enter to connect"
 			case "Automations":
@@ -913,6 +986,40 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if sections[m.section] == "Executors" {
 				return m, m.scanInstalledExecutors()
+			}
+			if sections[m.section] == "Registry" {
+				if m.activeProject < 0 {
+					m.status = "Select a project first (← →)"
+					return m, nil
+				}
+				m.registrySemanticResults = nil
+				return m, m.scanRegistry()
+			}
+		case "a":
+			if sections[m.section] == "Tasks" && m.activeProject >= 0 {
+				if list := m.filteredTasks(); m.selected < len(list) {
+					return m, m.auditTask(m.projects[m.activeProject].ID, list[m.selected].ID)
+				}
+			}
+		case "/":
+			switch sections[m.section] {
+			case "Tasks":
+				m.form = makeForm(taskSearchForm, "Search tasks", []string{"Query"}, []string{m.taskFilterQuery})
+			case "Registry":
+				m.form = makeForm(registrySearchForm, "Search registry", []string{"Query"}, []string{m.registryFilterQuery})
+			}
+		case "m":
+			if sections[m.section] == "Registry" && m.activeProject >= 0 {
+				if m.registryFilterQuery == "" {
+					m.status = "type a query with / first, then m for semantic (meaning-based) search"
+					return m, nil
+				}
+				if m.registrySemanticPending {
+					return m, nil
+				}
+				m.registrySemanticPending = true
+				m.status = "running semantic search (downloads/starts the local engine on first use)..."
+				return m, m.runSemanticSearch(m.projects[m.activeProject].ID, m.registryFilterQuery)
 			}
 		case "d":
 			switch sections[m.section] {
@@ -1015,6 +1122,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "c":
+			if sections[m.section] == "Tasks" && m.activeProject >= 0 {
+				if list := m.filteredTasks(); m.selected < len(list) {
+					m.form = taskStatusFormFor(list[m.selected])
+				}
+				return m, nil
+			}
 			if sections[m.section] == "Automations" {
 				if item, ok := m.selectedAutomation(); ok {
 					if err := m.app.AutomationScheduler.Cancel(item.ID); err != nil {
@@ -1701,6 +1814,48 @@ func (m Model) scanInstalledExecutors() tea.Cmd {
 	}
 }
 
+// scanRegistry runs the Code Registry scanner for the active project. The
+// caller must already have checked m.activeProject >= 0.
+func (m Model) scanRegistry() tea.Cmd {
+	application := m.app
+	projectID := m.projects[m.activeProject].ID
+	return func() tea.Msg {
+		entries, err := application.Registry.Scan(projectID)
+		return savedMsg{kind: fmt.Sprintf("registry scan (%d entries)", len(entries)), err: err}
+	}
+}
+
+// runSemanticSearch embeds query locally (downloading/starting the engine on
+// first use — this can take a while, hence registrySemanticPending) and
+// ranks the project's Registry entries by meaning rather than substring
+// match. On any failure it reports the error and leaves the lexical filter
+// in place, since semantic search is a bonus, never a requirement (plan
+// 5.4/9: lexical search must never be blocked by it).
+func (m Model) runSemanticSearch(projectID, query string) tea.Cmd {
+	application := m.app
+	return func() tea.Msg {
+		results, err := application.WebRegistrySemanticSearch(context.Background(), projectID, query, 200)
+		if err != nil {
+			return registrySemanticMsg{err: err}
+		}
+		entries := make([]registry.Entry, len(results))
+		for i, r := range results {
+			entries[i] = r.Entry
+		}
+		return registrySemanticMsg{entries: entries}
+	}
+}
+
+// auditTask runs a card's Audit Contract and shows the report in a details
+// overlay (see taskAuditedMsg).
+func (m Model) auditTask(projectID, taskID string) tea.Cmd {
+	application := m.app
+	return func() tea.Msg {
+		report, err := application.Tasks.Audit(projectID, taskID)
+		return taskAuditedMsg{taskID: taskID, report: report, err: err}
+	}
+}
+
 // updateExecutorCLI re-runs the original install command recorded in the
 // executor's manifest.json, in a real PTY, to fetch the latest version.
 // Login/config is untouched (that's isolated separately in config/), and
@@ -1908,6 +2063,14 @@ func (m Model) activateSelected() (tea.Model, tea.Cmd) {
 			m.status = fmt.Sprintf(
 				"%q is registered. Add it to a project (Projects: n or e) to open it as a tab, or ctrl+t here to validate it.",
 				m.executors[m.selected].Name)
+		}
+	case "Tasks":
+		if list := m.filteredTasks(); m.selected < len(list) {
+			m.form = taskDetailsForm(list[m.selected])
+		}
+	case "Registry":
+		if list := m.filteredRegistryEntries(); m.selected < len(list) {
+			m.form = registryDetailsForm(list[m.selected])
 		}
 	case "Remote":
 		if m.remoteController != nil {
@@ -2242,6 +2405,10 @@ func (m Model) sectionLength() int {
 		return len(m.executors)
 	case "Automations":
 		return len(m.app.AutomationScheduler.List())
+	case "Tasks":
+		return len(m.filteredTasks())
+	case "Registry":
+		return len(m.filteredRegistryEntries())
 	case "Remote":
 		if m.remoteController != nil {
 			return 1
@@ -2250,6 +2417,40 @@ func (m Model) sectionLength() int {
 	default:
 		return 1
 	}
+}
+
+// filteredTasks applies m.taskFilterQuery (set via the "/" search form) over
+// the cached task list. Filtering happens client-side, in memory, since the
+// list is already small enough to have been loaded whole by reload().
+func (m Model) filteredTasks() []tasks.Card {
+	if m.taskFilterQuery == "" {
+		return m.taskCards
+	}
+	query := strings.ToLower(m.taskFilterQuery)
+	out := make([]tasks.Card, 0, len(m.taskCards))
+	for _, card := range m.taskCards {
+		if strings.Contains(strings.ToLower(card.ID), query) || strings.Contains(strings.ToLower(card.Title), query) {
+			out = append(out, card)
+		}
+	}
+	return out
+}
+
+func (m Model) filteredRegistryEntries() []registry.Entry {
+	if m.registrySemanticResults != nil {
+		return m.registrySemanticResults
+	}
+	if m.registryFilterQuery == "" {
+		return m.registryEntries
+	}
+	query := strings.ToLower(m.registryFilterQuery)
+	out := make([]registry.Entry, 0, len(m.registryEntries))
+	for _, entry := range m.registryEntries {
+		if strings.Contains(strings.ToLower(entry.Path), query) || strings.Contains(strings.ToLower(entry.Module), query) {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
 
 func (m Model) selectedAutomation() (automation.SimpleAutomation, bool) {
@@ -3021,6 +3222,70 @@ func (m Model) emptyContent(width, height int) string {
 		}
 	case "Queues":
 		body.WriteString("Prompt queues are persisted and idempotent.\n\nPress n to add an item. Completion requires an Executor rule or manual confirmation.")
+	case "Tasks":
+		if m.activeProject < 0 || len(m.projects) == 0 {
+			body.WriteString("Select a project (← →) to see its tasks.")
+			break
+		}
+		body.WriteString(mutedStyle.Render("Project: "+m.projects[m.activeProject].Name) + "\n\n")
+		list := m.filteredTasks()
+		if m.taskFilterQuery != "" {
+			body.WriteString(mutedStyle.Render(fmt.Sprintf("filter: %q (%d of %d)", m.taskFilterQuery, len(list), len(m.taskCards))) + "\n\n")
+		}
+		if len(list) == 0 {
+			body.WriteString("No tasks yet.\n\nPress " + keyStyle.Render("n") + " to create one.")
+		} else {
+			for i, card := range list {
+				prefix, style := "  ", sideItemStyle
+				if i == m.selected {
+					prefix, style = "› ", sideActiveStyle
+				}
+				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render(card.ID), mutedStyle.Render("["+string(card.Status)+"]")))
+				body.WriteString(fmt.Sprintf("    %s  %s\n\n", card.Title, mutedStyle.Render("priority: "+string(card.Priority))))
+			}
+			body.WriteString("\n" + titleStyle.Render("Shortcuts") + "\n")
+			body.WriteString("  " + keyStyle.Render("[n New]") + "  " + keyStyle.Render("[Enter Read]") + "  " +
+				keyStyle.Render("[c Status]") + "  " + keyStyle.Render("[a Audit]") + "  " + keyStyle.Render("[/ Search]"))
+		}
+	case "Registry":
+		if m.activeProject < 0 || len(m.projects) == 0 {
+			body.WriteString("Select a project (← →) to see its Code Registry.")
+			break
+		}
+		body.WriteString(mutedStyle.Render("Project: "+m.projects[m.activeProject].Name) + "\n")
+		coverage := "OK"
+		if len(m.registryHealth.MissingPaths) > 0 {
+			coverage = fmt.Sprintf("%d file(s) missing an entry", len(m.registryHealth.MissingPaths))
+		}
+		body.WriteString(mutedStyle.Render(fmt.Sprintf("Coverage: %s  •  pending review: %d", coverage, len(m.registryHealth.StaleHashes))) + "\n\n")
+		list := m.filteredRegistryEntries()
+		switch {
+		case m.registrySemanticPending:
+			body.WriteString(mutedStyle.Render("running semantic search...") + "\n\n")
+		case m.registrySemanticResults != nil:
+			body.WriteString(mutedStyle.Render(fmt.Sprintf("semantic results for %q (%d)", m.registryFilterQuery, len(list))) + "\n\n")
+		case m.registryFilterQuery != "":
+			body.WriteString(mutedStyle.Render(fmt.Sprintf("filter: %q (%d of %d)", m.registryFilterQuery, len(list), len(m.registryEntries))) + "\n\n")
+		}
+		if len(list) == 0 {
+			body.WriteString("No entries yet.\n\nPress " + keyStyle.Render("s") + " to scan.")
+		} else {
+			for i, entry := range list {
+				prefix, style := "  ", sideItemStyle
+				if i == m.selected {
+					prefix, style = "› ", sideActiveStyle
+				}
+				reviewed := "unreviewed"
+				if entry.Reviewed {
+					reviewed = "reviewed"
+				}
+				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render(entry.Path), mutedStyle.Render("["+reviewed+"]")))
+				body.WriteString(fmt.Sprintf("    %s\n\n", mutedStyle.Render(entry.Language+" · "+entry.Category)))
+			}
+			body.WriteString("\n" + titleStyle.Render("Shortcuts") + "\n")
+			body.WriteString("  " + keyStyle.Render("[s Scan]") + "  " + keyStyle.Render("[Enter Read]") + "  " +
+				keyStyle.Render("[/ Search]") + "  " + keyStyle.Render("[m Semantic]"))
+		}
 	case "Pipelines":
 		body.WriteString("Pipelines support prompt, deterministic command, approval, condition, parallel, and consolidation steps.\n\nDependencies, retries, workspace locks, and budgets are enforced by the engine.")
 	case "Automations":
@@ -3496,6 +3761,62 @@ func newQueueForm(executors []domain.ExecutorConfig) formModel {
 	return makeForm(queueForm, "Add prompt queue item",
 		[]string{"Prompt", "Executor ID", "Priority", "Timeout", "Max attempts"},
 		[]string{"Work to send through the PTY", hint, "0", "30m", "1"})
+}
+
+func newTaskForm() formModel {
+	return makeForm(taskForm, "New Task",
+		[]string{"Title", "Type", "Priority"},
+		[]string{"What needs to happen?", "feature | bug | chore | spike", "low | medium | high | urgent"})
+}
+
+// taskStatusFormFor lets the operator type the exact next status; the
+// service (not this form) is the source of truth for which transitions are
+// legal, so an invalid choice simply comes back as m.form.err instead of
+// this UI trying to duplicate the workflow graph.
+func taskStatusFormFor(card tasks.Card) formModel {
+	form := makeForm(taskStatusForm, "Change status: "+card.ID+" (current: "+string(card.Status)+")",
+		[]string{"New status"}, []string{"idea | backlog | ready | in_progress | changes_requested | done | archived"})
+	form.editingID = card.ID
+	return form
+}
+
+// taskDetailsForm and registryDetailsForm reuse automationDetailsView: its
+// renderer only ever looks at .title/.details, so any read-only overlay can
+// share it instead of inventing a new formKind.
+func taskDetailsForm(card tasks.Card) formModel {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Type: %s   Priority: %s   Status: %s\n", card.Type, card.Priority, card.Status)
+	if len(card.ImpactedAreas) > 0 {
+		fmt.Fprintf(&b, "Impacted areas: %s\n", strings.Join(card.ImpactedAreas, ", "))
+	}
+	if len(card.RegistryRefs) > 0 {
+		fmt.Fprintf(&b, "Registry refs: %s\n", strings.Join(card.RegistryRefs, ", "))
+	}
+	for _, section := range card.Sections {
+		if strings.TrimSpace(section.Body) == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "\n%s\n%s\n", section.Heading, truncate(section.Body, 900))
+	}
+	return formModel{kind: automationDetailsView, title: card.ID + " — " + card.Title, details: b.String()}
+}
+
+func registryDetailsForm(entry registry.Entry) formModel {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Language: %s   Category: %s   Lines: %d\n", entry.Language, entry.Category, entry.Lines)
+	if entry.Module != "" {
+		fmt.Fprintf(&b, "Module: %s\n", entry.Module)
+	}
+	if entry.Description != "" {
+		fmt.Fprintf(&b, "\n%s\n", entry.Description)
+	}
+	if len(entry.Symbols) > 0 {
+		fmt.Fprintf(&b, "\nSymbols: %s\n", strings.Join(entry.Symbols, ", "))
+	}
+	if !entry.Reviewed {
+		b.WriteString("\n(not yet reviewed — use the Web Panel to add a description and relations)\n")
+	}
+	return formModel{kind: automationDetailsView, title: entry.Path, details: b.String()}
 }
 
 func newRemoteHostForm() formModel {
@@ -4217,6 +4538,48 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			saved, err := m.app.Store.Enqueue(context.Background(), item)
 			return savedMsg{kind: "queue item", id: saved.ID, err: err}
 		}
+	case taskForm:
+		if m.activeProject < 0 {
+			m.form.err = "select a project first"
+			return m, nil
+		}
+		title, taskType, priority := strings.TrimSpace(values[0]), strings.TrimSpace(values[1]), strings.TrimSpace(values[2])
+		if title == "" || taskType == "" {
+			m.form.err = "title and type are required"
+			return m, nil
+		}
+		if priority == "" {
+			priority = "medium"
+		}
+		projectID := m.projects[m.activeProject].ID
+		application := m.app
+		return m, func() tea.Msg {
+			card, err := application.Tasks.Create(projectID, tasks.CreateInput{
+				Title: title, Type: tasks.Type(taskType), Priority: tasks.Priority(priority),
+			})
+			return savedMsg{kind: "task", id: card.ID, err: err}
+		}
+	case taskStatusForm:
+		if m.activeProject < 0 {
+			m.form.err = "select a project first"
+			return m, nil
+		}
+		projectID, taskID := m.projects[m.activeProject].ID, m.form.editingID
+		status := strings.TrimSpace(values[0])
+		application := m.app
+		return m, func() tea.Msg {
+			_, err := application.Tasks.SetStatus(projectID, taskID, tasks.Status(status))
+			return savedMsg{kind: "task status", id: taskID, err: err}
+		}
+	case taskSearchForm:
+		m.taskFilterQuery = strings.TrimSpace(values[0])
+		m.form, m.selected = formModel{}, 0
+		return m, nil
+	case registrySearchForm:
+		m.registryFilterQuery = strings.TrimSpace(values[0])
+		m.registrySemanticResults = nil
+		m.form, m.selected = formModel{}, 0
+		return m, nil
 	case remoteHostForm:
 		address := strings.TrimSpace(values[0])
 		return m, func() tea.Msg {

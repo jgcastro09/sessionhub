@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -40,6 +41,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Task/Registry writes publish a typed event immediately (project_id,
+	// kind, revision, a small payload) — the heartbeat above stays as a
+	// fallback for views that haven't been migrated off polling yet and for
+	// reconnection after a dropped connection.
+	feed, cancel := s.backend.Subscribe(projectID)
+	defer cancel()
+
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 	for {
@@ -48,6 +56,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-s.ctx.Done():
 			return
+		case event, ok := <-feed:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Kind, data); err != nil {
+				return
+			}
+			flusher.Flush()
 		case <-ticker.C:
 			if !writeTick() {
 				return

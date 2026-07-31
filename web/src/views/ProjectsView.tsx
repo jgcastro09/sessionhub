@@ -1,6 +1,7 @@
 import { api } from '../api'
 import { usePoll } from '../hooks/usePoll'
 import { formatRelativeTime } from '../format'
+import { Link } from '../router'
 
 export function ProjectsView({ tick, onUnauthorized }: { tick: number; onUnauthorized: () => void }) {
   const { data: projects, error, loading } = usePoll(() => api.projects(), 20000, onUnauthorized, [tick])
@@ -45,6 +46,14 @@ export function ProjectsView({ tick, onUnauthorized }: { tick: number; onUnautho
               <span>
                 atualizada <b>{formatRelativeTime(project.updated_at)}</b>
               </span>
+            </div>
+            <div className="card-actions">
+              <Link to={`/projects/${project.id}/tasks`} className="btn-link">
+                tarefas
+              </Link>
+              <Link to={`/projects/${project.id}/registry`} className="btn-link">
+                registry
+              </Link>
             </div>
           </div>
         ))}

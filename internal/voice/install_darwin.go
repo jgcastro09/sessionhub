@@ -3,14 +3,12 @@
 package voice
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/jgcastro09/sessionhub/internal/download"
 )
 
 // ggml-org/whisper.cpp publishes no macOS binary (only Windows/Linux + an
@@ -64,7 +62,7 @@ func EnsureInstalled(ctx context.Context, toolsRoot string, report ProgressRepor
 			return Installed{}, fmt.Errorf("download macOS voice tools: %w", err)
 		}
 		reportProgress(report, Progress{Stage: "Installing Whisper tools"})
-		if err := extractTarGz(archive, dir); err != nil {
+		if err := download.ExtractTarGz(archive, dir); err != nil {
 			return Installed{}, fmt.Errorf("extract macOS voice tools: %w", err)
 		}
 		for _, exe := range []string{installed.ServerExe, installed.RecorderExe} {
@@ -86,56 +84,4 @@ func EnsureInstalled(ctx context.Context, toolsRoot string, report ProgressRepor
 	}
 	installed.ModelPath = modelPath
 	return installed, nil
-}
-
-// extractTarGz flattens every regular file and symlink in the archive
-// directly into destDir (the release asset has no subdirectories — see the
-// "Package" step in .github/workflows/release.yml's macos-voice-tools job).
-//
-// Symlinks matter here: macOS dylibs are shipped as a real, fully-versioned
-// file (libwhisper.1.9.1.dylib) plus a shorter compat-version symlink
-// (libwhisper.1.dylib) that executables actually reference via their
-// @rpath load commands — skipping symlink entries produced exactly that
-// failure on real hardware ("Library not loaded: @rpath/libwhisper.1.dylib")
-// in v0.3.1/v0.3.2, since the referenced name was never extracted.
-func extractTarGz(archive []byte, destDir string) error {
-	gz, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return err
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		targetPath := filepath.Join(destDir, filepath.Base(header.Name))
-		switch header.Typeflag {
-		case tar.TypeReg:
-			if err := extractTarFile(tr, targetPath); err != nil {
-				return fmt.Errorf("extract %s: %w", header.Name, err)
-			}
-		case tar.TypeSymlink:
-			_ = os.Remove(targetPath)
-			if err := os.Symlink(filepath.Base(header.Linkname), targetPath); err != nil {
-				return fmt.Errorf("symlink %s -> %s: %w", header.Name, header.Linkname, err)
-			}
-		}
-	}
-}
-
-func extractTarFile(tr *tar.Reader, targetPath string) error {
-	dst, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	_, err = io.Copy(dst, tr)
-	return err
 }

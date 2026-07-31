@@ -87,3 +87,91 @@ export interface Pipeline {
   ended_at?: string
   created_at: string
 }
+
+// --- Task Manager (internal/tasks) ---
+
+export type TaskStatus = 'idea' | 'backlog' | 'ready' | 'in_progress' | 'changes_requested' | 'done' | 'archived'
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+export interface TaskSection {
+  heading: string
+  body: string
+}
+
+export interface Task {
+  id: string
+  title: string
+  type: string
+  status: TaskStatus
+  priority: TaskPriority
+  created_at: string
+  updated_at: string
+  impacted_areas: string[]
+  registry_refs: string[]
+  dependencies: string[]
+  sections: TaskSection[]
+}
+
+export interface AuditCheck {
+  kind: 'registry' | 'source' | 'validation'
+  raw: string
+}
+
+export interface AuditCheckResult {
+  check: AuditCheck
+  passed: boolean
+  resolved: boolean
+  detail: string
+}
+
+export interface AuditReport {
+  ran_at: string
+  results: AuditCheckResult[]
+  reproducible_pass: boolean
+}
+
+export interface TaskClaim {
+  task_id: string
+  executor_id: string
+  terminal_id: string
+  claimed_at: string
+}
+
+// --- Code Registry (internal/registry) ---
+
+export interface RegistryEntry {
+  entry_id: string
+  path: string
+  category: string
+  language: string
+  hash: string
+  size: number
+  lines: number
+  symbols?: string[]
+  status: 'active' | 'missing'
+  module?: string
+  description?: string
+  responsibilities?: string[]
+  criticality?: string
+  relations_confirmed?: string[]
+  relations_probable?: string[]
+  reviewed: boolean
+  reviewed_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface RegistrySearchResult {
+  entry: RegistryEntry
+  score: number
+}
+
+export interface RegistryCoverageReport {
+  missing_paths: string[]
+  stale_hashes: string[]
+}
+
+export interface RegistryContextPack {
+  entry: RegistryEntry
+  related: RegistrySearchResult[]
+}

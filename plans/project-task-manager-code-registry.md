@@ -1,6 +1,6 @@
 # Plano: Task Manager e Code Registry por Project
 
-Status: proposto. Pré-requisito: `project-first-architecture.md` concluído.
+Status: implementado (v0.5.0). Pré-requisito: `project-first-architecture.md` concluído.
 
 ## 1. Objetivo
 
@@ -36,8 +36,8 @@ de runtime, importador, servidor legado ou dependência de Python.
 | Linguagem do núcleo | Go, integrado ao binário Session Hub. |
 | Integração Task ↔ Registry | Tarefa referencia módulos, arquivos e `entry_id` estáveis do Registry. |
 | Conclusão de tarefa | Manual por padrão; automática apenas quando o Audit Contract passa. |
-| Busca semântica | Opcional e local; busca lexical sempre disponível. |
-| Agentes/MCP | Fora desta fase; os serviços devem expor interfaces internas prontas para a ponte futura. |
+| Busca semântica | Obrigatória no Code Registry. Embutida via llama.cpp, sem Ollama nem servidor externo; modelo `.gguf` baixado do Hugging Face no primeiro uso, mesmo padrão de instalação do Whisper em `internal/voice`. Busca lexical continua sempre disponível como caminho determinístico. |
+| Superfícies | CLI, TUI e Web Panel consomem os mesmos serviços Go. CLI é a superfície scriptável (uso direto e automação); TUI cobre operação diária; Web Panel cobre os fluxos avançados. Ver seção 6. |
 
 ## 3. Persistência canônica
 
@@ -167,18 +167,71 @@ Responsabilidades:
 - analisar estrutura leve de Go, JS/TS, Python, HTML/CSS, shell e manifestos;
 - calcular hashes e detectar mudanças/renames;
 - sincronizar registros sem apagar revisão humana;
-- gerar busca lexical e context packs limitados;
-- validar cobertura, paths, hashes e revisão pendente;
+- gerar busca lexical, busca semântica e context packs limitados;
+- validar cobertura, paths, hashes e revisão pendente — todo arquivo elegível
+  do scan precisa ter uma entrada correspondente; cobertura incompleta,
+  schema inválido ou hash sem revisão bloqueiam `validate`/`build`, nunca
+  passam silenciosamente;
+- correlacionar estado Git (branch, upstream, ahead/behind, mudanças no
+  working tree, conflitos) com entradas do Registry, somente leitura, sem
+  alterar worktree ou refs remotas;
 - produzir auditoria e eventos;
 - expor busca por arquivo, símbolo, módulo e conceito.
 
-Embeddings locais podem ser adicionados posteriormente como implementação
-opcional da busca. Falhar ou não ter Ollama nunca bloqueia scan, validação ou
-busca lexical.
+### 5.4 Busca semântica embutida
 
-## 6. Interfaces Web e TUI
+A busca semântica é obrigatória, não opcional. O `internal/registry` embute o
+runtime de inferência do llama.cpp e baixa um modelo de embedding `.gguf` do
+Hugging Face na primeira vez que o Registry é inicializado no Project — nunca
+no install do CLI/npm. O download é verificado por SHA-256 fixo no código, com
+progresso reportado, e cacheado em `~/.sessionhub/models/` para nunca repetir.
+Esse é o mesmo padrão já usado por `internal/voice` para o Whisper
+(`install.go`, `ensureModel`), reaproveitando `downloadVerified` e
+`ProgressReporter`. Não há dependência de Ollama nem de servidor externo
+rodando; o processo de embedding roda local e embutido no binário do
+`sessionhub`. A busca lexical continua sempre disponível como caminho
+determinístico, inclusive durante o download do modelo.
 
-### 6.1 Web Panel
+## 6. Interfaces CLI, TUI e Web
+
+Três superfícies consomem os mesmos serviços Go (`internal/tasks`,
+`internal/registry`); nenhuma delas acessa filesystem, Git ou modelo de
+embedding diretamente — tudo passa pelos serviços.
+
+### 6.1 CLI
+
+O binário `sessionhub` ganha subcomandos scriptáveis, equivalentes ao que hoje
+é feito com `python code_registry.py ...` e `python task_board.py ...`:
+
+```text
+sessionhub tasks list|create|show|status|search|audit
+sessionhub registry scan|build|validate|search|context|review
+```
+
+A CLI é a superfície para uso direto no terminal e para automação (scripts,
+hooks, chamadas por um agente via shell antes de existir uma ponte dedicada).
+Ela não abre UI nem processo adicional; roda no processo do `sessionhub` e
+sai. Saída em texto simples por padrão, com uma flag `--json` para consumo
+programático.
+
+### 6.2 TUI
+
+A TUI cobre operação diária dentro do Project ativo, sem precisar abrir o
+navegador:
+
+- listar tarefas e criar novas;
+- mudar status de uma tarefa;
+- busca simples, lexical e semântica;
+- rodar a auditoria de um card e ver o resultado;
+- ver a saúde do Registry (cobertura, pendências, último scan);
+- abrir e ler uma entrada do Registry.
+
+Fluxos que exigem manipulação visual — Kanban com drag-and-drop, grafo de
+arquitetura/relações, fila de revisão semântica, Reader de arquivo completo e
+o editor do Audit Contract — ficam só no Web Panel; a TUI linka para a página
+correspondente em vez de reimplementar essas visualizações em texto.
+
+### 6.3 Web Panel
 
 Novas rotas SPA:
 
@@ -210,7 +263,7 @@ Todas as mutações passam pelos serviços Go e pelo pairing/autorização já
 existente. SSE publica eventos com `project_id`, `kind`, `revision` e payload
 limitado.
 
-### 6.2 Task Manager web
+### 6.4 Task Manager web
 
 - Kanban por status, filtros e pesquisa;
 - criação/edição de card;
@@ -219,7 +272,7 @@ limitado.
 - auditoria por card e relatório legível;
 - visualização dos claims runtime sem gravá-los no Git.
 
-### 6.3 Registry Explorer web
+### 6.5 Registry Explorer web
 
 - saúde e cobertura do inventário;
 - busca por texto, módulo, linguagem, arquivo e símbolo;
@@ -227,10 +280,6 @@ limitado.
 - fila de revisão semântica;
 - relações e visão de arquitetura;
 - ação explícita para scan/revisão, sem watcher web implícito.
-
-A TUI oferece resumo de saúde, busca compacta, seleção de tarefa e links para
-abrir a página específica no Web Panel. Kanban completo e visualização de
-arquitetura permanecem no navegador.
 
 ## 7. Integração entre as duas capacidades
 
@@ -263,9 +312,10 @@ Critério: serviços carregam e validam uma `.shproject` vazia sem UI.
 
 1. Implementar CRUD, workflow, filtros, IDs e histórico.
 2. Implementar Task API e eventos SSE.
-3. Criar Kanban e detalhe no Web Panel.
-4. Adicionar resumo e ações rápidas na TUI.
-5. Implementar claims runtime e tarefa ativa por Executor/terminal.
+3. Criar subcomandos `sessionhub tasks` na CLI (list/create/show/status/search/audit).
+4. Criar Kanban e detalhe no Web Panel.
+5. Adicionar na TUI: listar, criar, mudar status, busca simples e rodar auditoria de um card.
+6. Implementar claims runtime e tarefa ativa por Executor/terminal.
 
 Critério: duas janelas do Web Panel veem a mesma alteração de card sem
 corromper Markdown ou perder histórico.
@@ -273,13 +323,24 @@ corromper Markdown ou perder histórico.
 ### Fase C — Registry
 
 1. Implementar scanner, análise de arquivos, categorias e hashes.
-2. Implementar records semânticos, review e validação.
-3. Criar índice lexical e context packs limitados.
-4. Criar Registry API, página de saúde, busca, Reader e fila de revisão.
-5. Adicionar scan explícito no Setup e feedback por SSE.
+2. Implementar records semânticos, review e validação com cobertura obrigatória
+   (arquivo elegível sem entrada bloqueia `validate`/`build`).
+3. Implementar correlação Git somente leitura (branch, upstream, mudanças,
+   conflitos) associada a entradas do Registry.
+4. Embutir llama.cpp e o download verificado do modelo de embedding via
+   Hugging Face no primeiro uso do Registry, reaproveitando o padrão de
+   instalação do Whisper em `internal/voice`; indexar busca semântica junto do
+   índice lexical.
+5. Criar subcomandos `sessionhub registry` na CLI (scan/build/validate/search/context/review).
+6. Criar Registry API, página de saúde, busca, Reader e fila de revisão no
+   Web Panel.
+7. Adicionar na TUI: saúde do Registry, busca (lexical e semântica) e leitura
+   de uma entrada.
+8. Adicionar scan explícito no Setup e feedback por SSE.
 
 Critério: um Project misto é indexado sem registrar dependências, artefatos de
-build ou arquivos internos da `.shproject`.
+build ou arquivos internos da `.shproject`, com busca semântica funcional
+offline após o primeiro download do modelo.
 
 ### Fase D — Ligações e auditoria
 
@@ -298,7 +359,6 @@ reproduzível, nunca por texto livre.
 2. Remover referências operacionais aos módulos independentes.
 3. Exercitar recovery após scan/auditoria interrompidos.
 4. Medir scan e busca em repositórios grandes; otimizar incrementalmente.
-5. Preparar interfaces somente leitura para o futuro Agent Bridge/MCP.
 
 ## 9. Testes e critérios de aceite
 
@@ -306,13 +366,20 @@ reproduzível, nunca por texto livre.
 - transições inválidas e IDs duplicados são recusados;
 - escrita concorrente preserva card válido;
 - scanner não sai da raiz nem segue symlink inseguro;
+- arquivo elegível sem entrada de Registry bloqueia `validate`/`build`, nunca
+  passa silenciosamente;
 - mudanças de hash exigem review semântico quando configurado;
 - rename preserva referências estáveis quando reconhecido;
+- correlação Git nunca altera worktree, index ou refs remotas;
+- download do modelo de embedding verifica checksum e nunca bloqueia scan,
+  validação ou busca lexical enquanto está em andamento ou falha;
 - busca respeita limites de contexto e nunca devolve arquivo não registrado;
 - validações rejeitam comandos não declarados;
-- endpoints exigem pairing e não aceitam paths do cliente;
+- endpoints exigem pairing e não aceitam paths do cliente; a CLI local não
+  precisa de pairing, mas herda as mesmas checagens de containment;
 - SSE mantém isolamento estrito por Project;
-- TUI e Web Panel refletem eventos sem reiniciar o Hub;
+- CLI, TUI e Web Panel produzem o mesmo resultado para a mesma ação e
+  refletem eventos sem reiniciar o Hub;
 - `go build ./cmd/sessionhub`, `go test ./...` e `npm test` passam a cada
   alteração de código.
 
@@ -320,15 +387,17 @@ reproduzível, nunca por texto livre.
 
 - Compatibilidade com Task Board ou Code Registry em Python.
 - Importação automática dos dados atuais.
-- Modificação de skills, MCPs ou configurações de CLI.
-- Embeddings/remoto/multiusuário como requisito para o primeiro release.
+- Ponte de agentes/MCP para Tasks ou Registry — fica para um plano futuro
+  separado, quando necessário.
+- Modificação de skills, MCPs ou configurações de CLI já existentes.
+- Multiusuário e sincronização remota como requisito para o primeiro release.
 - Execução de comandos livres a partir de cards.
 
 ## 11. Resultado esperado
 
-Após este plano, abrir um Project no Session Hub entrega uma interface web
-única para organizar trabalho e localizar código: Task Manager mostra o que
-fazer e como validar; Code Registry mostra onde atuar e qual o impacto. Ambos
-compartilham a mesma `.shproject`, o mesmo Web Panel e a mesma identidade de
-Project, formando a base correta para o contexto automático de agentes na fase
-seguinte.
+Após este plano, abrir um Project no Session Hub entrega CLI, TUI e Web Panel
+para organizar trabalho e localizar código: Task Manager mostra o que fazer e
+como validar; Code Registry mostra onde atuar e qual o impacto, com busca
+lexical e semântica local desde o primeiro uso. As três superfícies
+compartilham a mesma `.shproject`, os mesmos serviços Go e a mesma identidade
+de Project.

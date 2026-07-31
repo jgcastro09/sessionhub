@@ -3,10 +3,13 @@ package webserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/jgcastro09/sessionhub/internal/domain"
+	"github.com/jgcastro09/sessionhub/internal/registry"
+	"github.com/jgcastro09/sessionhub/internal/tasks"
 )
 
 func (s *Server) routes(mux *http.ServeMux) {
@@ -25,6 +28,25 @@ func (s *Server) routes(mux *http.ServeMux) {
 	api.HandleFunc("GET /api/v2/projects/{projectID}/pipelines", s.handlePipelines)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/automations", s.handleSchedules)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/events", s.handleEvents)
+
+	api.HandleFunc("GET /api/v2/projects/{projectID}/tasks", s.handleTasksList)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/tasks", s.handleTasksCreate)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/tasks/{taskID}", s.handleTasksGet)
+	api.HandleFunc("PATCH /api/v2/projects/{projectID}/tasks/{taskID}", s.handleTasksPatch)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/tasks/{taskID}/audit", s.handleTasksAudit)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/tasks/claims", s.handleTasksClaimsList)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/tasks/{taskID}/claim", s.handleTasksClaim)
+	api.HandleFunc("DELETE /api/v2/projects/{projectID}/tasks/claims/{terminalID}", s.handleTasksReleaseClaim)
+
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/health", s.handleRegistryHealth)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/git", s.handleRegistryGitStatus)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/registry/scan", s.handleRegistryScan)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/search", s.handleRegistrySearch)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/entries", s.handleRegistryList)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/entries/{entryID}", s.handleRegistryGet)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/entries/{entryID}/source", s.handleRegistrySource)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/registry/entries/{entryID}/review", s.handleRegistryReview)
+	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/context", s.handleRegistryContext)
 	mux.Handle("/api/v2/", s.requireTrusted(api))
 
 	// The SPA shell itself carries no project data — only the /api/*
@@ -43,6 +65,17 @@ func writeJSON(w http.ResponseWriter, value any, err error) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+// writeJSONError maps the tasks/registry "not found" sentinels to 404
+// instead of the generic 500 writeJSON gives every other error, so the
+// frontend can distinguish "this id doesn't exist" from a real server error.
+func writeJSONError(w http.ResponseWriter, err error) {
+	if errors.Is(err, tasks.ErrNotFound) || errors.Is(err, registry.ErrNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, nil, err)
 }
 
 func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {

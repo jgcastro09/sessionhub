@@ -6,6 +6,23 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-31
+
+### Added
+
+- Task Manager (`internal/tasks`): Markdown cards under `.shproject/tasks/cards`, a stable status workflow, an Audit Contract runner (`source`/`registry`/`validation` checks) that can auto-complete or reopen a task from reproducible evidence only, and runtime-only Executor/terminal claims.
+- Code Registry (`internal/registry`): a file-system scanner with light Go/JS-TS/Python/shell symbol detection, rename-aware sync that preserves human review, mandatory coverage validation, lexical search, and read-only Git correlation (branch/upstream/ahead-behind/conflicts).
+- Local, offline semantic search for the Code Registry (`internal/embedding`): a self-installed, checksum-verified copy of llama.cpp's server running in `--embedding` mode on loopback only (no Ollama, no externally reachable server, no CGO), the same install/verify pattern `internal/voice` already uses for Whisper. Lexical search remains always available and is never blocked by the download.
+- Declared validation recipes (`internal/automation`'s `RecipeRunner`, `.shproject/automation/validation-recipes.json`): an Audit Contract's `validation:` check only ever runs a project-declared deterministic command, never free-form text from a card.
+- `sessionhub tasks` and `sessionhub registry` CLI subcommands (list/create/show/status/search/audit, scan/build/validate/search/context/review/git), a project-scoped `/api/v2/projects/{id}/tasks...` and `/api/v2/projects/{id}/registry...` Web Panel API with real Server-Sent events (replacing the old heartbeat-only stream), and new Web Panel pages: a Task Kanban board with detail/audit/claims/technical-context, and a Registry explorer with health, search, a file Reader, and a review queue.
+- Extracted `internal/atomicfile`, `internal/events`, `internal/download`, and `internal/procserver` as shared primitives; `internal/voice` now builds on `internal/download`/`internal/procserver` instead of its own copies.
+
+### Removed
+
+- The reference-only `modules/task-board` and `modules/Code Registry` Python/Node prototypes. Session Hub's Task Manager and Code Registry are native Go services with no Python runtime, no importer, and no compatibility path from either prototype.
+
+Bumps version to 0.5.0.
+
 ## [0.4.4] - 2026-07-31 15:22:46 -03:00
 
 ### Changed

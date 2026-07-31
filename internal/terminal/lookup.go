@@ -138,4 +138,3 @@ func FindExecutable(command, executorRoot string, extraDirs ...string) (string, 
 	globalDirs := append(SystemGlobalDirs(), extraDirs...)
 	return lookupInDirs(command, globalDirs...)
 }
-

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jgcastro09/sessionhub/internal/atomicfile"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 )
 
@@ -123,10 +124,10 @@ func Init(root, name string) (domain.Project, error) {
 			return domain.Project{}, fmt.Errorf("create project directory: %w", err)
 		}
 	}
-	if err := writeJSON(filepath.Join(base, ManifestFile), manifest); err != nil {
+	if err := atomicfile.WriteJSON(filepath.Join(base, ManifestFile), manifest); err != nil {
 		return domain.Project{}, err
 	}
-	if err := writeJSON(filepath.Join(base, ExecutorsFile), ExecutorSlots{Slots: []ExecutorSlot{}}); err != nil {
+	if err := atomicfile.WriteJSON(filepath.Join(base, ExecutorsFile), ExecutorSlots{Slots: []ExecutorSlot{}}); err != nil {
 		return domain.Project{}, err
 	}
 	return domain.Project{ID: manifest.ProjectID, Name: manifest.Name, Root: root, CreatedAt: manifest.CreatedAt, UpdatedAt: manifest.CreatedAt}, nil
@@ -227,30 +228,4 @@ func cleanRoot(root string) (string, error) {
 		return "", fmt.Errorf("project root is not a directory")
 	}
 	return filepath.Clean(abs), nil
-}
-
-func writeJSON(path string, value any) error {
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".sessionhub-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
 }

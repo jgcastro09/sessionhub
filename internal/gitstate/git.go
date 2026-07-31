@@ -12,18 +12,36 @@ import (
 var ErrNotRepository = errors.New("workspace is not a Git repository")
 
 type File struct {
-	Path   string `json:"path"`
-	Status string `json:"status"`
+	Path     string `json:"path"`
+	Status   string `json:"status"`
+	Conflict bool   `json:"conflict"`
 }
 
 type State struct {
 	Repository string `json:"repository"`
 	Branch     string `json:"branch"`
 	Head       string `json:"head"`
+	// Upstream, Ahead, and Behind are zero-valued when the branch has no
+	// tracking upstream configured — that is not an error.
+	Upstream   string `json:"upstream,omitempty"`
+	Ahead      int    `json:"ahead"`
+	Behind     int    `json:"behind"`
 	Clean      bool   `json:"clean"`
+	Conflicted bool   `json:"conflicted"`
 	Files      []File `json:"files"`
 }
 
+// conflictCodes are the porcelain v1 XY pairs meaning "unresolved merge
+// conflict," per git-status(1).
+var conflictCodes = map[string]bool{
+	"DD": true, "AU": true, "UD": true, "UA": true, "DU": true, "AA": true, "UU": true,
+}
+
+// Inspect reads Git's view of workspace: branch, upstream tracking,
+// ahead/behind counts, and working-tree file status, including which files
+// have an unresolved conflict. It only ever runs read-only plumbing
+// commands (rev-parse, branch, status, rev-list) — never anything that
+// mutates the worktree, index, or refs.
 func Inspect(ctx context.Context, workspace string) (State, error) {
 	root, err := run(ctx, workspace, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -56,7 +74,21 @@ func Inspect(ctx context.Context, workspace string) (State, error) {
 			i++
 			path = string(records[i])
 		}
-		state.Files = append(state.Files, File{Path: path, Status: code})
+		conflict := conflictCodes[code]
+		if conflict {
+			state.Conflicted = true
+		}
+		state.Files = append(state.Files, File{Path: path, Status: code, Conflict: conflict})
+	}
+
+	if upstream, err := run(ctx, workspace, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); err == nil {
+		state.Upstream = strings.TrimSpace(upstream)
+		if counts, err := run(ctx, workspace, "rev-list", "--left-right", "--count", state.Upstream+"...HEAD"); err == nil {
+			var behind, ahead int
+			if _, scanErr := fmt.Sscanf(strings.TrimSpace(counts), "%d\t%d", &behind, &ahead); scanErr == nil {
+				state.Behind, state.Ahead = behind, ahead
+			}
+		}
 	}
 	return state, nil
 }
