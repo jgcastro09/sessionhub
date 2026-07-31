@@ -6,6 +6,13 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.35] - 2026-07-30 21:35:11 -03:00
+
+### Added
+
+- A SessionHub that is being remotely controlled now shows a locked, explicit Remote Control modal and mirrors the controller's selected section, session, and CLI tab in real time.
+- The controlled computer can press `r` to revoke access. This immediately disconnects the controller and releases its remote terminal lease.
+
 ## [0.3.34] - 2026-07-30 21:24:52 -03:00
 
 ### Added

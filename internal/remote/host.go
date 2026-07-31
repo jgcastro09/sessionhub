@@ -41,6 +41,7 @@ type Host struct {
 	info     Device
 	mu       sync.RWMutex
 	active   *peer
+	view     ViewState
 }
 
 func Listen(ctx context.Context, address string, backend Backend, info Device) (*Host, error) {
@@ -168,6 +169,13 @@ func (p *peer) handle(frame Frame) Frame {
 			p.host.setControllerName(p, request.Name)
 		}
 		return Frame{Type: "identified"}
+	case "ui_navigation":
+		var view ViewState
+		if err := json.Unmarshal(frame.Payload, &view); err != nil {
+			return Frame{Type: "error", Error: err.Error()}
+		}
+		p.host.setView(p, view)
+		return Frame{Type: "ui_navigation_ack"}
 	case "list_sessions":
 		items, err := p.backend.RemoteSessions(ctx)
 		return response("sessions", items, err)
@@ -359,6 +367,18 @@ func (p *peer) handle(frame Frame) Frame {
 type Status struct {
 	Active     bool
 	Controller string
+	View       ViewState
+}
+
+// ViewState is the small amount of UI state shared with the controlled
+// SessionHub. It keeps both people looking at the same section, session and
+// terminal without giving the controlled screen any local input while the
+// remote lease is active.
+type ViewState struct {
+	Section         string `json:"section"`
+	SessionID       string `json:"session_id,omitempty"`
+	ExecutorID      string `json:"executor_id,omitempty"`
+	TerminalFocused bool   `json:"terminal_focused"`
 }
 
 func (h *Host) Status() Status {
@@ -371,7 +391,7 @@ func (h *Host) Status() Status {
 	if name == "" {
 		name = h.active.id
 	}
-	return Status{Active: true, Controller: name}
+	return Status{Active: true, Controller: name, View: h.view}
 }
 
 func (h *Host) claim(candidate *peer) bool {
@@ -389,7 +409,29 @@ func (h *Host) release(candidate *peer) {
 	defer h.mu.Unlock()
 	if h.active == candidate {
 		h.active = nil
+		h.view = ViewState{}
 	}
+}
+
+func (h *Host) setView(candidate *peer, view ViewState) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.active == candidate {
+		h.view = view
+	}
+}
+
+// Revoke immediately ends the active remote-control connection. The peer's
+// normal cleanup path releases any terminal lease and clears host status.
+func (h *Host) Revoke() bool {
+	h.mu.RLock()
+	active := h.active
+	h.mu.RUnlock()
+	if active == nil {
+		return false
+	}
+	_ = active.conn.Close()
+	return true
 }
 
 func (h *Host) setControllerName(candidate *peer, name string) {

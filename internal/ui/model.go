@@ -64,6 +64,12 @@ type remoteStartedMsg struct {
 
 type remoteInputMsg struct{ err error }
 
+type remoteNavigationMsg struct{ err error }
+
+type remoteRevokedMsg struct {
+	revoked bool
+}
+
 type networkSettingsMsg struct {
 	enabled bool
 	err     error
@@ -260,6 +266,7 @@ type Model struct {
 	remoteDevice         remote.Device
 	remoteTabInstances   map[string]string
 	remoteExecutorStatus map[string]remote.ExecutorStatus
+	remoteLastNavigation remote.ViewState
 	activeInstance       domain.Instance
 	// scrollOffset is how many lines back into the active terminal's
 	// scrollback the view currently shows (0 = live tail).
@@ -449,6 +456,12 @@ func (m Model) reload() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	// A SessionHub being controlled remotely is deliberately read-only. Its
+	// background mirrors the controller's navigation, while this modal is the
+	// only local interaction and can revoke the current connection.
+	if m.isRemotelyControlled() {
+		return m.updateRemoteControlled(message)
+	}
 	if m.confirm != nil {
 		return m.updateConfirm(message)
 	}
@@ -511,6 +524,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.remoteController, m.remoteDevice = msg.controller, msg.device
 		m.remoteTabInstances = make(map[string]string)
+		m.remoteLastNavigation = remote.ViewState{}
 		m.remoteExecutorStatus = make(map[string]remote.ExecutorStatus, len(msg.statuses))
 		for _, status := range msg.statuses {
 			m.remoteExecutorStatus[status.ExecutorID] = status
@@ -543,6 +557,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
 			m.status = "Remote terminal input failed: " + msg.err.Error()
+		}
+	case remoteNavigationMsg:
+		if msg.err != nil {
+			m.lastErr = msg.err.Error()
 		}
 	case networkSettingsMsg:
 		if msg.err != nil {
@@ -597,6 +615,21 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.resize()
 		return m, m.reload()
 	case tickMsg:
+		if m.remoteController != nil {
+			if err := m.remoteController.Err(); err != nil {
+				controller := m.remoteController
+				m.remoteController = nil
+				m.remoteTabInstances = make(map[string]string)
+				m.remoteExecutorStatus = make(map[string]remote.ExecutorStatus)
+				m.remoteLastNavigation = remote.ViewState{}
+				m.activeTerminal, m.focus = nil, false
+				m.status = "Remote control ended by the controlled SessionHub • returned to local environment"
+				return m, tea.Batch(tick(), func() tea.Msg { _ = controller.Close(); return savedMsg{kind: "local environment"} }, m.reload())
+			}
+			if cmd := m.syncRemoteNavigation(); cmd != nil {
+				return m, tea.Batch(tick(), cmd)
+			}
+		}
 		if time.Since(m.lastUpdateCheck) > 5*time.Minute {
 			m.lastUpdateCheck = time.Now()
 			if cmd := m.checkUpdateCmd(); cmd != nil {
@@ -1913,6 +1946,109 @@ func (m Model) connectRemote(device remote.Device) tea.Cmd {
 	}
 }
 
+func (m Model) isRemotelyControlled() bool {
+	if m.remoteController != nil || m.app == nil {
+		return false
+	}
+	return m.app.RemoteHostStatus().Active
+}
+
+// updateRemoteControlled is intentionally tiny: the screen still receives
+// size/tick messages so it can mirror the controller, but local mouse and
+// keyboard input cannot affect sessions, CLIs or configuration.
+func (m Model) updateRemoteControlled(message tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := message.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		m.resize()
+	case tickMsg:
+		m.applyRemoteNavigation(m.app.RemoteHostStatus().View)
+		return m, tick()
+	case tea.KeyPressMsg:
+		if msg.String() == "r" {
+			application := m.app
+			m.status = "Revoking remote access..."
+			return m, func() tea.Msg { return remoteRevokedMsg{revoked: application.RevokeRemoteControl()} }
+		}
+	case remoteRevokedMsg:
+		if msg.revoked {
+			m.status = "Remote access revoked"
+		} else {
+			m.status = "No remote controller was active"
+		}
+	}
+	return m, nil
+}
+
+func (m Model) remoteViewState() remote.ViewState {
+	view := remote.ViewState{Section: sections[m.section], TerminalFocused: m.focus}
+	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
+		view.SessionID = m.sessions[m.activeSession].ID
+	}
+	if m.focus && m.activeInstance.ExecutorID != "" {
+		view.ExecutorID = m.activeInstance.ExecutorID
+	}
+	return view
+}
+
+// syncRemoteNavigation sends only meaningful navigation changes. The host
+// applies this view state locally and displays it beneath its control lock.
+func (m *Model) syncRemoteNavigation() tea.Cmd {
+	if m.remoteController == nil {
+		return nil
+	}
+	view := m.remoteViewState()
+	if view == m.remoteLastNavigation {
+		return nil
+	}
+	m.remoteLastNavigation = view
+	controller := m.remoteController
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		return remoteNavigationMsg{err: controller.Navigate(ctx, view)}
+	}
+}
+
+// applyRemoteNavigation only changes presentation state. It must never
+// acquire a terminal lease or start an executor on the controlled machine.
+func (m *Model) applyRemoteNavigation(view remote.ViewState) {
+	if view.Section != "" {
+		for index, section := range sections {
+			if section == view.Section {
+				m.section = index
+				m.selected = 0
+				break
+			}
+		}
+	}
+	if view.SessionID != "" {
+		for index, session := range m.sessions {
+			if session.ID == view.SessionID {
+				m.activeSession = index
+				break
+			}
+		}
+	}
+	m.focus = false
+	if !view.TerminalFocused || view.ExecutorID == "" || m.activeSession < 0 || m.activeSession >= len(m.sessions) || m.app == nil {
+		return
+	}
+	session := m.sessions[m.activeSession]
+	live, instance, ok := m.app.Executors.FindActive(context.Background(), session.ID, view.ExecutorID)
+	if !ok {
+		return
+	}
+	if m.tabInstances == nil {
+		m.tabInstances = make(map[string]string)
+	}
+	m.tabInstances[tabKeyFor(session.ID, view.ExecutorID)] = instance.ID
+	m.activeTerminal, m.activeInstance = live, instance
+	// The terminal stays blurred while the lock is up; renderCenter still
+	// shows its current output behind the modal, with no local input route.
+	m.focus = true
+}
+
 func (m Model) updateRemoteTerminal(message tea.Msg) (Model, tea.Cmd, bool) {
 	if m.remoteController == nil || m.activeInstance.ID == "" {
 		return m, nil, false
@@ -2037,7 +2173,9 @@ func (m Model) render() string {
 	}
 	rows = append(rows, m.renderCenter(), m.renderBottom())
 	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	if m.form.kind != noForm {
+	if m.isRemotelyControlled() {
+		content = overlayModal(content, m.renderRemoteControlledPanel(), m.width, m.height)
+	} else if m.form.kind != noForm {
 		content = overlayModal(content, m.renderFormPanel(), m.width, m.height)
 	} else if m.confirm != nil {
 		content = overlayModal(content, m.renderConfirmPanel(), m.width, m.height)
@@ -2049,6 +2187,29 @@ func (m Model) render() string {
 		content = lipgloss.NewStyle().Background(lipgloss.Color(background)).Width(max(0, m.width)).Height(max(0, m.height)).Render(content)
 	}
 	return content
+}
+
+func (m Model) renderRemoteControlledPanel() string {
+	status := m.app.RemoteHostStatus()
+	controller := status.Controller
+	if controller == "" {
+		controller = "another device"
+	}
+	viewing := sections[m.section]
+	if m.activeSession >= 0 && m.activeSession < len(m.sessions) {
+		viewing += " • " + m.sessions[m.activeSession].Name
+	}
+	if m.activeInstance.ExecutorID != "" {
+		viewing += " • " + m.executorName(m.activeInstance.ExecutorID)
+	}
+	var body strings.Builder
+	body.WriteString(titleStyle.Render("REMOTE CONTROL ACTIVE") + "\n\n")
+	body.WriteString(fmt.Sprintf("%s is controlling this SessionHub.\n", controller))
+	body.WriteString(mutedStyle.Render("This screen mirrors their navigation and local input is locked.") + "\n\n")
+	body.WriteString("Viewing: " + viewing + "\n\n")
+	body.WriteString(keyStyle.Render("[r Revoke access]") + "\n")
+	body.WriteString(mutedStyle.Render("Disconnects the controller and restores local control."))
+	return modalStyle.Width(min(72, max(40, m.width-8))).Render(body.String())
 }
 
 func (m Model) remoteBackground() string {

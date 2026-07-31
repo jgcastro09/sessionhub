@@ -151,6 +151,55 @@ func TestControllerOutlivesSetupTimeout(t *testing.T) {
 	}
 }
 
+func TestControllerNavigationMirrorsOnHostAndCanBeRevoked(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	host, err := Listen(ctx, "127.0.0.1:0", remoteTestBackend{}, Device{Name: "target", Version: "0.3.35"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	name, rawPort, err := net.SplitHostPort(host.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := net.LookupPort("tcp", rawPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := ConnectController(context.Background(), Device{Name: "target", Address: name, Port: port}, "controller", "0.3.35")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controller.Close()
+	view := ViewState{Section: "Sessions", SessionID: "session-1", ExecutorID: "codex", TerminalFocused: true}
+	if err := controller.Navigate(context.Background(), view); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for host.Status().View != view && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := host.Status().View; got != view {
+		t.Fatalf("host view = %#v, want %#v", got, view)
+	}
+	if !host.Revoke() {
+		t.Fatal("expected active controller to be revoked")
+	}
+	for controller.Err() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if controller.Err() == nil {
+		t.Fatal("controller should observe host revocation")
+	}
+	for host.Status().Active && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if host.Status().Active {
+		t.Fatal("host should release controller after revocation")
+	}
+}
+
 type remoteTestBackend struct{ statuses []ExecutorStatus }
 
 func (remoteTestBackend) RemoteSessions(context.Context) ([]domain.Session, error) { return nil, nil }

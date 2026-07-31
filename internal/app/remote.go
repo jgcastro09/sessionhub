@@ -130,6 +130,19 @@ func (a *App) RemoteHostStatus() remote.Status {
 	return host.Status()
 }
 
+// RevokeRemoteControl disconnects the one device currently controlling this
+// SessionHub. It is intentionally host-side only: the controller falls back
+// to its own local environment through the normal connection-close path.
+func (a *App) RevokeRemoteControl() bool {
+	a.remoteMu.Lock()
+	host := a.remoteHost
+	a.remoteMu.Unlock()
+	if host == nil {
+		return false
+	}
+	return host.Revoke()
+}
+
 func (a *App) remoteName() string {
 	name, err := os.Hostname()
 	if err != nil || name == "" {

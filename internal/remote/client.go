@@ -272,6 +272,13 @@ func (c *Controller) Release(ctx context.Context, instanceID string) error {
 	return err
 }
 
+// Navigate mirrors the controller's current UI selection on the controlled
+// SessionHub. Terminal content still streams independently.
+func (c *Controller) Navigate(ctx context.Context, view ViewState) error {
+	_, err := c.request(ctx, Frame{Type: "ui_navigation", Payload: payload(view)})
+	return err
+}
+
 func (c *Controller) Snapshot(instanceID string) (string, domain.State) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
