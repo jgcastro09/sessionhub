@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.39] - 2026-07-30 22:50:08 -03:00
+
+### Fixed
+
+- "Add a CLI" no longer writes the install manifest before the database save is confirmed. Previously, a lost or failed executor save (e.g. the shared SQLite connection was busy) still left behind a manifest claiming the CLI was installed, so every retry re-detected "already installed", repeated the same failed save, and silently never registered the executor.
+
 ## [0.3.38] - 2026-07-30 22:11:35 -03:00
 
 ### Fixed

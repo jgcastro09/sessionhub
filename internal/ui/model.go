@@ -1713,15 +1713,29 @@ func (m *Model) checkPendingRegister() tea.Cmd {
 		pending.cfg.Command = resolved
 		pending.cfg.BinaryName = searchName
 		pending.cfg.InstallDir = pending.installDirs.Root
-		_ = executor.WriteManifest(*pending.installDirs, executor.Manifest{
-			ID: pending.cfg.ID, Name: pending.cfg.Name, Slug: filepath.Base(pending.installDirs.Root),
-			Command: resolved, BinaryName: searchName, InstallCmd: pending.installLine, InstalledAt: time.Now().UTC(),
-		})
 	}
 	m.status = fmt.Sprintf("install finished, registering %q…", pending.cfg.Name)
 	return func() tea.Msg {
+		// The manifest is only written once the DB save actually commits, so a
+		// failed/lost save (e.g. the shared SQLite connection was busy) never
+		// leaves behind a manifest claiming the executor is registered when
+		// it isn't — that mismatch is what made every retry re-detect
+		// "already installed" and silently repeat the same failed save.
 		err := m.app.Store.SaveExecutor(context.Background(), pending.cfg)
-		return savedMsg{kind: "executor", id: pending.cfg.ID, err: err}
+		if err != nil {
+			return savedMsg{kind: "executor", id: pending.cfg.ID, err: fmt.Errorf("save %q: %w", pending.cfg.Name, err)}
+		}
+		if pending.installDirs != nil {
+			if err := executor.WriteManifest(*pending.installDirs, executor.Manifest{
+				ID: pending.cfg.ID, Name: pending.cfg.Name, Slug: filepath.Base(pending.installDirs.Root),
+				Command: pending.cfg.Command, BinaryName: pending.cfg.BinaryName,
+				InstallCmd: pending.installLine, InstalledAt: time.Now().UTC(),
+			}); err != nil {
+				return savedMsg{kind: "executor", id: pending.cfg.ID,
+					err: fmt.Errorf("%q was registered but its manifest failed to write: %w", pending.cfg.Name, err)}
+			}
+		}
+		return savedMsg{kind: "executor", id: pending.cfg.ID}
 	}
 }
 
@@ -3957,13 +3971,23 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			// Already installed in this executor's own folder: register
 			// directly, no reinstall, no PTY needed.
 			cfg.Command = resolved
-			_ = executor.WriteManifest(dirs, executor.Manifest{
-				ID: cfg.ID, Name: name, Slug: slug, Command: resolved, BinaryName: command,
-				InstallCmd: installLine, InstalledAt: time.Now().UTC(), AlreadyPresent: true,
-			})
 			return m, func() tea.Msg {
+				// Write the manifest only after the DB save actually commits
+				// (see checkPendingRegister for why: a manifest written ahead
+				// of a failed/lost save falsely claims "already installed" on
+				// every later retry, so the same save just fails again).
 				err := m.app.Store.SaveExecutor(context.Background(), cfg)
-				return savedMsg{kind: "executor", id: cfg.ID, err: err}
+				if err != nil {
+					return savedMsg{kind: "executor", id: cfg.ID, err: fmt.Errorf("save %q: %w", cfg.Name, err)}
+				}
+				if err := executor.WriteManifest(dirs, executor.Manifest{
+					ID: cfg.ID, Name: name, Slug: slug, Command: resolved, BinaryName: command,
+					InstallCmd: installLine, InstalledAt: time.Now().UTC(), AlreadyPresent: true,
+				}); err != nil {
+					return savedMsg{kind: "executor", id: cfg.ID,
+						err: fmt.Errorf("%q was registered but its manifest failed to write: %w", cfg.Name, err)}
+				}
+				return savedMsg{kind: "executor", id: cfg.ID}
 			}
 		}
 		if installLine == "" {
