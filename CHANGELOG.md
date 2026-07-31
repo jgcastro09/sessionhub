@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.49] - 2026-07-31 12:35:00 -03:00
+
+### Added
+
+- Embedded multi-resolution `AppIcon.icns` asset and added automatic `SessionHub.app` bundle registration (`lsregister`) for macOS LaunchServices and Dock icon tile updates (`dockTile`).
+
+Bumps version to 0.3.49.
+
 ## [0.3.48] - 2026-07-31 12:28:00 -03:00
 
 ### Added

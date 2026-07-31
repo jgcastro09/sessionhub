@@ -9,18 +9,21 @@ import (
 //go:embed logo.png
 var LogoPNG []byte
 
-// EnsureLogoExtracted writes logo.png into dataDir/logo.png if not present or updated,
-// returning the absolute path to logo.png.
-func EnsureLogoExtracted(dataDir string) (string, error) {
+//go:embed AppIcon.icns
+var AppIconICNS []byte
+
+// EnsureLogoExtracted writes logo.png and AppIcon.icns into dataDir.
+func EnsureLogoExtracted(dataDir string) (string, string, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return "", err
+		return "", "", err
 	}
 	logoPath := filepath.Join(dataDir, "logo.png")
-	if info, err := os.Stat(logoPath); err == nil && info.Size() == int64(len(LogoPNG)) {
-		return logoPath, nil
+	if info, err := os.Stat(logoPath); err != nil || info.Size() != int64(len(LogoPNG)) {
+		_ = os.WriteFile(logoPath, LogoPNG, 0o600)
 	}
-	if err := os.WriteFile(logoPath, LogoPNG, 0o600); err != nil {
-		return "", err
+	icnsPath := filepath.Join(dataDir, "AppIcon.icns")
+	if info, err := os.Stat(icnsPath); err != nil || info.Size() != int64(len(AppIconICNS)) {
+		_ = os.WriteFile(icnsPath, AppIconICNS, 0o600)
 	}
-	return logoPath, nil
+	return logoPath, icnsPath, nil
 }

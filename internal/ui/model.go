@@ -355,7 +355,7 @@ type confirmRequest struct {
 func New(application *app.App) Model {
 	vp := viewport.New()
 	if application != nil && application.Paths.Root != "" {
-		if logoPath, err := assets.EnsureLogoExtracted(application.Paths.Root); err == nil {
+		if logoPath, _, err := assets.EnsureLogoExtracted(application.Paths.Root); err == nil {
 			setOSDockIcon(logoPath)
 		}
 	}
