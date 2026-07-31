@@ -6,6 +6,15 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.43] - 2026-07-31 11:34:00 -03:00
+
+### Added
+
+- Enhanced CLI discovery with system `$PATH` and standard global directory scanning (`~/.local/bin`, `~/.npm-global/bin`, `/usr/local/bin`, `/opt/homebrew/bin`, `%APPDATA%\npm`, etc.). Adding a CLI that is already present on the machine registers instantly without re-executing `npm install`.
+- Maintained profile and credential isolation for each registered executor (`executors/<slug>/config`), enabling users to create multiple accounts/profiles (e.g. `Claude Empresa A`, `Claude Empresa B`) that share a single system CLI binary while keeping login sessions separated.
+
+Bumps version to 0.3.43.
+
 ## [0.3.42] - 2026-07-31 00:25:56 -03:00
 
 ### Fixed

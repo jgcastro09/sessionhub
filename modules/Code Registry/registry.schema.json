@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nodestage.local/code-registry/registry.schema.json",
+  "title": "NodeStage Code Registry Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "filename",
+    "extension",
+    "language",
+    "kind",
+    "category",
+    "module",
+    "description",
+    "responsibilities",
+    "criticality",
+    "relatedFiles",
+    "probableRelatedFiles",
+    "previousPaths",
+    "dependencies",
+    "includes",
+    "imports",
+    "exports",
+    "symbols",
+    "lineCount",
+    "sizeBytes",
+    "lastModifiedAt",
+    "hash",
+    "lastReviewedHash",
+    "reviewStatus",
+    "status",
+    "lastScannedAt"
+  ],
+  "properties": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\\\]+(?:/[^\\\\]+)*$"
+    },
+    "filename": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extension": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "cpp",
+        "web-control",
+        "python-tools",
+        "shaders",
+        "platform",
+        "build-scripts",
+        "uncategorized"
+      ]
+    },
+    "module": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "responsibilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "criticality": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "important",
+        "critical"
+      ]
+    },
+    "relatedFiles": {
+      "$ref": "#/$defs/pathArray"
+    },
+    "probableRelatedFiles": {
+      "$ref": "#/$defs/pathArray"
+    },
+    "previousPaths": {
+      "$ref": "#/$defs/pathArray"
+    },
+    "dependencies": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "includes": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "imports": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "exports": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "symbols": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stringArray"
+      }
+    },
+    "lineCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sizeBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lastModifiedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "lastReviewedHash": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{64})?$"
+    },
+    "reviewStatus": {
+      "type": "string",
+      "enum": [
+        "reviewed",
+        "needs_review"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "deprecated"
+      ]
+    },
+    "lastScannedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pathArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^\\\\]+(?:/[^\\\\]+)*$"
+      }
+    }
+  }
+}

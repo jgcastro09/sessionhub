@@ -1,0 +1,434 @@
+{
+  "schemaVersion": 1,
+  "graph": {
+    "initialNodeLimit": 80,
+    "maximumNodeLimit": 240,
+    "defaultDepth": 1
+  },
+  "roles": [
+    {
+      "id": "test",
+      "label": "Tests",
+      "color": "#a78bfa",
+      "match": {
+        "pathGlobs": ["*/tests/*", "*/test/*", "*test*.py", "*test*.cpp", "*test*.h"],
+        "modulePrefixes": ["Tests", "Developer Tools/Agent Tests"]
+      }
+    },
+    {
+      "id": "build",
+      "label": "Build & Packaging",
+      "color": "#f59e0b",
+      "match": {
+        "modulePrefixes": ["Build", "Packaging"],
+        "pathPrefixes": ["installer/"],
+        "pathGlobs": ["*cmakelists.txt", "*.cmake", "*.vcxproj", "*.sln", "*.props", "*.iss"]
+      }
+    },
+    {
+      "id": "tool",
+      "label": "Developer Tool",
+      "color": "#22d3ee",
+      "match": {
+        "modulePrefixes": ["Developer Tools"],
+        "pathPrefixes": ["tools/", "Code Registry/tools/"]
+      }
+    },
+    {
+      "id": "platform",
+      "label": "Platform Integration",
+      "color": "#fb7185",
+      "match": {
+        "modulePrefixes": ["Platform"],
+        "pathPrefixes": ["app/src/platform/"]
+      }
+    },
+    {
+      "id": "output",
+      "label": "Output",
+      "color": "#f97316",
+      "match": {
+        "modulePrefixes": ["Nodes/Output", "Output"],
+        "pathGlobs": ["*output*.cpp", "*output*.h"]
+      }
+    },
+    {
+      "id": "render",
+      "label": "Rendering",
+      "color": "#ef4444",
+      "match": {
+        "modulePrefixes": ["Rendering", "Thumbnails"],
+        "pathPrefixes": ["app/src/render/"],
+        "textTerms": ["shader"]
+      }
+    },
+    {
+      "id": "persistence",
+      "label": "Persistence",
+      "color": "#eab308",
+      "match": {
+        "pathGlobs": ["*serializer*", "*persistence*", "*projectstate*", "*settingsstore*", "*presetstore*"]
+      }
+    },
+    {
+      "id": "service",
+      "label": "Service",
+      "color": "#10b981",
+      "match": {
+        "modulePrefixes": ["Services"],
+        "pathGlobs": ["*service.cpp", "*service.h"]
+      }
+    },
+    {
+      "id": "ui",
+      "label": "User Interface",
+      "color": "#8b5cf6",
+      "match": {
+        "modulePrefixes": ["UI", "Live Deck"],
+        "pathPrefixes": ["app/src/ui/"],
+        "pathGlobs": ["*panel.cpp", "*panel.h", "*modal.cpp", "*modal.h"]
+      }
+    },
+    {
+      "id": "state",
+      "label": "State & Contract",
+      "color": "#14b8a6",
+      "match": {
+        "modulePrefixes": ["Core", "Project", "Scene", "Scenes", "Mapping", "Timeline", "Presets"],
+        "pathGlobs": ["*state.cpp", "*state.h", "*settings.cpp", "*settings.h", "*types.h"]
+      }
+    },
+    {
+      "id": "node",
+      "label": "Node",
+      "color": "#38bdf8",
+      "match": {
+        "modulePrefixes": ["Nodes"]
+      }
+    },
+    {
+      "id": "coordinator",
+      "label": "Coordinator",
+      "color": "#3b82f6",
+      "match": {
+        "modulePrefixes": ["Application", "Engine"],
+        "pathGlobs": ["*controller.cpp", "*controller.h", "*coordinator.cpp", "*coordinator.h"]
+      }
+    },
+    {
+      "id": "implementation",
+      "label": "Implementation",
+      "color": "#94a3b8",
+      "match": {
+        "pathPrefixes": ["."]
+      }
+    }
+  ],
+  "productAreas": [
+    {
+      "id": "workspaces",
+      "label": "Workspaces",
+      "description": "Coordination, state, interface and shared resources for NodeStage workspaces.",
+      "color": "#60a5fa",
+      "match": {
+        "pathGlobs": ["*workspace*.cpp", "*workspace*.h"],
+        "modulePrefixes": ["Workspace"]
+      },
+      "children": [
+        {
+          "id": "workspaces-shell",
+          "label": "Workspace Shell",
+          "description": "Workspace switching, top-level coordination and lifecycle.",
+          "color": "#3b82f6",
+          "match": {
+            "pathGlobs": ["*appcontrollerworkspace*", "*appworkspaceservice*", "*workspacecontroller*"]
+          }
+        },
+        {
+          "id": "workspaces-live",
+          "label": "Live Workspace",
+          "description": "Live operation, decks, settings and performance-workspace coordination.",
+          "color": "#06b6d4",
+          "match": {
+            "modulePrefixes": ["Live Deck"],
+            "pathGlobs": ["*liveworkspace*", "*livedeck*", "*livepanel*"]
+          }
+        },
+        {
+          "id": "workspaces-mapping",
+          "label": "Mapping Workspace",
+          "description": "Editing, state, composition and controls for the Mapping workspace.",
+          "color": "#8b5cf6",
+          "match": {
+            "modulePrefixes": ["Mapping"],
+            "pathGlobs": ["*mappingworkspace*", "*appcontrollermapping*", "*mappingpanel*"]
+          }
+        },
+        {
+          "id": "workspaces-scene",
+          "label": "Scene Workspace",
+          "description": "Interface, state and services for the Scene 3D workspace.",
+          "color": "#ec4899",
+          "match": {
+            "modulePrefixes": ["Scene", "Scenes"],
+            "pathGlobs": ["*sceneworkspace*", "*appsceneservice*"]
+          }
+        },
+        {
+          "id": "workspaces-assets",
+          "label": "Workspace Assets",
+          "description": "Discovery and resolution of assets used by workspaces.",
+          "color": "#14b8a6",
+          "match": {
+            "modulePrefixes": ["Workspace"],
+            "pathGlobs": ["*workspaceasset*"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "nodes",
+      "label": "Nodes",
+      "description": "Functional inventory of generators, effects, inputs, outputs and graph infrastructure.",
+      "color": "#38bdf8",
+      "match": {
+        "modulePrefixes": ["Nodes", "Graph", "Library Catalog"]
+      },
+      "children": [
+        {"id": "nodes-generators", "label": "Generators", "description": "Nodes that generate images or content without an input texture.", "color": "#22d3ee", "match": {"modules": ["Nodes/Generators", "Nodes/Procedural", "Nodes/Text Generator"]}},
+        {"id": "nodes-effects", "label": "Effects", "description": "Nodes that transform, stylize, compose or process images.", "color": "#a78bfa", "match": {"modules": ["Nodes/Color Effects", "Nodes/Dynamics", "Nodes/Stylize", "Nodes/Transform Effects", "Nodes/Video Effects"]}},
+        {"id": "nodes-inputs", "label": "Inputs", "description": "Nodes that receive media, devices, cameras or external sources.", "color": "#34d399", "match": {"modules": ["Nodes/Inputs"]}},
+        {"id": "nodes-outputs", "label": "Outputs", "description": "Nodes that publish, record or route the final image.", "color": "#fb923c", "match": {"modules": ["Nodes/Output"]}},
+        {"id": "nodes-ai", "label": "AI", "description": "Nodes and contracts for transformations assisted by AI backends.", "color": "#f472b6", "match": {"modules": ["Nodes/Ai"]}},
+        {"id": "nodes-particles", "label": "Particles", "description": "Particle-system and visual-simulation nodes.", "color": "#facc15", "match": {"modules": ["Nodes/Particles"]}},
+        {"id": "nodes-core", "label": "Node Infrastructure", "description": "Registry, factory, types, connections and shared node infrastructure.", "color": "#60a5fa", "match": {"modules": ["Nodes/Core", "Nodes/Modules", "Graph", "Library Catalog"]}}
+      ]
+    },
+    {
+      "id": "live",
+      "label": "Live Performance",
+      "description": "Decks, clips, groups, collections, control and live-performance execution.",
+      "color": "#06b6d4",
+      "match": {
+        "modulePrefixes": ["Live Deck"],
+        "pathGlobs": ["*live*.cpp", "*live*.h", "*clip*.cpp", "*clip*.h", "*deck*.cpp", "*deck*.h"]
+      }
+    },
+    {
+      "id": "mapping",
+      "label": "Mapping",
+      "description": "Mapping Areas, layouts, output framing, pixel maps and mapped composition.",
+      "color": "#8b5cf6",
+      "match": {
+        "modulePrefixes": ["Mapping"],
+        "pathGlobs": ["*mapping*.cpp", "*mapping*.h", "*pixelmap*.cpp", "*pixelmap*.h", "*outputframing*.cpp", "*outputframing*.h"]
+      }
+    },
+    {
+      "id": "scene-3d",
+      "label": "Scene 3D",
+      "description": "State, objects, camera, editing and rendering for the three-dimensional scene.",
+      "color": "#ec4899",
+      "match": {
+        "modulePrefixes": ["Scene", "Scenes"],
+        "pathGlobs": ["*scene*.cpp", "*scene*.h"]
+      }
+    },
+    {
+      "id": "timeline",
+      "label": "Timeline",
+      "description": "Timeline model, transport, tracks, editing, rendering and persistence.",
+      "color": "#f59e0b",
+      "match": {
+        "modulePrefixes": ["Timeline"],
+        "pathGlobs": ["*timeline*.cpp", "*timeline*.h", "*transport*.cpp", "*transport*.h"]
+      }
+    },
+    {
+      "id": "rendering",
+      "label": "Rendering Pipeline",
+      "description": "Graph evaluation, FBOs, shaders, composition and final-texture resolution.",
+      "color": "#ef4444",
+      "match": {
+        "modulePrefixes": ["Rendering", "Thumbnails"],
+        "pathPrefixes": ["app/src/render/"]
+      }
+    },
+    {
+      "id": "outputs",
+      "label": "Outputs",
+      "description": "Physical, virtual and shared outputs with protected final-frame publishing.",
+      "color": "#f97316",
+      "match": {
+        "modulePrefixes": ["Nodes/Output", "Output"],
+        "pathGlobs": ["*output*.cpp", "*output*.h", "*spout*.cpp", "*spout*.h", "*syphon*.mm", "*ndioutput*"]
+      }
+    },
+    {
+      "id": "web-control",
+      "label": "Web Control",
+      "description": "Server, protocol, web assets and browser-based remote-control integration.",
+      "color": "#0ea5e9",
+      "match": {
+        "modulePrefixes": ["Web Control", "Services/Web Control"],
+        "pathPrefixes": ["app/runtime_assets/.resources/web-control/"]
+      }
+    },
+    {
+      "id": "recording",
+      "label": "Recording",
+      "description": "Capture, encoding, sessions, audio and recording persistence.",
+      "color": "#f43f5e",
+      "match": {
+        "modulePrefixes": ["Recording"],
+        "pathGlobs": ["*record*.cpp", "*record*.h", "*capture*.cpp", "*capture*.h"]
+      }
+    },
+    {
+      "id": "midi-control",
+      "label": "MIDI & Control",
+      "description": "MIDI, OSC, shortcuts, bindings and external control surfaces.",
+      "color": "#22c55e",
+      "match": {
+        "modulePrefixes": ["MIDI", "Services/MIDI", "Services/Control"],
+        "pathGlobs": ["*midi*.cpp", "*midi*.h", "*osc*.cpp", "*osc*.h", "*controlmapping*"]
+      }
+    },
+    {
+      "id": "project-persistence",
+      "label": "Projects & Persistence",
+      "description": "Projects, serialization, paths, presets and persistent-data compatibility.",
+      "color": "#eab308",
+      "match": {
+        "modulePrefixes": ["Project", "Presets", "Paths", "Filesystem"],
+        "pathGlobs": ["*project*.cpp", "*project*.h", "*serializer*", "*preset*.cpp", "*preset*.h"]
+      }
+    },
+    {
+      "id": "media-playback",
+      "label": "Media & Playback",
+      "description": "Loading, decoding, caching and playback of media and audio.",
+      "color": "#14b8a6",
+      "match": {
+        "modulePrefixes": ["Media", "Playback", "Services/Audio"],
+        "pathGlobs": ["*player*.cpp", "*player*.h", "*media*.cpp", "*media*.h", "*audio*.cpp", "*audio*.h"]
+      }
+    },
+    {
+      "id": "sync-center-backup",
+      "label": "Sync Center Backup",
+      "description": "Distributed project replication, file synchronization, readiness and deterministic failover.",
+      "color": "#fb7185",
+      "match": {
+        "modulePrefixes": ["Services/Sync/Backup", "Services/Sync/Transport"],
+        "pathGlobs": ["*backup*.cpp", "*backup*.h", "*peertransport*", "*peerdiscovery*"]
+      }
+    },
+    {
+      "id": "sync-center-controller",
+      "label": "Sync Center Controller",
+      "description": "Native remote operation of another NodeStage instance: sessions, commands, remote state mirror and remote previews.",
+      "color": "#f59e0b",
+      "match": {
+        "modulePrefixes": ["Services/Sync/Controller"],
+        "pathGlobs": [
+          "*controllerprotocol*",
+          "*controllersession*",
+          "*controllercommand*",
+          "*controllerpreview*",
+          "*controllerservice*",
+          "*controllerpanel*",
+          "*remotecontrol*",
+          "*sync*ids*",
+          "*sync*base64*",
+          "*sync*hash*"
+        ]
+      }
+    },
+    {
+      "id": "licensing-security",
+      "label": "Licensing & Security",
+      "description": "Signed licensing, machine identity, protected cache and trial boundaries.",
+      "color": "#dc2626",
+      "match": {
+        "modulePrefixes": ["Core/Licensing", "Services/License", "Services/Crypto", "Platform/Licensing", "Clock"],
+        "pathGlobs": ["*licens*.cpp", "*licens*.h", "*secure*.cpp", "*secure*.h", "*signature*.cpp", "*signature*.h", "*machinefingerprint*"]
+      }
+    },
+    {
+      "id": "platform-hardware",
+      "label": "Platform & Hardware",
+      "description": "Windows/macOS integrations, SDKs, displays, video and hardware devices.",
+      "color": "#64748b",
+      "match": {
+        "modulePrefixes": ["Platform", "I/O"],
+        "pathPrefixes": ["app/src/platform/"]
+      }
+    },
+    {
+      "id": "updates-release",
+      "label": "Updates & Release",
+      "description": "Updates, manifests, builds, validation and product packaging.",
+      "color": "#f59e0b",
+      "match": {
+        "modulePrefixes": ["Services/Update", "Build", "Packaging"],
+        "pathPrefixes": ["installer/"]
+      }
+    },
+    {
+      "id": "system-foundation",
+      "label": "System Foundation",
+      "description": "Application composition, lifecycle, core runtime contracts, shared UI and utilities.",
+      "color": "#64748b",
+      "children": [
+        {
+          "id": "system-application",
+          "label": "Application Coordination",
+          "description": "Bootstrap, composition root, controllers and top-level application services.",
+          "color": "#3b82f6",
+          "match": {"modulePrefixes": ["Application"]}
+        },
+        {
+          "id": "system-runtime",
+          "label": "Core Runtime",
+          "description": "Shared contracts, parameters, engine orchestration and runtime state.",
+          "color": "#14b8a6",
+          "match": {"modulePrefixes": ["Core", "Engine"]}
+        },
+        {
+          "id": "system-ui",
+          "label": "Shared UI",
+          "description": "Panels, widgets, modals, interaction primitives and presentation surfaces.",
+          "color": "#8b5cf6",
+          "match": {"modulePrefixes": ["UI"]}
+        },
+        {
+          "id": "system-utilities",
+          "label": "Shared Utilities",
+          "description": "Cross-cutting helper contracts with narrowly scoped implementation ownership.",
+          "color": "#94a3b8",
+          "match": {"modulePrefixes": ["Utilities"]}
+        }
+      ]
+    },
+    {
+      "id": "runtime-services",
+      "label": "Runtime Services",
+      "description": "Audio, control, diagnostics, dialogs, logging, network, vision and other runtime services.",
+      "color": "#10b981",
+      "match": {
+        "modulePrefixes": ["Services"]
+      }
+    },
+    {
+      "id": "developer-tooling",
+      "label": "Developer Tooling",
+      "description": "Tools, contracts, operational tests, Context and development automation.",
+      "color": "#84cc16",
+      "match": {
+        "modulePrefixes": ["Developer Tools", "Tests"],
+        "pathPrefixes": ["tools/", "Code Registry/tools/"]
+      }
+    }
+  ]
+}

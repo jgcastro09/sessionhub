@@ -1,0 +1,2813 @@
+{
+  "schemaVersion": 1,
+  "category": "python-tools",
+  "entries": [
+    {
+      "path": "app/scripts/audit_license_security.py",
+      "filename": "audit_license_security.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/App",
+      "description": "Audita license security no fluxo de Developer Tools/App.",
+      "responsibilities": [
+        "Executar audit license security",
+        "Validar o fluxo de Developer Tools/App"
+      ],
+      "criticality": "critical",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "Audit"
+        ],
+        "functions": [
+          "__init__",
+          "audit_offline_grace",
+          "audit_policy",
+          "audit_storage_and_api",
+          "audit_watermark",
+          "compact",
+          "error",
+          "main",
+          "read",
+          "require_file",
+          "warn"
+        ]
+      },
+      "lineCount": 372,
+      "sizeBytes": 18708,
+      "lastModifiedAt": "2026-07-24T04:40:24Z",
+      "hash": "379cc9338b20dc1147c9177c7c939de3e43fa4dcd03bd0c46ddac5bc5b3083d5",
+      "lastReviewedHash": "379cc9338b20dc1147c9177c7c939de3e43fa4dcd03bd0c46ddac5bc5b3083d5",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-24T00:56:47Z"
+    },
+    {
+      "path": "app/scripts/audit_node_registry.py",
+      "filename": "audit_node_registry.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/App",
+      "description": "Audita node registry no fluxo de Developer Tools/App.",
+      "responsibilities": [
+        "Executar audit node registry",
+        "Validar o fluxo de Developer Tools/App"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "collections",
+        "dataclasses",
+        "pathlib",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "collections",
+        "dataclasses",
+        "pathlib",
+        "re",
+        "sys",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "Finding",
+          "LibraryItem",
+          "PortInfo",
+          "ScaffoldInfo"
+        ],
+        "functions": [
+          "audit_scaffolded_implementations",
+          "duplicates",
+          "enum_values",
+          "eval_expr",
+          "extract_node_blocks",
+          "line_number",
+          "main",
+          "normalized_project_path",
+          "parse_library_entities",
+          "parse_ports",
+          "parse_scaffolded_headers",
+          "platform_filter",
+          "project_membership",
+          "read_text",
+          "string_assignments",
+          "strip_comments"
+        ]
+      },
+      "lineCount": 406,
+      "sizeBytes": 18061,
+      "lastModifiedAt": "2026-07-21T08:02:30Z",
+      "hash": "d48b03608c7ce1d8e7becf2ac7982bdf8089f1236f85762156ad0e1f3e7f1762",
+      "lastReviewedHash": "d48b03608c7ce1d8e7becf2ac7982bdf8089f1236f85762156ad0e1f3e7f1762",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/scripts/local_turbo_diffusion_server.py",
+      "filename": "local_turbo_diffusion_server.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/App",
+      "description": "Implementa a ferramenta local turbo diffusion server para o fluxo de Developer Tools/App.",
+      "responsibilities": [
+        "Executar local turbo diffusion server",
+        "Validar o fluxo de Developer Tools/App"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "base64",
+        "diffusers",
+        "http.server",
+        "io",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "PIL",
+        "sys",
+        "threading",
+        "time",
+        "torch",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "base64",
+        "diffusers",
+        "http.server",
+        "io",
+        "json",
+        "math",
+        "os",
+        "pathlib",
+        "PIL",
+        "sys",
+        "threading",
+        "time",
+        "torch",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "RequestHandler",
+          "TurboDiffusionEngine",
+          "TurboServer"
+        ],
+        "functions": [
+          "__init__",
+          "_send_json",
+          "align_dimension",
+          "do_GET",
+          "do_POST",
+          "generate",
+          "health",
+          "load",
+          "log_message",
+          "main",
+          "parse_args",
+          "resize_for_model",
+          "run_pipeline"
+        ]
+      },
+      "lineCount": 261,
+      "sizeBytes": 10321,
+      "lastModifiedAt": "2026-06-03T06:42:16Z",
+      "hash": "1de143dd91df3ea786f814791551e5dd2d228995f4fe829ca07237d6edd16e89",
+      "lastReviewedHash": "1de143dd91df3ea786f814791551e5dd2d228995f4fe829ca07237d6edd16e89",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/scripts/scaffold_node.py",
+      "filename": "scaffold_node.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/App",
+      "description": "Cria o scaffold de node no fluxo de Developer Tools/App.",
+      "responsibilities": [
+        "Executar scaffold node",
+        "Validar o fluxo de Developer Tools/App"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "dataclasses",
+        "math",
+        "os",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ParameterSpec",
+          "ScaffoldError",
+          "ScaffoldSpec"
+        ],
+        "functions": [
+          "apply_changes",
+          "build_changes",
+          "build_parser",
+          "build_spec",
+          "cpp_float",
+          "cpp_string",
+          "declaration",
+          "default_identifiers",
+          "effect_files",
+          "include_path",
+          "insert_after_last_xml_item",
+          "library_block",
+          "main",
+          "namespace",
+          "newline_for",
+          "parameter_body",
+          "parse_accent",
+          "parse_parameter",
+          "read_text",
+          "registry_block",
+          "replace_once",
+          "source_files",
+          "source_subdir",
+          "validate_preflight"
+        ]
+      },
+      "lineCount": 796,
+      "sizeBytes": 32060,
+      "lastModifiedAt": "2026-07-21T08:12:26Z",
+      "hash": "a41552a355a52a6045318886810dcfc574c4d0a746bc51cefa90a73f8211962f",
+      "lastReviewedHash": "a41552a355a52a6045318886810dcfc574c4d0a746bc51cefa90a73f8211962f",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/scripts/tests/test_scaffold_node.py",
+      "filename": "test_scaffold_node.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/Node Scaffolding",
+      "description": "Verifica scaffold node para preservar o contrato de Tests/Node Scaffolding.",
+      "responsibilities": [
+        "Verificar test scaffold node",
+        "Detectar regressões em Tests/Node Scaffolding"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ScaffoldNodeTests"
+        ],
+        "functions": [
+          "_audit_scaffolds",
+          "_effect_arguments",
+          "_run",
+          "_write",
+          "load_module",
+          "setUp",
+          "test_apply_creates_complete_effect_scaffold",
+          "test_apply_creates_procedural_source_contract",
+          "test_audit_reports_missing_project_membership",
+          "test_dry_run_does_not_change_any_file",
+          "test_duplicate_definition_runtime_id_is_rejected",
+          "test_duplicate_inline_implementation_id_is_rejected",
+          "test_duplicate_node_id_is_rejected_without_partial_writes",
+          "test_duplicate_parameter_key_is_rejected",
+          "test_effect_group_infers_patch_type_and_file_location"
+        ]
+      },
+      "lineCount": 350,
+      "sizeBytes": 13216,
+      "lastModifiedAt": "2026-07-21T08:13:09Z",
+      "hash": "ada2a60d20ddbbdecac6cf167f6bdc26143cb565a82d45a9d2ef2ab30f3265d7",
+      "lastReviewedHash": "ada2a60d20ddbbdecac6cf167f6bdc26143cb565a82d45a9d2ef2ab30f3265d7",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/tests/control_mapping/test_control_mapping_contract.py",
+      "filename": "test_control_mapping_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/Control Mapping",
+      "description": "Verifica control mapping contract para preservar o contrato de Tests/Control Mapping.",
+      "responsibilities": [
+        "Verificar test control mapping contract",
+        "Detectar regressões em Tests/Control Mapping"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "json",
+        "math",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "json",
+        "math",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ControlMappingContractTests"
+        ],
+        "functions": [
+          "apc_rgb_message",
+          "expand_controls",
+          "load_json",
+          "setUp",
+          "states",
+          "test_apc40_is_explicitly_original_and_not_mk2",
+          "test_apc_mini_mk2_note_cc_and_palette_contract",
+          "test_apc_parser_and_encoder_messages",
+          "test_clip_launch_mode_owns_button_and_led_lifecycle",
+          "test_controller_preset_tree_is_complete_and_copy_preserves_user_file",
+          "test_feedback_deduplicates_and_reconnect_forces_snapshot",
+          "test_feedback_states_persist_exact_palette_velocity_and_mode_channel",
+          "test_live_gate_targets_forward_press_and_release",
+          "test_note_cc_learn_and_button_modes",
+          "test_profiles_and_bindings_serialize_as_versioned_json",
+          "test_project_migrates_legacy_midi_mapping_key",
+          "test_soft_takeover_waits_for_physical_crossing",
+          "transform_soft_takeover"
+        ]
+      },
+      "lineCount": 216,
+      "sizeBytes": 10753,
+      "lastModifiedAt": "2026-07-22T01:25:16Z",
+      "hash": "50c92d82d3dc720af3579dd21d41ac24b94e95e2a72c6e4929fce3f6fa100725",
+      "lastReviewedHash": "50c92d82d3dc720af3579dd21d41ac24b94e95e2a72c6e4929fce3f6fa100725",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/tests/license/test_license_policy_matrix.py",
+      "filename": "test_license_policy_matrix.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/License",
+      "description": "Verifica license policy matrix para preservar o contrato de Tests/License.",
+      "responsibilities": [
+        "Verificar test license policy matrix",
+        "Detectar regressões em Tests/License"
+      ],
+      "criticality": "critical",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "compact",
+          "enum_body",
+          "main",
+          "read",
+          "require_case_block",
+          "require_tokens",
+          "test_license_policy_contract"
+        ]
+      },
+      "lineCount": 179,
+      "sizeBytes": 5353,
+      "lastModifiedAt": "2026-07-24T04:40:24Z",
+      "hash": "134c38bd9831c4fd485277e99ff50d3d131f983b78947e865712f2f4763567f6",
+      "lastReviewedHash": "134c38bd9831c4fd485277e99ff50d3d131f983b78947e865712f2f4763567f6",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-24T00:55:48Z"
+    },
+    {
+      "path": "app/tests/license/test_license_refresh_contract.py",
+      "filename": "test_license_refresh_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/License",
+      "description": "Verifica license refresh contract para preservar o contrato de Tests/License.",
+      "responsibilities": [
+        "Verificar test license refresh contract",
+        "Detectar regressões em Tests/License"
+      ],
+      "criticality": "critical",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "pathlib",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "pathlib",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "forbid",
+          "main",
+          "require"
+        ]
+      },
+      "lineCount": 51,
+      "sizeBytes": 2039,
+      "lastModifiedAt": "2026-07-18T21:30:50Z",
+      "hash": "a92653a5c822a5d15afc1aa69a1beb443193d5868333ec0651f191c6855f7bf4",
+      "lastReviewedHash": "a92653a5c822a5d15afc1aa69a1beb443193d5868333ec0651f191c6855f7bf4",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/tests/license/test_runtime_hardening_contract.py",
+      "filename": "test_runtime_hardening_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/License",
+      "description": "Verifica runtime hardening contract para preservar o contrato de Tests/License.",
+      "responsibilities": [
+        "Verificar test runtime hardening contract",
+        "Detectar regressões em Tests/License"
+      ],
+      "criticality": "critical",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "pathlib",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "pathlib",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "main",
+          "require"
+        ]
+      },
+      "lineCount": 50,
+      "sizeBytes": 2124,
+      "lastModifiedAt": "2026-07-19T10:21:17Z",
+      "hash": "4996ad4b2f30f508e7ad227598110d34335ac75842cc112b3e28949034eeb831",
+      "lastReviewedHash": "4996ad4b2f30f508e7ad227598110d34335ac75842cc112b3e28949034eeb831",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "app/tests/python/test_onnx_runtime_bundle.py",
+      "filename": "test_onnx_runtime_bundle.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/Python",
+      "description": "Verifica onnx runtime bundle para preservar o contrato de Tests/Python.",
+      "responsibilities": [
+        "Verificar test onnx runtime bundle",
+        "Detectar regressões em Tests/Python"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "ctypes",
+        "os",
+        "pathlib",
+        "platform",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "ctypes",
+        "os",
+        "pathlib",
+        "platform",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "main",
+          "require_exports",
+          "require_files"
+        ]
+      },
+      "lineCount": 77,
+      "sizeBytes": 2461,
+      "lastModifiedAt": "2026-07-27T22:08:07Z",
+      "hash": "e0ffc489f223745ddf569e7bf5a244bc0306d6116f9503b132cacdd74272ffdd",
+      "lastReviewedHash": "e0ffc489f223745ddf569e7bf5a244bc0306d6116f9503b132cacdd74272ffdd",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-27T22:08:19Z"
+    },
+    {
+      "path": "app/tests/update/test_update_release_contract.py",
+      "filename": "test_update_release_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Tests/Update",
+      "description": "Verifica update release contract para preservar o contrato de Tests/Update.",
+      "responsibilities": [
+        "Verificar test update release contract",
+        "Detectar regressões em Tests/Update"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "pathlib",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "pathlib",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "forbid",
+          "main",
+          "require"
+        ]
+      },
+      "lineCount": 58,
+      "sizeBytes": 2326,
+      "lastModifiedAt": "2026-07-18T22:21:11Z",
+      "hash": "7543d5879935227132e40e8425dc18fb02364186141f96b9e68f76f525c40622",
+      "lastReviewedHash": "7543d5879935227132e40e8425dc18fb02364186141f96b9e68f76f525c40622",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "Code Registry/tools/code_registry.py",
+      "filename": "code_registry.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Expõe comandos do Registry, recuperação explicável, histórico local e MCP somente leitura.",
+      "responsibilities": [
+        "Sincronizar e auditar o Registry",
+        "Gerar contexto e localizar UI",
+        "Iniciar o MCP local"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/context_builder.py",
+        "Code Registry/tools/explorer_server.py",
+        "Code Registry/tools/history_store.py",
+        "Code Registry/tools/mcp_server.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "context_builder",
+        "explorer_server",
+        "git_audit",
+        "history_store",
+        "json",
+        "mcp_server",
+        "pathlib",
+        "registry_builder",
+        "scanner",
+        "semantic_index",
+        "sys",
+        "typing",
+        "validator"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "context_builder",
+        "explorer_server",
+        "git_audit",
+        "history_store",
+        "json",
+        "mcp_server",
+        "pathlib",
+        "registry_builder",
+        "scanner",
+        "semantic_index",
+        "sys",
+        "typing",
+        "validator"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_command_build",
+          "_command_context",
+          "_command_diff",
+          "_command_full",
+          "_command_git_audit",
+          "_command_history",
+          "_command_review",
+          "_command_scan",
+          "_command_search",
+          "_command_surface",
+          "_command_symbol",
+          "_command_validate",
+          "_load_audit",
+          "_load_entries",
+          "_parser",
+          "_print_audit",
+          "_registered_path",
+          "_search_text",
+          "main"
+        ]
+      },
+      "lineCount": 372,
+      "sizeBytes": 17192,
+      "lastModifiedAt": "2026-07-23T03:00:14Z",
+      "hash": "05c4fdfa507589544d2c834b77408e865b130e5560571ec6354ff0215dc7ac8e",
+      "lastReviewedHash": "05c4fdfa507589544d2c834b77408e865b130e5560571ec6354ff0215dc7ac8e",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T21:52:54Z"
+    },
+    {
+      "path": "Code Registry/tools/context_builder.py",
+      "filename": "context_builder.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Monta contexto limitado, busca explicável e localização de superfícies para clientes de IA.",
+      "responsibilities": [
+        "Montar contexto por arquivo e módulo",
+        "Expandir e explicar buscas locais",
+        "Ler símbolos e superfícies de UI"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/history_store.py",
+        "Code Registry/tools/mcp_server.py",
+        "Code Registry/tools/registry_builder.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "collections",
+        "history_store",
+        "pathlib",
+        "re",
+        "registry_builder",
+        "semantic_index",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "collections",
+        "history_store",
+        "pathlib",
+        "re",
+        "registry_builder",
+        "semantic_index",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_aliases",
+          "_bounded",
+          "_entries",
+          "_source_slice",
+          "file_context",
+          "locate_ui_surface",
+          "module_context",
+          "read_symbol",
+          "search_context"
+        ]
+      },
+      "lineCount": 197,
+      "sizeBytes": 10841,
+      "lastModifiedAt": "2026-07-22T15:12:32Z",
+      "hash": "69420e98cce70a278bc6e70b11ed64c414b64994faf4702daad94eb5e82d9b8a",
+      "lastReviewedHash": "69420e98cce70a278bc6e70b11ed64c414b64994faf4702daad94eb5e82d9b8a",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T15:12:57Z"
+    },
+    {
+      "path": "Code Registry/tools/evaluate_retrieval.py",
+      "filename": "evaluate_retrieval.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Mede a recuperação do Code Registry contra uma baseline lexical com casos mantidos.",
+      "responsibilities": [
+        "Executar casos de recuperação",
+        "Comparar ranking com baseline",
+        "Gerar métricas objetivas"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/context_builder.py",
+        "Code Registry/tools/history_store.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "context_builder",
+        "json",
+        "pathlib",
+        "re",
+        "registry_builder",
+        "scanner",
+        "sys",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "context_builder",
+        "json",
+        "pathlib",
+        "re",
+        "registry_builder",
+        "scanner",
+        "sys",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_baseline",
+          "_rank",
+          "evaluate",
+          "main",
+          "metrics"
+        ]
+      },
+      "lineCount": 72,
+      "sizeBytes": 2842,
+      "lastModifiedAt": "2026-07-22T14:52:44Z",
+      "hash": "8bfbcc2e90735e1d9625f492271e3f6fcca7eb5de81ffe5ef2fc5e5602376001",
+      "lastReviewedHash": "8bfbcc2e90735e1d9625f492271e3f6fcca7eb5de81ffe5ef2fc5e5602376001",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T14:53:19Z"
+    },
+    {
+      "path": "Code Registry/tools/explorer_builder.py",
+      "filename": "explorer_builder.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Gera unidades lógicas, árvores de arquitetura, áreas do produto e relações tipadas para o Explorer.",
+      "responsibilities": [
+        "Agrupar arquivos em unidades lógicas",
+        "Classificar arquitetura e áreas do produto",
+        "Produzir o grafo determinístico"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/registry_builder.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "collections",
+        "fnmatch",
+        "hashlib",
+        "json",
+        "pathlib",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "collections",
+        "fnmatch",
+        "hashlib",
+        "json",
+        "pathlib",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_build_architecture",
+          "_build_graph",
+          "_build_logical_units",
+          "_build_product_areas",
+          "_edge_id",
+          "_highest_criticality",
+          "_natural_key",
+          "_primary_entry",
+          "_resolve_internal_reference",
+          "_role_for",
+          "_rule_matches",
+          "_stable_id",
+          "_summarize_paths",
+          "_unit_key",
+          "_validate_match_rule",
+          "add_edge",
+          "build",
+          "build_explorer_payload",
+          "finalize",
+          "flatten",
+          "load_explorer_config",
+          "validate_explorer_config",
+          "visit"
+        ]
+      },
+      "lineCount": 529,
+      "sizeBytes": 22838,
+      "lastModifiedAt": "2026-07-22T09:51:05Z",
+      "hash": "4038d92b7fe57e466a488c77ddf6ca11b94547edaf39366c8244250a034e96f1",
+      "lastReviewedHash": "4038d92b7fe57e466a488c77ddf6ca11b94547edaf39366c8244250a034e96f1",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T09:51:57Z"
+    },
+    {
+      "path": "Code Registry/tools/explorer_server.py",
+      "filename": "explorer_server.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Serve o Explorer local e expõe leitura, histórico, contexto e busca literal em fontes registradas.",
+      "responsibilities": [
+        "Serve o Explorer somente leitura",
+        "Restringe acesso a fontes registradas",
+        "Pesquisa texto com linhas de origem"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/code_registry.py",
+        "Code Registry/tools/context_builder.py",
+        "Code Registry/tools/history_store.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "context_builder",
+        "functools",
+        "git_audit",
+        "history_store",
+        "http",
+        "http.server",
+        "json",
+        "mimetypes",
+        "pathlib",
+        "posixpath",
+        "registry_builder",
+        "scanner",
+        "threading",
+        "urllib.parse",
+        "validator",
+        "webbrowser"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "context_builder",
+        "functools",
+        "git_audit",
+        "history_store",
+        "http",
+        "http.server",
+        "json",
+        "mimetypes",
+        "pathlib",
+        "posixpath",
+        "registry_builder",
+        "scanner",
+        "threading",
+        "urllib.parse",
+        "validator",
+        "webbrowser"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ExplorerHTTPServer",
+          "ExplorerRequestHandler"
+        ],
+        "functions": [
+          "__init__",
+          "_headers",
+          "_redirect",
+          "_reload",
+          "_resolve",
+          "_safe_child",
+          "_search_source_text",
+          "_send_bytes",
+          "_send_error",
+          "_serve",
+          "do_GET",
+          "do_HEAD",
+          "do_POST",
+          "log_message",
+          "refresh_registry",
+          "serve_explorer"
+        ]
+      },
+      "lineCount": 340,
+      "sizeBytes": 17680,
+      "lastModifiedAt": "2026-07-23T03:00:14Z",
+      "hash": "11959fbbb4c03a3ac6fa527ca0ac0f65501264f3befb8ef644318f07eb942ea5",
+      "lastReviewedHash": "11959fbbb4c03a3ac6fa527ca0ac0f65501264f3befb8ef644318f07eb942ea5",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T21:52:54Z"
+    },
+    {
+      "path": "Code Registry/tools/git_audit.py",
+      "filename": "git_audit.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Provides bounded read-only Git audit, history, source, and diff helpers for the Code Registry.",
+      "responsibilities": [
+        "Audits branch, upstream, working-tree, conflict, commit, and Registry correlation state.",
+        "Reads Git history, committed file content, and diffs without shell interpolation.",
+        "Fetches remote refs only when explicitly requested by the Explorer."
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "pathlib",
+        "re",
+        "subprocess",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "pathlib",
+        "re",
+        "subprocess",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_changes",
+          "_checked_ref",
+          "_commits",
+          "_field_lines",
+          "_git",
+          "_head",
+          "audit_git",
+          "fetch_remote",
+          "file_diff",
+          "file_history",
+          "file_source"
+        ]
+      },
+      "lineCount": 139,
+      "sizeBytes": 5989,
+      "lastModifiedAt": "2026-07-23T03:20:21Z",
+      "hash": "6edc09f58ea77279a4de2a52c78e4fc8c2c9df84581e966dcbfa47c51ae046fb",
+      "lastReviewedHash": "6edc09f58ea77279a4de2a52c78e4fc8c2c9df84581e966dcbfa47c51ae046fb",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T21:52:54Z"
+    },
+    {
+      "path": "Code Registry/tools/history_store.py",
+      "filename": "history_store.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Persiste histórico local, diffs e índice FTS de fontes registradas.",
+      "responsibilities": [
+        "Registrar sincronizações e versões",
+        "Gerar diffs locais",
+        "Indexar busca FTS local"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/context_builder.py",
+        "Code Registry/tools/scanner.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "datetime",
+        "difflib",
+        "json",
+        "pathlib",
+        "sqlite3",
+        "typing",
+        "zlib"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "datetime",
+        "difflib",
+        "json",
+        "pathlib",
+        "sqlite3",
+        "typing",
+        "zlib"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_connect",
+          "_events_by_path",
+          "_index_entry",
+          "_now",
+          "_previous_content",
+          "_read_text",
+          "file_diff",
+          "history_path",
+          "recent_changes",
+          "search_local",
+          "synchronize_history"
+        ]
+      },
+      "lineCount": 226,
+      "sizeBytes": 10299,
+      "lastModifiedAt": "2026-07-22T12:56:13Z",
+      "hash": "0cf0c3e1051ca0bf5363b21da7e39edca414b9e0cf8d21e1c7130feba25ac53b",
+      "lastReviewedHash": "0cf0c3e1051ca0bf5363b21da7e39edca414b9e0cf8d21e1c7130feba25ac53b",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T12:56:50Z"
+    },
+    {
+      "path": "Code Registry/tools/mcp_server.py",
+      "filename": "mcp_server.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Expõe o Code Registry por MCP stdio UTF-8 com operações de recuperação somente leitura.",
+      "responsibilities": [
+        "Servir ferramentas MCP locais",
+        "Restringir leitura a arquivos registrados",
+        "Preservar transporte UTF-8"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/context_builder.py",
+        "Code Registry/tools/history_store.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "context_builder",
+        "git_audit",
+        "history_store",
+        "json",
+        "pathlib",
+        "registry_builder",
+        "sys",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "context_builder",
+        "git_audit",
+        "history_store",
+        "json",
+        "pathlib",
+        "registry_builder",
+        "sys",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_call",
+          "_config",
+          "_configure_stdio",
+          "_registered",
+          "_response",
+          "_result",
+          "serve"
+        ]
+      },
+      "lineCount": 136,
+      "sizeBytes": 9892,
+      "lastModifiedAt": "2026-07-23T03:00:14Z",
+      "hash": "ada51c8c56872b655b3fc870eead6e3d69d7b92932ae6183925393d9631c0ea9",
+      "lastReviewedHash": "ada51c8c56872b655b3fc870eead6e3d69d7b92932ae6183925393d9631c0ea9",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T21:52:54Z"
+    },
+    {
+      "path": "Code Registry/tools/registry_builder.py",
+      "filename": "registry_builder.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Grava registros modulares e gera payloads do Registry com métricas de linhas de código.",
+      "responsibilities": [
+        "Persistir registros modulares de forma atômica",
+        "Gerar payloads para auditoria e Explorer",
+        "Consolidar métricas do inventário"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "collections",
+        "explorer_builder",
+        "json",
+        "os",
+        "pathlib",
+        "shutil",
+        "tempfile",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "collections",
+        "explorer_builder",
+        "json",
+        "os",
+        "pathlib",
+        "shutil",
+        "tempfile",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_counts",
+          "_generated_at",
+          "_json_bytes",
+          "atomic_write_json",
+          "base_audit",
+          "build_outputs",
+          "family_for",
+          "load_registry_entries",
+          "ordered_entry",
+          "write_modular_registries",
+          "write_validation_results"
+        ]
+      },
+      "lineCount": 244,
+      "sizeBytes": 9835,
+      "lastModifiedAt": "2026-07-22T11:56:36Z",
+      "hash": "542048a2ec76fdabae2530548cf8efd531d8ff47842d411ebb60cb5dcdf74029",
+      "lastReviewedHash": "542048a2ec76fdabae2530548cf8efd531d8ff47842d411ebb60cb5dcdf74029",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T11:59:13Z"
+    },
+    {
+      "path": "Code Registry/tools/scanner.py",
+      "filename": "scanner.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Descobre código elegível e sincroniza dados automáticos sem manter regras do protótipo Context removido.",
+      "responsibilities": [
+        "Descobrir arquivos de código elegíveis",
+        "Classificar módulos e categorias",
+        "Sincronizar metadados semânticos preservados"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "collections",
+        "datetime",
+        "json",
+        "os",
+        "pathlib",
+        "registry_builder",
+        "source_analyzer",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "collections",
+        "datetime",
+        "json",
+        "os",
+        "pathlib",
+        "registry_builder",
+        "source_analyzer",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_criticality_for",
+          "_description_for",
+          "_excluded_directory",
+          "_normalized_relative",
+          "_now",
+          "_path_starts_with",
+          "_probable_relations",
+          "_responsibilities_for",
+          "_semantic_subject",
+          "_title_segment",
+          "category_for",
+          "discover_files",
+          "exclusion_reason",
+          "is_eligible",
+          "load_config",
+          "module_for",
+          "scan_repository"
+        ]
+      },
+      "lineCount": 461,
+      "sizeBytes": 21686,
+      "lastModifiedAt": "2026-07-28T02:39:14Z",
+      "hash": "6ae586ef1495621a5579a3200691e9b9cd844df72f6ae79228311905d9117f1c",
+      "lastReviewedHash": "6ae586ef1495621a5579a3200691e9b9cd844df72f6ae79228311905d9117f1c",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-28T03:03:19Z"
+    },
+    {
+      "path": "Code Registry/tools/semantic_index.py",
+      "filename": "semantic_index.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Mantém o índice local de embeddings Ollama e a busca semântica do Code Registry.",
+      "responsibilities": [
+        "Gera documentos de busca locais",
+        "Indexa alterações com Ollama",
+        "Classifica intenção por similaridade"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "datetime",
+        "json",
+        "math",
+        "pathlib",
+        "sqlite3",
+        "struct",
+        "typing",
+        "urllib.error",
+        "urllib.request"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "datetime",
+        "json",
+        "math",
+        "pathlib",
+        "sqlite3",
+        "struct",
+        "typing",
+        "urllib.error",
+        "urllib.request"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_connect",
+          "_cosine",
+          "_database",
+          "_document",
+          "_embed",
+          "_enabled",
+          "_now",
+          "_pack",
+          "_settings",
+          "_unpack",
+          "search_semantic",
+          "synchronize_semantic"
+        ]
+      },
+      "lineCount": 115,
+      "sizeBytes": 6236,
+      "lastModifiedAt": "2026-07-22T15:09:40Z",
+      "hash": "b651c2548742934c4e3dddba7c8e4d83b844def663c04cc7ce79b8d96226a116",
+      "lastReviewedHash": "b651c2548742934c4e3dddba7c8e4d83b844def663c04cc7ce79b8d96226a116",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T15:10:39Z"
+    },
+    {
+      "path": "Code Registry/tools/source_analyzer.py",
+      "filename": "source_analyzer.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Extrai metadados estruturais e a data de modificação de C++, Python, Web, shaders e scripts.",
+      "responsibilities": [
+        "Analisar estrutura e símbolos de código",
+        "Calcular hashes e métricas automáticas",
+        "Registrar a data de modificação do arquivo"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "ast",
+        "datetime",
+        "hashlib",
+        "json",
+        "pathlib",
+        "re",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "ast",
+        "datetime",
+        "hashlib",
+        "json",
+        "pathlib",
+        "re",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_analyze_build",
+          "_analyze_cpp",
+          "_analyze_python",
+          "_analyze_shader",
+          "_analyze_web",
+          "_read_source",
+          "_unique",
+          "analyze_file",
+          "humanize_identifier",
+          "kind_for",
+          "language_for",
+          "primary_symbol"
+        ]
+      },
+      "lineCount": 346,
+      "sizeBytes": 12738,
+      "lastModifiedAt": "2026-07-22T11:56:36Z",
+      "hash": "3dbc3f0958fa51be9a02f32c151eb81d22dfe88e0ce55488643bf640d7a4b474",
+      "lastReviewedHash": "3dbc3f0958fa51be9a02f32c151eb81d22dfe88e0ce55488643bf640d7a4b474",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T11:59:13Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_code_registry.py",
+      "filename": "test_code_registry.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Verifica scan, revisão por hash, movimentos, remoções e cobertura do Code Registry.",
+      "responsibilities": [
+        "Testar a revisão exigida após mudança de conteúdo",
+        "Testar detecção de movimentos e remoções",
+        "Testar falha para arquivo elegível sem registro"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "json",
+        "pathlib",
+        "registry_builder",
+        "scanner",
+        "shutil",
+        "sys",
+        "tempfile",
+        "unittest",
+        "validator"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "json",
+        "pathlib",
+        "registry_builder",
+        "scanner",
+        "shutil",
+        "sys",
+        "tempfile",
+        "unittest",
+        "validator"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "CodeRegistryLifecycleTests"
+        ],
+        "functions": [
+          "_source",
+          "setUp",
+          "test_content_change_preserves_semantics_and_requires_review",
+          "test_initial_bootstrap_is_reviewed_and_valid",
+          "test_removed_file_is_dropped_and_reported_as_scan_event",
+          "test_rename_is_detected_by_hash_and_keeps_previous_path",
+          "test_validator_can_require_complete_product_area_coverage",
+          "test_validator_marks_unscanned_hash_change_pending",
+          "test_validator_rejects_empty_semantic_description",
+          "test_validator_rejects_generated_consolidation_conflict",
+          "test_validator_reports_duplicate_path",
+          "test_validator_reports_orphan_without_mutating_registry",
+          "test_validator_reports_unscanned_eligible_file"
+        ]
+      },
+      "lineCount": 203,
+      "sizeBytes": 8194,
+      "lastModifiedAt": "2026-07-22T09:52:46Z",
+      "hash": "41ec59881d1a8a2254faa3cc49c3572d411c3575112495d5ed857ff6c94f6166",
+      "lastReviewedHash": "41ec59881d1a8a2254faa3cc49c3572d411c3575112495d5ed857ff6c94f6166",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T09:52:59Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_context_builder.py",
+      "filename": "test_context_builder.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Verifica expansão de consultas e leitura limitada de símbolos para contexto de IA.",
+      "responsibilities": [
+        "Testar aliases de recuperação",
+        "Testar leitura de símbolo"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/context_builder.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "context_builder",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest.mock"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "context_builder",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest.mock"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ContextBuilderTests"
+        ],
+        "functions": [
+          "test_expands_domain_terms_with_readable_reasons",
+          "test_reads_only_requested_symbol_with_line_provenance"
+        ]
+      },
+      "lineCount": 45,
+      "sizeBytes": 1664,
+      "lastModifiedAt": "2026-07-22T14:30:50Z",
+      "hash": "12e84cdca57755dc5141d1d9eaeda4fd36ceb9d185ea534f29fba506d43c282b",
+      "lastReviewedHash": "12e84cdca57755dc5141d1d9eaeda4fd36ceb9d185ea534f29fba506d43c282b",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T14:31:00Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_evaluate_retrieval.py",
+      "filename": "test_evaluate_retrieval.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Verifica o cálculo de posição da avaliação de recuperação.",
+      "responsibilities": [
+        "Testar ranking um baseado",
+        "Testar alvo ausente"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/evaluate_retrieval.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "evaluate_retrieval",
+        "sys",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "evaluate_retrieval",
+        "sys",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "RetrievalEvaluationTests"
+        ],
+        "functions": [
+          "test_rank_is_one_based_and_reports_missing"
+        ]
+      },
+      "lineCount": 23,
+      "sizeBytes": 607,
+      "lastModifiedAt": "2026-07-22T14:52:44Z",
+      "hash": "4e7894b6c99ca5ea6fc12b205b50576de6886517d79a93f0aaf95fc5a99ae80c",
+      "lastReviewedHash": "4e7894b6c99ca5ea6fc12b205b50576de6886517d79a93f0aaf95fc5a99ae80c",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T14:53:19Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_explorer.py",
+      "filename": "test_explorer.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Testa projeções, isolamento HTTP, recarga, leitura e busca literal do Explorer.",
+      "responsibilities": [
+        "Cobre projeções do Explorer",
+        "Cobre isolamento HTTP",
+        "Cobre busca literal com linhas"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [
+        "Code Registry/tools/tests/test_code_registry.py"
+      ],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "copy",
+        "explorer_builder",
+        "explorer_server",
+        "functools",
+        "hashlib",
+        "http.server",
+        "json",
+        "pathlib",
+        "registry_builder",
+        "scanner",
+        "shutil",
+        "sys",
+        "tempfile",
+        "threading",
+        "unittest",
+        "urllib.error",
+        "urllib.request"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "copy",
+        "explorer_builder",
+        "explorer_server",
+        "functools",
+        "hashlib",
+        "http.server",
+        "json",
+        "pathlib",
+        "registry_builder",
+        "scanner",
+        "shutil",
+        "sys",
+        "tempfile",
+        "threading",
+        "unittest",
+        "urllib.error",
+        "urllib.request"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ExplorerProjectionTests",
+          "ExplorerServerTests"
+        ],
+        "functions": [
+          "_stop_server",
+          "entry",
+          "setUp",
+          "test_does_not_expose_modular_registry",
+          "test_duplicate_product_area_id_is_rejected",
+          "test_header_and_implementation_form_one_logical_unit",
+          "test_projection_is_deterministic_for_reordered_entries",
+          "test_reload_endpoint_discovers_new_source_file",
+          "test_searches_registered_source_text_with_line_provenance",
+          "test_serves_explorer_with_no_cache_and_security_headers",
+          "test_serves_only_registered_source_files_to_code_reader",
+          "test_vendored_cytoscape_hash_is_pinned"
+        ]
+      },
+      "lineCount": 234,
+      "sizeBytes": 10271,
+      "lastModifiedAt": "2026-07-22T20:35:32Z",
+      "hash": "741f0bec05b5c533af83714c1762fa4045b70fd56c2f70ffae067084a095b910",
+      "lastReviewedHash": "741f0bec05b5c533af83714c1762fa4045b70fd56c2f70ffae067084a095b910",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T20:36:25Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_git_audit.py",
+      "filename": "test_git_audit.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Tests read-only Git audit helpers against an isolated temporary repository.",
+      "responsibilities": [
+        "Creates a temporary Git repository and a dirty registered source fixture.",
+        "Verifies audit, history, source, and working-tree diff behavior."
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "git_audit",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "git_audit",
+        "pathlib",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "GitAuditTests"
+        ],
+        "functions": [
+          "git",
+          "test_reports_dirty_registered_file_and_reads_committed_history"
+        ]
+      },
+      "lineCount": 50,
+      "sizeBytes": 2002,
+      "lastModifiedAt": "2026-07-23T03:20:21Z",
+      "hash": "fc760844a78218af464db9a7f61930201cd24b5bdd808c970af03f5b89b36f3b",
+      "lastReviewedHash": "fc760844a78218af464db9a7f61930201cd24b5bdd808c970af03f5b89b36f3b",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T21:52:54Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_history_store.py",
+      "filename": "test_history_store.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Verifica history store para preservar o contrato de Developer Tools/Code Registry.",
+      "responsibilities": [
+        "Verificar test history store",
+        "Detectar regressões em Developer Tools/Code Registry"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "hashlib",
+        "history_store",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "hashlib",
+        "history_store",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "HistoryStoreTests"
+        ],
+        "functions": [
+          "entry",
+          "setUp",
+          "test_baseline_modification_diff_and_search",
+          "test_removed_path_is_not_searchable"
+        ]
+      },
+      "lineCount": 63,
+      "sizeBytes": 3022,
+      "lastModifiedAt": "2026-07-22T12:57:35Z",
+      "hash": "1abbd33291a3d0d88db93737ad4ebe64aae01a229c4e5d83e661d9eea323819d",
+      "lastReviewedHash": "1abbd33291a3d0d88db93737ad4ebe64aae01a229c4e5d83e661d9eea323819d",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T12:57:44Z"
+    },
+    {
+      "path": "Code Registry/tools/tests/test_semantic_index.py",
+      "filename": "test_semantic_index.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Verifica persistência incremental e ranking do índice semântico local.",
+      "responsibilities": [
+        "Cobre indexação incremental",
+        "Cobre ranking semântico"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "hashlib",
+        "pathlib",
+        "semantic_index",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest.mock"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "hashlib",
+        "pathlib",
+        "semantic_index",
+        "sys",
+        "tempfile",
+        "unittest",
+        "unittest.mock"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "SemanticIndexTests"
+        ],
+        "functions": [
+          "test_indexes_only_changed_files_and_returns_ranked_matches"
+        ]
+      },
+      "lineCount": 38,
+      "sizeBytes": 1751,
+      "lastModifiedAt": "2026-07-22T15:10:20Z",
+      "hash": "687ad55ce27e85226acb71993550b09cb86ab106f6c76dc429c62032d6332892",
+      "lastReviewedHash": "687ad55ce27e85226acb71993550b09cb86ab106f6c76dc429c62032d6332892",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T15:10:39Z"
+    },
+    {
+      "path": "Code Registry/tools/validator.py",
+      "filename": "validator.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Code Registry",
+      "description": "Valida cobertura, schema, hashes, datas de modificação, revisões e artefatos do Code Registry.",
+      "responsibilities": [
+        "Validar cobertura e metadados automáticos",
+        "Verificar a consistência dos payloads",
+        "Bloquear registros sem revisão semântica"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "datetime",
+        "explorer_builder",
+        "json",
+        "pathlib",
+        "re",
+        "registry_builder",
+        "scanner",
+        "source_analyzer",
+        "typing"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "datetime",
+        "explorer_builder",
+        "json",
+        "pathlib",
+        "re",
+        "registry_builder",
+        "scanner",
+        "source_analyzer",
+        "typing"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "_add",
+          "_validate_config",
+          "_validate_generated",
+          "_validate_schema_entry",
+          "_validate_semantics",
+          "validate_registry"
+        ]
+      },
+      "lineCount": 308,
+      "sizeBytes": 14575,
+      "lastModifiedAt": "2026-07-22T11:57:07Z",
+      "hash": "d931357d1bfe256704d331ee17b2ddb3f7f8406b75f4a3d4b5b69ccb3a6dc9c7",
+      "lastReviewedHash": "d931357d1bfe256704d331ee17b2ddb3f7f8406b75f4a3d4b5b69ccb3a6dc9c7",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T11:59:13Z"
+    },
+    {
+      "path": "tools/agent/tests/test_update_change_contract.py",
+      "filename": "test_update_change_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Tests",
+      "description": "Verifica update change contract para preservar o contrato de Developer Tools/Agent Tests.",
+      "responsibilities": [
+        "Verificar test update change contract",
+        "Detectar regressões em Developer Tools/Agent Tests"
+      ],
+      "criticality": "important",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "contextlib",
+        "io",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "update_change_contract",
+        "validate_change_contract"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "contextlib",
+        "io",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "unittest",
+        "update_change_contract",
+        "validate_change_contract"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "UpdateChangeContractTests"
+        ],
+        "functions": [
+          "run_updater",
+          "setUp",
+          "test_apply_prepends_once_and_preserves_history_bytes",
+          "test_dry_run_changes_nothing",
+          "test_invalid_existing_contract_is_not_mutated"
+        ]
+      },
+      "lineCount": 103,
+      "sizeBytes": 3811,
+      "lastModifiedAt": "2026-07-21T11:29:08Z",
+      "hash": "ed1a71bc1ed294c5008b86e7bc34b4309db18241e7ea5052d0442849a98fc57d",
+      "lastReviewedHash": "ed1a71bc1ed294c5008b86e7bc34b4309db18241e7ea5052d0442849a98fc57d",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/agent/tests/test_validate_change_contract.py",
+      "filename": "test_validate_change_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Tests",
+      "description": "Verifica validate change contract para preservar o contrato de Developer Tools/Agent Tests.",
+      "responsibilities": [
+        "Verificar test validate change contract",
+        "Detectar regressões em Developer Tools/Agent Tests"
+      ],
+      "criticality": "important",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "ChangeContractTests"
+        ],
+        "functions": [
+          "assert_error_contains",
+          "setUp",
+          "test_duplicate_changelog_title_is_rejected",
+          "test_duplicate_historical_version_is_rejected",
+          "test_invalid_calendar_timestamp_fails",
+          "test_loose_text_before_first_version_is_blocked",
+          "test_main_returns_one_and_prints_actionable_header_error",
+          "test_main_returns_one_and_prints_loose_text_error",
+          "test_missing_entry_bullet_fails",
+          "test_missing_time_fails",
+          "test_mojibake_is_rejected",
+          "test_no_version_entry_has_only_reported_error",
+          "test_old_entry_without_bullet_is_rejected",
+          "test_out_of_order_historical_version_is_rejected",
+          "test_random_note_before_version_is_rejected",
+          "test_valid_contract_passes_without_errors",
+          "test_valid_contract_with_multiple_bullets_passes",
+          "test_valid_contract_with_two_entries_passes",
+          "test_version_mismatch_fails",
+          "test_wrong_timezone_fails",
+          "validate",
+          "version_header",
+          "write_changelog",
+          "write_valid_contract"
+        ]
+      },
+      "lineCount": 285,
+      "sizeBytes": 9167,
+      "lastModifiedAt": "2026-07-21T11:27:40Z",
+      "hash": "b7a5b746b29fb69adc850e4619ee4c73d55a4a40747031d0ad4d636fd76490f6",
+      "lastReviewedHash": "b7a5b746b29fb69adc850e4619ee4c73d55a4a40747031d0ad4d636fd76490f6",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/agent/tests/test_validate_instruction_architecture.py",
+      "filename": "test_validate_instruction_architecture.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Tests",
+      "description": "Verifica validate instruction architecture para preservar o contrato de Developer Tools/Agent Tests.",
+      "responsibilities": [
+        "Verificar test validate instruction architecture",
+        "Detectar regressões em Developer Tools/Agent Tests"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "InstructionArchitectureValidatorTests"
+        ],
+        "functions": [
+          "_create_valid_fixture",
+          "_validate",
+          "_write",
+          "_write_skill",
+          "assert_error_contains",
+          "setUp",
+          "test_archive_index_drift_fails",
+          "test_broken_relative_reference_fails",
+          "test_duplicate_skill_owner_fails",
+          "test_invalid_adapter_fails",
+          "test_invalid_frontmatter_fails",
+          "test_invalid_openai_yaml_fails",
+          "test_machine_specific_paths_fail",
+          "test_missing_activation_index_fails",
+          "test_missing_required_skill_section_fails",
+          "test_model_specific_skill_section_fails",
+          "test_retired_opencode_tree_fails_and_main_returns_nonzero",
+          "test_stale_ui_contract_fails",
+          "test_valid_fixture_passes"
+        ]
+      },
+      "lineCount": 229,
+      "sizeBytes": 9088,
+      "lastModifiedAt": "2026-07-21T07:41:12Z",
+      "hash": "68192e5105f438590f4d8fd89bd399e28552e4b0446cada24dc1759478b82d95",
+      "lastReviewedHash": "68192e5105f438590f4d8fd89bd399e28552e4b0446cada24dc1759478b82d95",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/agent/tests/test_validate_instruction_architecture_limits.py",
+      "filename": "test_validate_instruction_architecture_limits.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "test",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Tests",
+      "description": "Verifica validate instruction architecture limits para preservar o contrato de Developer Tools/Agent Tests.",
+      "responsibilities": [
+        "Verificar test validate instruction architecture limits",
+        "Detectar regressões em Developer Tools/Agent Tests"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "contextlib",
+        "importlib.util",
+        "io",
+        "pathlib",
+        "tempfile",
+        "unittest"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "AGENTSSizeLimitTests"
+        ],
+        "functions": [
+          "_build_valid_root",
+          "_write",
+          "_write_valid_agents_of_size",
+          "setUp",
+          "test_28_kib_boundary_has_no_errors",
+          "test_28_kib_plus_one_byte_has_only_actionable_size_error",
+          "test_above_preferred_range_has_only_warning",
+          "test_below_preferred_range_has_only_warning",
+          "test_main_returns_one_for_only_the_size_violation",
+          "test_preferred_range_boundaries_have_no_diagnostics",
+          "validate_size"
+        ]
+      },
+      "lineCount": 194,
+      "sizeBytes": 6837,
+      "lastModifiedAt": "2026-07-21T07:41:12Z",
+      "hash": "220bd9a37252f3496a7eebad5b58f1b5ff234f4a5b09cb039a1e4dbf29586ef7",
+      "lastReviewedHash": "220bd9a37252f3496a7eebad5b58f1b5ff234f4a5b09cb039a1e4dbf29586ef7",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/agent/update_change_contract.py",
+      "filename": "update_change_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Contracts",
+      "description": "Atualiza change contract no fluxo de Developer Tools/Agent Contracts.",
+      "responsibilities": [
+        "Executar update change contract",
+        "Validar o fluxo de Developer Tools/Agent Contracts"
+      ],
+      "criticality": "important",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "hashlib",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "validate_change_contract"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "hashlib",
+        "os",
+        "pathlib",
+        "sys",
+        "tempfile",
+        "validate_change_contract"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "atomic_write",
+          "main",
+          "next_version",
+          "parse_args",
+          "split_preserved_history",
+          "validate_existing_contract",
+          "validate_messages"
+        ]
+      },
+      "lineCount": 163,
+      "sizeBytes": 5537,
+      "lastModifiedAt": "2026-07-21T11:28:52Z",
+      "hash": "b49195b333c56a0736572e899e0ccc6ec34162c06ff98282126a9834c6d3b08e",
+      "lastReviewedHash": "b49195b333c56a0736572e899e0ccc6ec34162c06ff98282126a9834c6d3b08e",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/agent/validate_change_contract.py",
+      "filename": "validate_change_contract.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Contracts",
+      "description": "Valida change contract no fluxo de Developer Tools/Agent Contracts.",
+      "responsibilities": [
+        "Executar validate change contract",
+        "Validar o fluxo de Developer Tools/Agent Contracts"
+      ],
+      "criticality": "important",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "Report"
+        ],
+        "functions": [
+          "__init__",
+          "_first_version_header_index",
+          "_report_loose_text_before_first_entry",
+          "_semantic_version",
+          "_validate_full_history",
+          "error",
+          "main",
+          "read_text",
+          "validate"
+        ]
+      },
+      "lineCount": 225,
+      "sizeBytes": 7309,
+      "lastModifiedAt": "2026-07-21T11:26:22Z",
+      "hash": "d84747d91a373353c48f62b2ae2be0176ca8d6c1f7e0cc227acb04b9de6e6b21",
+      "lastReviewedHash": "d84747d91a373353c48f62b2ae2be0176ca8d6c1f7e0cc227acb04b9de6e6b21",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/agent/validate_instruction_architecture.py",
+      "filename": "validate_instruction_architecture.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Agent Contracts",
+      "description": "Valida instruction architecture no fluxo de Developer Tools/Agent Contracts.",
+      "responsibilities": [
+        "Executar validate instruction architecture",
+        "Validar o fluxo de Developer Tools/Agent Contracts"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "pathlib",
+        "re",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [
+          "Report"
+        ],
+        "functions": [
+          "__init__",
+          "error",
+          "main",
+          "parse_frontmatter",
+          "read_text",
+          "rel",
+          "validate_active_instructions",
+          "validate_adapters_and_plans",
+          "validate_agents",
+          "validate_markdown_links",
+          "validate_retired_tree",
+          "validate_skills",
+          "validate_technical_references",
+          "warning"
+        ]
+      },
+      "lineCount": 401,
+      "sizeBytes": 14806,
+      "lastModifiedAt": "2026-07-22T07:35:03Z",
+      "hash": "51911b8b00e3bb750983f71dc9c2d0c56e5c693adb97f44cef6548b205e46eeb",
+      "lastReviewedHash": "51911b8b00e3bb750983f71dc9c2d0c56e5c693adb97f44cef6548b205e46eeb",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/cuda_probe/make_min_models.py",
+      "filename": "make_min_models.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Build and Release",
+      "description": "Generates the identity and minimal convolution ONNX models used by CudaCudnnProbe using a hand-rolled protobuf encoder, avoiding any onnx package dependency.",
+      "responsibilities": [
+        "Encode ONNX ModelProto structures directly as protobuf",
+        "Emit the identity and 3x3 convolution probe models"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "pathlib",
+        "struct"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "pathlib",
+        "struct"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "attribute_int",
+          "attribute_ints",
+          "build_conv",
+          "build_identity",
+          "f_bytes",
+          "f_str",
+          "f_varint",
+          "graph",
+          "initializer",
+          "main",
+          "model",
+          "node",
+          "tag",
+          "tensor_shape",
+          "value_info",
+          "varint"
+        ]
+      },
+      "lineCount": 164,
+      "sizeBytes": 4995,
+      "lastModifiedAt": "2026-07-27T22:23:52Z",
+      "hash": "12eca06875a6164d9a02988340b338b99c3a5c93ba5de917dc990a6874d987be",
+      "lastReviewedHash": "12eca06875a6164d9a02988340b338b99c3a5c93ba5de917dc990a6874d987be",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-27T22:42:32Z"
+    },
+    {
+      "path": "tools/ui-qa/capture_screen.py",
+      "filename": "capture_screen.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Visual QA",
+      "description": "Captura screen no fluxo de Developer Tools/Visual QA.",
+      "responsibilities": [
+        "Executar capture screen",
+        "Validar o fluxo de Developer Tools/Visual QA"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "pathlib",
+        "PIL",
+        "platform",
+        "subprocess",
+        "sys",
+        "time"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "pathlib",
+        "PIL",
+        "platform",
+        "subprocess",
+        "sys",
+        "time"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "capture_macos",
+          "capture_other",
+          "capture_windows",
+          "ensure_parent",
+          "macos_window_bounds",
+          "main",
+          "run_text"
+        ]
+      },
+      "lineCount": 148,
+      "sizeBytes": 5411,
+      "lastModifiedAt": "2026-06-15T03:22:21Z",
+      "hash": "3537cf498a9efb8633e5b59fd8f5ad9af4ede59322f1cba8fdd8d94296e0556a",
+      "lastReviewedHash": "3537cf498a9efb8633e5b59fd8f5ad9af4ede59322f1cba8fdd8d94296e0556a",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/ui-qa/crop_regions.py",
+      "filename": "crop_regions.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Visual QA",
+      "description": "Recorta regions no fluxo de Developer Tools/Visual QA.",
+      "responsibilities": [
+        "Executar crop regions",
+        "Validar o fluxo de Developer Tools/Visual QA"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "json",
+        "pathlib",
+        "PIL",
+        "sys"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "json",
+        "pathlib",
+        "PIL",
+        "sys"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "crop_box",
+          "image_stats",
+          "main"
+        ]
+      },
+      "lineCount": 101,
+      "sizeBytes": 3262,
+      "lastModifiedAt": "2026-06-15T03:20:44Z",
+      "hash": "76f43f8429c993c0eeb2d36a7630d1751bfd8b85f6664496028114bb26433e04",
+      "lastReviewedHash": "76f43f8429c993c0eeb2d36a7630d1751bfd8b85f6664496028114bb26433e04",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/ui-qa/report_visual_findings.py",
+      "filename": "report_visual_findings.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Visual QA",
+      "description": "Gera o relatório de visual findings no fluxo de Developer Tools/Visual QA.",
+      "responsibilities": [
+        "Executar report visual findings",
+        "Validar o fluxo de Developer Tools/Visual QA"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "json",
+        "pathlib",
+        "PIL",
+        "platform",
+        "sys",
+        "zoneinfo"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "json",
+        "pathlib",
+        "PIL",
+        "platform",
+        "sys",
+        "zoneinfo"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "classify_region",
+          "image_overview",
+          "load_manifest",
+          "main",
+          "make_diff",
+          "markdown_path"
+        ]
+      },
+      "lineCount": 186,
+      "sizeBytes": 7186,
+      "lastModifiedAt": "2026-06-15T03:20:44Z",
+      "hash": "8ff008664b8e915340f7df8e36f2c805b2aee17395ed6243a1dda43f6a23353f",
+      "lastReviewedHash": "8ff008664b8e915340f7df8e36f2c805b2aee17395ed6243a1dda43f6a23353f",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    },
+    {
+      "path": "tools/ui-qa/run_visual_qa.py",
+      "filename": "run_visual_qa.py",
+      "extension": ".py",
+      "language": "Python",
+      "kind": "tool",
+      "category": "python-tools",
+      "module": "Developer Tools/Visual QA",
+      "description": "Implementa a ferramenta run visual qa para o fluxo de Developer Tools/Visual QA.",
+      "responsibilities": [
+        "Executar run visual qa",
+        "Validar o fluxo de Developer Tools/Visual QA"
+      ],
+      "criticality": "standard",
+      "relatedFiles": [],
+      "probableRelatedFiles": [],
+      "previousPaths": [],
+      "dependencies": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "os",
+        "pathlib",
+        "platform",
+        "shutil",
+        "subprocess",
+        "sys",
+        "time",
+        "zoneinfo"
+      ],
+      "includes": [],
+      "imports": [
+        "__future__",
+        "argparse",
+        "datetime",
+        "os",
+        "pathlib",
+        "platform",
+        "shutil",
+        "subprocess",
+        "sys",
+        "time",
+        "zoneinfo"
+      ],
+      "exports": [],
+      "symbols": {
+        "classes": [],
+        "functions": [
+          "build_if_needed",
+          "copy_latest",
+          "ensure_dirs",
+          "find_executable",
+          "latest_before",
+          "launch_app",
+          "main",
+          "repo_root",
+          "run",
+          "timestamp"
+        ]
+      },
+      "lineCount": 201,
+      "sizeBytes": 6948,
+      "lastModifiedAt": "2026-07-07T13:56:21Z",
+      "hash": "2667d0aa660a7cd747ebdab080a746fa17c668cafe382e58274476a56a4923e7",
+      "lastReviewedHash": "2667d0aa660a7cd747ebdab080a746fa17c668cafe382e58274476a56a4923e7",
+      "reviewStatus": "reviewed",
+      "status": "active",
+      "lastScannedAt": "2026-07-22T07:37:02Z"
+    }
+  ]
+}

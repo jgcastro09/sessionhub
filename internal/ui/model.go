@@ -1710,7 +1710,7 @@ func (m *Model) checkPendingRegister() tea.Cmd {
 		if searchName == "" {
 			searchName = pending.cfg.Command
 		}
-		resolved, found := terminal.FindInExecutorDir(searchName, pending.installDirs.Root, pending.installExtraDirs...)
+		resolved, found := terminal.FindExecutable(searchName, pending.installDirs.Root, pending.installExtraDirs...)
 		if !found {
 			m.lastErr = fmt.Sprintf(
 				"install for %q finished but %q wasn't found in %s or %s — the install command likely placed it somewhere else (check the terminal output above, or that it doesn't ignore --prefix)",
@@ -3977,9 +3977,9 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			// check there too instead of only the executor's own folder.
 			extraDirs = provider.DefaultDirs()
 		}
-		if resolved, found := terminal.FindInExecutorDir(command, dirs.Root, extraDirs...); found {
-			// Already installed in this executor's own folder: register
-			// directly, no reinstall, no PTY needed.
+		if resolved, found := terminal.FindExecutable(command, dirs.Root, extraDirs...); found {
+			// Already installed on system, PATH, standard default dirs, or executor folder:
+			// register directly, no reinstall, no PTY needed.
 			cfg.Command = resolved
 			return m, func() tea.Msg {
 				// Write the manifest only after the DB save actually commits
