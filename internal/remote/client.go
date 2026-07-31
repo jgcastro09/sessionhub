@@ -87,7 +87,10 @@ func ConnectController(ctx context.Context, device Device, controllerName, contr
 		_ = client.Close()
 		return nil, errors.New(hello.Error)
 	}
-	controllerCtx, cancel := context.WithCancel(ctx)
+	// ctx limits dialing and the initial handshake only. A controller is a
+	// live terminal stream and must remain connected after that short setup
+	// deadline expires; it is closed explicitly when the user returns local.
+	controllerCtx, cancel := context.WithCancel(context.Background())
 	c := &Controller{client: client, device: device, ctx: controllerCtx, cancel: cancel, pending: make(map[string]chan Frame), screens: make(map[string]string), states: make(map[string]domain.State)}
 	if len(hello.Payload) > 0 {
 		var info struct {

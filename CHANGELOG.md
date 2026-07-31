@@ -6,6 +6,12 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.33] - 2026-07-30 21:14:55 -03:00
+
+### Fixed
+
+- Remote terminal streaming no longer inherits the ten-second connection setup timeout. Once connected, a remote SessionHub remains available until the user returns to the local environment or either SessionHub closes.
+
 ## [0.3.32] - 2026-07-30 21:08:39 -03:00
 
 ### Fixed

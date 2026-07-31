@@ -122,6 +122,35 @@ func TestControllerReadsExecutorStatusFromHost(t *testing.T) {
 	}
 }
 
+func TestControllerOutlivesSetupTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	host, err := Listen(ctx, "127.0.0.1:0", remoteTestBackend{}, Device{Name: "target", Version: "0.3.32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	name, rawPort, err := net.SplitHostPort(host.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := net.LookupPort("tcp", rawPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup, stopSetup := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer stopSetup()
+	controller, err := ConnectController(setup, Device{Name: "target", Address: name, Port: port}, "controller", "0.3.32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controller.Close()
+	<-setup.Done()
+	if _, err := controller.Sessions(context.Background()); err != nil {
+		t.Fatalf("controller should survive setup timeout: %v", err)
+	}
+}
+
 type remoteTestBackend struct{ statuses []ExecutorStatus }
 
 func (remoteTestBackend) RemoteSessions(context.Context) ([]domain.Session, error) { return nil, nil }
