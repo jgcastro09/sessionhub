@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.48] - 2026-07-31 12:28:00 -03:00
+
+### Added
+
+- Embedded custom Session Hub logo assets (`internal/assets/logo.png`) and added dynamic macOS Dock icon activation (`setOSDockIcon`) when launching Session Hub via terminal.
+
+Bumps version to 0.3.48.
+
 ## [0.3.47] - 2026-07-31 12:18:00 -03:00
 
 ### Added

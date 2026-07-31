@@ -20,6 +20,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jgcastro09/sessionhub/internal/app"
+	"github.com/jgcastro09/sessionhub/internal/assets"
 	"github.com/jgcastro09/sessionhub/internal/automation"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 	"github.com/jgcastro09/sessionhub/internal/executor"
@@ -353,6 +354,11 @@ type confirmRequest struct {
 
 func New(application *app.App) Model {
 	vp := viewport.New()
+	if application != nil && application.Paths.Root != "" {
+		if logoPath, err := assets.EnsureLogoExtracted(application.Paths.Root); err == nil {
+			setOSDockIcon(logoPath)
+		}
+	}
 	return Model{
 		app: application, sidebar: true, activeSession: -1,
 		viewport:             vp,
