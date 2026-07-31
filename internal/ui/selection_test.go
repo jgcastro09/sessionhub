@@ -118,8 +118,8 @@ func TestOverlayToast(t *testing.T) {
 }
 
 func TestTabLabelWidth(t *testing.T) {
-	w1 := tabLabelWidth(0, "Claude Code")
-	w2 := tabLabelWidth(1, "Codex")
+	w1 := tabLabelWidth(0, domain.ExecutorConfig{Name: "Claude Code", Command: "claude"})
+	w2 := tabLabelWidth(1, domain.ExecutorConfig{Name: "Codex", Command: "codex"})
 	if w1 <= 0 || w2 <= 0 {
 		t.Errorf("expected positive tab widths, got w1=%d, w2=%d", w1, w2)
 	}

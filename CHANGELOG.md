@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.47] - 2026-07-31 12:18:00 -03:00
+
+### Added
+
+- Added visual logo/icon indicators to topbar terminal tabs (`` Zsh, `🐚` Bash, `🐟` Fish, `⚡` PowerShell, `🖥️` CMD, `🐧` WSL, `🤖` Codex, `✳️` Claude, `🚀` OpenCode, `🌌` Antigravity) with support for custom `Icon` configuration.
+
+Bumps version to 0.3.47.
+
 ## [0.3.46] - 2026-07-31 12:08:00 -03:00
 
 ### Added

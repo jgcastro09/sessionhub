@@ -2440,7 +2440,7 @@ func (m Model) renderTabs() string {
 		if !running && m.remoteController == nil && m.app != nil && m.app.Executors != nil && m.app.Executors.IsActive(session.ID, cfg.ID) {
 			marker, running = "●", true
 		}
-		label := tabLabel(i, marker, cfg.Name)
+		label := tabLabel(i, marker, cfg)
 		style := tabStyle
 		activeID := m.tabInstances[key]
 		if m.remoteController != nil {
@@ -2476,20 +2476,50 @@ func parseAltShortcut(keyStr string) (int, bool) {
 	return 0, false
 }
 
-// tabLabel renders one tab: a 1-based digit shortcut for the first nine
-// tabs (pressing that number opens/focuses it, no mouse required), a ●/○
-// running marker, and the Executor's name.
-func tabLabel(index int, marker, name string) string {
-	if index < 9 {
-		return fmt.Sprintf(" %d%s %s ", index+1, marker, name)
+func executorIcon(cfg domain.ExecutorConfig) string {
+	if strings.TrimSpace(cfg.Icon) != "" {
+		return strings.TrimSpace(cfg.Icon)
 	}
-	return fmt.Sprintf(" %s %s ", marker, name)
+	name := strings.ToLower(cfg.Name + " " + cfg.Command)
+	switch {
+	case strings.Contains(name, "zsh"):
+		return ""
+	case strings.Contains(name, "bash"):
+		return "🐚"
+	case strings.Contains(name, "fish"):
+		return "🐟"
+	case strings.Contains(name, "powershell") || strings.Contains(name, "pwsh"):
+		return "⚡"
+	case strings.Contains(name, "cmd"):
+		return "🖥️"
+	case strings.Contains(name, "wsl") || strings.Contains(name, "linux"):
+		return "🐧"
+	case strings.Contains(name, "claude"):
+		return "✳️"
+	case strings.Contains(name, "codex"):
+		return "🤖"
+	case strings.Contains(name, "opencode"):
+		return "🚀"
+	case strings.Contains(name, "agy") || strings.Contains(name, "antigravity"):
+		return "🌌"
+	default:
+		return "💻"
+	}
+}
+
+// tabLabel renders one tab with shortcut number, running marker, icon/logo, and name.
+func tabLabel(index int, marker string, cfg domain.ExecutorConfig) string {
+	icon := executorIcon(cfg)
+	if index < 9 {
+		return fmt.Sprintf(" %d%s %s %s ", index+1, marker, icon, cfg.Name)
+	}
+	return fmt.Sprintf(" %s %s %s ", marker, icon, cfg.Name)
 }
 
 // tabLabelWidth mirrors tabLabel, so tabAt can compute the same column
 // ranges without re-rendering.
-func tabLabelWidth(index int, name string) int {
-	return lipgloss.Width(tabLabel(index, "○", name))
+func tabLabelWidth(index int, cfg domain.ExecutorConfig) int {
+	return lipgloss.Width(tabLabel(index, "○", cfg))
 }
 
 // tabAt returns the Executor whose tab occupies screen column x, when y is
@@ -2501,7 +2531,7 @@ func (m Model) tabAt(x, y int) (domain.ExecutorConfig, bool) {
 	session := m.sessions[m.activeSession]
 	cursor := 0
 	for i, cfg := range m.sessionExecutors(session) {
-		width := tabLabelWidth(i, cfg.Name)
+		width := tabLabelWidth(i, cfg)
 		if x >= cursor && x < cursor+width {
 			return cfg, true
 		}
@@ -3993,6 +4023,9 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 			WorkingDir: workingDir, PromptSuffix: "\r", InstallDir: dirs.Root,
 		}
 		if provider := m.form.selectedProvider; provider != nil {
+			if provider.Icon != "" {
+				cfg.Icon = provider.Icon
+			}
 			if provider.UseHostHome {
 				cfg.UseHostHome = true
 			}
@@ -4314,7 +4347,7 @@ func executorFromValues(labels, values []string, m Model) (domain.ExecutorConfig
 
 	cfg := domain.ExecutorConfig{
 		ID: id.New("exec"), Name: field("Display name"), Command: command, Args: args,
-		BinaryName: orig.BinaryName, InstallDir: orig.InstallDir, UseHostHome: orig.UseHostHome, CreatedAt: orig.CreatedAt,
+		BinaryName: orig.BinaryName, InstallDir: orig.InstallDir, Icon: orig.Icon, UseHostHome: orig.UseHostHome, CreatedAt: orig.CreatedAt,
 		WorkingDir: workingDir, Environment: environment, Shell: shell,
 		ResumeCommand: resumeCommand, ResumeArgs: resumeArgs, Rules: rules,
 		Timeout: timeout, PromptSuffix: suffix, Roles: roles, Model: model,
