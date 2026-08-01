@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -222,6 +223,7 @@ const (
 	taskForm
 	taskStatusForm
 	taskSearchForm
+	taskImportForm
 	registrySearchForm
 )
 
@@ -254,6 +256,10 @@ type formModel struct {
 	// Tokenizer, Price ID) are carried through from here untouched unless
 	// ctrl+a expands them into the form, so collapsing the form never
 	// silently drops data the operator can't see.
+	// importArea holds the pasted draft for taskImportForm — the one form
+	// kind that needs multi-line paste (a card draft can run to thousands of
+	// words), which textinput.Model cannot represent.
+	importArea       textarea.Model
 	originalExecutor *domain.ExecutorConfig
 	// selectedProvider carries the catalog entry (if any) chosen before
 	// this installForm was opened, so submitForm knows where an
@@ -983,6 +989,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "i":
 			if sections[m.section] == "Executors" {
 				m.form = newProviderPickForm()
+			}
+			if sections[m.section] == "Tasks" {
+				if m.activeProject < 0 {
+					m.status = "Select a project first (← →)"
+				} else {
+					m.form = newTaskImportForm()
+				}
 			}
 		case "s":
 			if sections[m.section] == "Executors" {
@@ -3774,6 +3787,20 @@ func newTaskForm() formModel {
 		[]string{"What needs to happen?", "feature | bug | chore | spike", "low | medium | high | urgent"})
 }
 
+// newTaskImportForm opens the paste target for a card draft written against
+// the "Gerador de Cards" prompt contract (see docs/usage.md): the same
+// standardized nine-field format the Web Panel's "importar card" button and
+// the legacy NodeStage Task Board both accept, so a draft only ever needs to
+// be generated once.
+func newTaskImportForm() formModel {
+	area := textarea.New()
+	area.Placeholder = "* Título Direto: ...\n* Resumo de Uma Frase: ...\n* Tipo: ...\n* Prioridade: ...\n* Áreas Envolvidas: ...\n* Descrição Detalhada: ...\n* Prompt Detalhado para a IA: ...\n* Funcionalidades Esperadas: ...\n* Contrato de Auditoria: ..."
+	area.SetWidth(78)
+	area.SetHeight(16)
+	area.Focus()
+	return formModel{kind: taskImportForm, title: "Import Card", importArea: area}
+}
+
 // taskStatusFormFor lets the operator type the exact next status; the
 // service (not this form) is the source of truth for which transitions are
 // legal, so an invalid choice simply comes back as m.form.err instead of
@@ -4088,6 +4115,23 @@ func (m Model) updateProviderPick(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateTaskImportForm routes every key but esc/ctrl+s into the textarea
+// itself, since a pasted card draft is arbitrary multi-line text that must
+// reach the widget unmodified (unlike the single-line textinput fields the
+// generic form loop drives).
+func (m Model) updateTaskImportForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.form = formModel{}
+		return m, nil
+	case "ctrl+s":
+		return m.submitForm()
+	}
+	area, cmd := m.form.importArea.Update(msg)
+	m.form.importArea = area
+	return m, cmd
+}
+
 // updateAutomationEditor keeps the creation flow deliberately small. The
 // selector sections use arrows/space; text input exists only for Prompt and
 // Time, so operators never need to discover or paste internal IDs.
@@ -4238,6 +4282,9 @@ func (m Model) updateForm(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.form.kind == providerPickForm {
 			return m.updateProviderPick(msg)
+		}
+		if m.form.kind == taskImportForm {
+			return m.updateTaskImportForm(msg)
 		}
 		switch msg.String() {
 		case "esc":
@@ -4581,6 +4628,21 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			_, err := application.Tasks.SetStatus(projectID, taskID, tasks.Status(status))
 			return savedMsg{kind: "task status", id: taskID, err: err}
+		}
+	case taskImportForm:
+		if m.activeProject < 0 {
+			m.form.err = "select a project first"
+			return m, nil
+		}
+		projectID := m.projects[m.activeProject].ID
+		text := m.form.importArea.Value()
+		application := m.app
+		return m, func() tea.Msg {
+			card, result, err := application.Tasks.Import(projectID, text)
+			if err == nil && !result.Valid {
+				err = fmt.Errorf("%s", strings.Join(result.Errors, " "))
+			}
+			return savedMsg{kind: "task", id: card.ID, err: err}
 		}
 	case taskSearchForm:
 		m.taskFilterQuery = strings.TrimSpace(values[0])
@@ -5031,6 +5093,18 @@ func (m Model) renderProviderPickPanel() string {
 	return modalStyle.Width(min(60, max(30, m.width-8))).Render(b.String())
 }
 
+func (m Model) renderTaskImportPanel() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(m.form.title) + "\n")
+	b.WriteString(mutedStyle.Render("Paste the full output of the Gerador de Cards prompt (max ~9,000 tokens)") + "\n\n")
+	b.WriteString(m.form.importArea.View())
+	if m.form.err != "" {
+		b.WriteString("\n" + errorStyle.Render(m.form.err))
+	}
+	b.WriteString("\n" + mutedStyle.Render("ctrl+s imports and creates the task • esc cancel"))
+	return modalStyle.Width(min(86, max(40, m.width-8))).Render(b.String())
+}
+
 func (m Model) renderFormPanel() string {
 	if m.form.kind == providerPickForm {
 		return m.renderProviderPickPanel()
@@ -5040,6 +5114,9 @@ func (m Model) renderFormPanel() string {
 	}
 	if m.form.kind == automationDetailsView {
 		return modalStyle.Width(min(86, max(40, m.width-8))).Render(titleStyle.Render(m.form.title) + "\n\n" + m.form.details + "\n" + mutedStyle.Render("enter or esc closes"))
+	}
+	if m.form.kind == taskImportForm {
+		return m.renderTaskImportPanel()
 	}
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(m.form.title) + "\n\n")

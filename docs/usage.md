@@ -28,15 +28,33 @@ deleting persisted history. They require separate confirmation.
 ## Task Manager
 
 The Tasks section lists the active project's cards (`← →` picks the
-project). Keys: `n` new task, `enter` read the full card, `c` change status
-(the workflow itself is validated by `internal/tasks`, not the UI — an
-illegal transition just comes back as an error), `a` run the card's Audit
-Contract and show the report, `/` filter by id/title. A task only ever
-auto-completes from a passing Audit Contract, never from a status you set by
-hand plus a guess.
+project). Keys: `n` new task, `i` import a card from a pasted draft, `enter`
+read the full card, `c` change status (the workflow itself is validated by
+`internal/tasks`, not the UI — an illegal transition just comes back as an
+error), `a` run the card's Audit Contract and show the report, `/` filter by
+id/title. A task only ever auto-completes from a passing Audit Contract,
+never from a status you set by hand plus a guess.
+
+### Importing a card from a generated draft
+
+Both the TUI (`i`) and the Web Panel's Tasks page (the "importar card"
+button) accept the same standardized draft: a fixed nine-field block (Título
+Direto, Resumo de Uma Frase, Tipo, Prioridade, Áreas Envolvidas, Descrição
+Detalhada, Prompt Detalhado para a IA, Funcionalidades Esperadas, Contrato de
+Auditoria) capped at a conservative 9,000-token estimate. Hand a raw request
+to an AI assistant instructed to return a draft in that format, then paste
+the result in either surface — it becomes a fully-populated card (title,
+type, priority, impacted areas, and all four Markdown sections) in one step,
+or comes back with the exact missing/invalid fields if the draft doesn't
+validate. Nothing is written until the draft is valid. This is the same
+prompt contract the legacy NodeStage Task Board's card importer used, so a
+draft written for either tool imports cleanly in both.
+API: `POST /api/v2/projects/:id/tasks/import` (`{"text": "..."}`).
 
 The Web Panel's Tasks page (`/projects/:id/tasks`) adds what the TUI
-deliberately doesn't: a drag-and-drop Kanban board, a full card editor
+deliberately doesn't: a searchable, filterable drag-and-drop Kanban board
+with collapsible closed-work columns and card-level execution signals (claims,
+Registry references, dependencies, and audit state), plus a full card editor
 (sections, impacted areas, dependencies), a "Contexto técnico" panel that
 resolves and lets you attach Registry references by searching, and a
 read-only view of which Executor/terminal currently claims a task (that claim

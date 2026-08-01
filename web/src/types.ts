@@ -137,6 +137,30 @@ export interface TaskClaim {
   claimed_at: string
 }
 
+// --- Task import (Gerador de Cards prompt contract) ---
+
+export interface TaskImportMetrics {
+  tokens: number
+  words: number
+  characters: number
+  classification: string
+}
+
+export interface TaskImportResult {
+  valid: boolean
+  errors: string[]
+  metrics: TaskImportMetrics
+  title: string
+  summary: string
+  type: string
+  priority: string
+}
+
+export interface TaskImportResponse {
+  card?: Task
+  result: TaskImportResult
+}
+
 // --- Code Registry (internal/registry) ---
 
 export type RegistryKind =

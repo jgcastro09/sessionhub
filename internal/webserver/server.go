@@ -39,6 +39,7 @@ type Backend interface {
 	WebTasksList(ctx context.Context, projectID string, filter tasks.Filter) ([]tasks.Card, error)
 	WebTasksGet(ctx context.Context, projectID, taskID string) (tasks.Card, error)
 	WebTasksCreate(ctx context.Context, projectID string, input tasks.CreateInput) (tasks.Card, error)
+	WebTasksImport(ctx context.Context, projectID, text string) (tasks.Card, tasks.ImportResult, error)
 	WebTasksUpdate(ctx context.Context, projectID, taskID string, patch tasks.Patch) (tasks.Card, error)
 	WebTasksSetStatus(ctx context.Context, projectID, taskID string, status tasks.Status) (tasks.Card, error)
 	WebTasksAudit(ctx context.Context, projectID, taskID string) (tasks.AuditReport, error)

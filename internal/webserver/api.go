@@ -31,6 +31,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	api.HandleFunc("GET /api/v2/projects/{projectID}/tasks", s.handleTasksList)
 	api.HandleFunc("POST /api/v2/projects/{projectID}/tasks", s.handleTasksCreate)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/tasks/import", s.handleTasksImport)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/tasks/{taskID}", s.handleTasksGet)
 	api.HandleFunc("PATCH /api/v2/projects/{projectID}/tasks/{taskID}", s.handleTasksPatch)
 	api.HandleFunc("POST /api/v2/projects/{projectID}/tasks/{taskID}/audit", s.handleTasksAudit)

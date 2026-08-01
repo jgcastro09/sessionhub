@@ -10,6 +10,7 @@ import type {
   TaskStatus,
   AuditReport,
   TaskClaim,
+  TaskImportResponse,
   RegistryEntry,
   RegistrySearchPage,
   RegistrySearchQuery,
@@ -121,6 +122,8 @@ export const api = {
 	auditTask: (projectId: string, taskId: string) =>
 		send<AuditReport>('POST', `/api/v2/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/audit`),
 	taskClaims: (projectId: string) => get<TaskClaim[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/tasks/claims`),
+	importTask: (projectId: string, text: string) =>
+		send<TaskImportResponse>('POST', `/api/v2/projects/${encodeURIComponent(projectId)}/tasks/import`, { text }),
 
 	// --- Code Registry ---
 	registryConfig: (projectId: string) => get<RegistryConfig>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/config`),

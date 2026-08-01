@@ -42,6 +42,35 @@ func (s *Server) handleTasksCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, card, nil)
 }
 
+// handleTasksImport backs the "Importar card" action: the client pastes the
+// standardized draft an AI assistant produced from the "Gerador de Cards"
+// prompt contract, and this creates the card in one step when it validates.
+// A parse failure is not an HTTP error — it is a normal 200 response with
+// result.valid == false and result.errors describing exactly what to fix,
+// same as any other client-side validation outcome.
+func (s *Server) handleTasksImport(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	card, result, err := s.backend.WebTasksImport(r.Context(), r.PathValue("projectID"), body.Text)
+	if err != nil {
+		writeJSONError(w, err)
+		return
+	}
+	response := struct {
+		Card   *tasks.Card        `json:"card,omitempty"`
+		Result tasks.ImportResult `json:"result"`
+	}{Result: result}
+	if result.Valid {
+		response.Card = &card
+	}
+	writeJSON(w, response, nil)
+}
+
 func (s *Server) handleTasksGet(w http.ResponseWriter, r *http.Request) {
 	card, err := s.backend.WebTasksGet(r.Context(), r.PathValue("projectID"), r.PathValue("taskID"))
 	if err != nil {

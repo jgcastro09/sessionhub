@@ -458,6 +458,45 @@ func (s *Service) Audit(projectID, taskID string) (AuditReport, error) {
 	return report, nil
 }
 
+// Import parses a card draft written against the "Gerador de Cards" prompt
+// contract (see ParseImport) and, only if it validates, creates the card in
+// one step: CreateInput fields plus the mapped body sections (Resumo,
+// Descrição detalhada, Prompt sugerido, Critérios de aceite, and Audit
+// Contract when present). The parse result is always returned, even when
+// invalid or when creation never runs, so the caller can show the exact
+// validation errors and token metrics without touching the filesystem.
+func (s *Service) Import(projectID, text string) (Card, ImportResult, error) {
+	result := ParseImport(text)
+	if !result.Valid {
+		return Card{}, result, nil
+	}
+
+	card, err := s.Create(projectID, CreateInput{
+		Title:         result.Title,
+		Type:          result.Type,
+		Priority:      result.Priority,
+		ImpactedAreas: result.ImpactedAreas,
+	})
+	if err != nil {
+		return Card{}, result, err
+	}
+
+	sections := map[string]string{
+		"Resumo":              result.Summary,
+		"Descrição detalhada": result.Description,
+		"Prompt sugerido":     result.AIPrompt,
+		"Critérios de aceite": result.ExpectedFeatures,
+	}
+	if result.AuditContract != "" {
+		sections["Audit Contract"] = result.AuditContract
+	}
+	card, err = s.Update(projectID, card.ID, Patch{Sections: sections})
+	if err != nil {
+		return Card{}, result, err
+	}
+	return card, result, nil
+}
+
 // Numeric returns the integer suffix of a TASK-XXXX id, or 0 if it does not
 // match the standard pattern. Exposed for CLI/TUI sort helpers.
 func Numeric(taskID string) int {

@@ -43,6 +43,12 @@ func (a *App) WebTasksAudit(ctx context.Context, projectID, taskID string) (task
 	return a.Tasks.Audit(projectID, taskID)
 }
 
+// WebTasksImport parses a card draft written against the "Gerador de
+// Cards" prompt contract and creates the resulting card when it validates.
+func (a *App) WebTasksImport(ctx context.Context, projectID, text string) (tasks.Card, tasks.ImportResult, error) {
+	return a.Tasks.Import(projectID, text)
+}
+
 // WebTasksClaims and friends expose the runtime-only "who is working this"
 // state (plan 4.3): never written to .shproject/Git, shown in the Web Panel
 // so multiple Executors can see and avoid stepping on each other.

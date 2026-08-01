@@ -6,6 +6,23 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-08-01 02:09:58 -03:00
+
+### Added
+
+- Task import: paste a card draft written against the standardized "Gerador de Cards" prompt contract (nine fixed fields, ~9,000-token budget) into either the Web Panel Tasks page ("importar card" button) or the TUI Tasks section (`i`), and it becomes a fully-populated card — title, type, priority, impacted areas, and all four Markdown sections — in one step, or comes back with the exact missing/invalid fields when the draft doesn't validate. New `POST /api/v2/projects/:id/tasks/import` endpoint and `internal/tasks.Service.Import`/`ParseImport`. The parser mirrors the legacy NodeStage Task Board's card importer field for field, so a draft written for either tool imports cleanly in both.
+
+Bumps version to 0.6.5.
+
+## [0.6.4] - 2026-08-01 01:17:45 -03:00
+
+### Added
+
+- Task Manager Web Panel: evolved the Project-scoped Kanban into an execution board for any codebase. It now supports full-text search, type/priority/area filters, deterministic sort modes, optional closed-task columns, collapsible columns, and dense cards that surface task type, summary, impacted areas, active executor claims, Registry references, dependencies, and audit state.
+- Task creation now captures portable delivery context from the start: summary, impacted areas, dependencies, Registry references, acceptance criteria, and suggested executor/AI prompt. Task detail adds structured editing for type, priority, areas, and dependencies.
+
+Bumps version to 0.6.4.
+
 ## [0.6.3] - 2026-08-01 00:52:12 -03:00
 
 ### Added

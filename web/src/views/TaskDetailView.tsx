@@ -121,6 +121,14 @@ export function TaskDetailView({
         <span>atualizada: <b>{new Date(current.updated_at).toLocaleString('pt-BR')}</b></span>
       </div>
 
+      <TaskMetadataPanel
+        task={current}
+        onSave={async (patch) => {
+          const updated = await api.patchTask(projectId, taskId, patch)
+          setLiveTask(updated)
+        }}
+      />
+
       <TechnicalContextPanel
         projectId={projectId}
         registryRefs={current.registry_refs}
@@ -180,6 +188,72 @@ export function TaskDetailView({
         </div>
       )}
     </>
+  )
+}
+
+function TaskMetadataPanel({
+  task,
+  onSave,
+}: {
+  task: Task
+  onSave: (patch: { type: string; priority: string; impacted_areas: string[]; dependencies: string[] }) => Promise<void>
+}) {
+  const [type, setType] = useState(task.type)
+  const [priority, setPriority] = useState(task.priority)
+  const [areas, setAreas] = useState(task.impacted_areas.join(', '))
+  const [dependencies, setDependencies] = useState(task.dependencies.join(', '))
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string>()
+
+  useEffect(() => {
+    setType(task.type)
+    setPriority(task.priority)
+    setAreas(task.impacted_areas.join(', '))
+    setDependencies(task.dependencies.join(', '))
+  }, [task])
+
+  const split = (value: string) => value.split(',').map((item) => item.trim()).filter(Boolean)
+
+  async function save() {
+    setSaving(true)
+    setError(undefined)
+    try {
+      await onSave({ type, priority, impacted_areas: split(areas), dependencies: split(dependencies) })
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div className="card-row">
+        <div className="card-title">Planejamento</div>
+        <button type="button" className="btn-link" onClick={() => setEditing((value) => !value)}>{editing ? 'cancelar' : 'editar metadados'}</button>
+      </div>
+      {!editing ? (
+        <div className="card-meta">
+          <span>áreas: <b>{task.impacted_areas.length ? task.impacted_areas.join(', ') : 'não informadas'}</b></span>
+          <span>dependências: <b>{task.dependencies.length ? task.dependencies.join(', ') : 'nenhuma'}</b></span>
+        </div>
+      ) : (
+        <div className="inline-form-column" style={{ marginTop: '0.75rem' }}>
+          <div className="inline-form" style={{ width: '100%' }}>
+            <input className="text-input" value={type} onChange={(event) => setType(event.target.value)} placeholder="tipo" />
+            <select className="text-input" value={priority} onChange={(event) => setPriority(event.target.value as Task['priority'])}>
+              <option value="low">baixa</option><option value="medium">média</option><option value="high">alta</option><option value="urgent">urgente</option>
+            </select>
+          </div>
+          <input className="text-input" value={areas} onChange={(event) => setAreas(event.target.value)} placeholder="áreas impactadas, separadas por vírgula" />
+          <input className="text-input" value={dependencies} onChange={(event) => setDependencies(event.target.value)} placeholder="dependências, separadas por vírgula" />
+          {error && <div className="error-banner">{error}</div>}
+          <button type="button" className="btn-primary" onClick={save} disabled={saving || !type.trim()}>{saving ? 'salvando…' : 'salvar planejamento'}</button>
+        </div>
+      )}
+    </div>
   )
 }
 
