@@ -32,6 +32,10 @@ func indexDBPath(root string) string {
 	return filepath.Join(registryDir(root), "index.sqlite3")
 }
 
+func scanStatePath(root string) string {
+	return filepath.Join(registryDir(root), "scanstate.json")
+}
+
 func registryGitignorePath(root string) string {
 	return filepath.Join(registryDir(root), ".gitignore")
 }

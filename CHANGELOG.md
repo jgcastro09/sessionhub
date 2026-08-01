@@ -6,6 +6,16 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-01 00:16:02 -03:00
+
+### Fixed
+
+- Code Registry Fase 0/1: `Health()` previously only checked whether a discovered file's *path* had an entry, never comparing the fresh hash/size/category/symbols/dependencies against what was stored — an on-disk edit made without calling `Scan()` again was invisible, and `PendingClassificationCount` was read from the last-persisted `pending.json` instead of the scan `Health()` itself just ran. Both are now derived from a fresh, in-memory comparison every call, independent of whether a prior scan happened (`internal/registry/health.go`, new `PendingRescan`/`LastScanAt`/`LastFullScanAt`/`StalenessReasons` fields).
+- Code Registry Fase 0: `Config.Validate()` now rejects an absolute root, a root escaping the project via `..`, and overlapping roots — previously `Config.Roots` was never validated at all.
+- Code Registry Fase 1: the scanner now genuinely reuses unchanged files instead of re-reading and re-hashing every eligible file on every scan. A persisted fingerprint cache (`scanstate.json`, size+mtime keyed) lets an unchanged rescan skip content reads entirely; a new `ScanFull` bypasses the cache for periodic audit (`sessionhub registry scan --full`); `ScanMetrics` reports files seen/reused/reanalyzed, bytes read, and scan duration.
+
+Bumps version to 0.6.1.
+
 ## [0.6.0] - 2026-08-01 00:02:25 -03:00
 
 ### Added

@@ -222,6 +222,7 @@ export interface RegistryDependencyIssue {
 export interface RegistryHealthReport {
   generated_at: string
   missing_paths: string[]
+  pending_rescan: string[]
   orphaned_entries: string[]
   stale_reviews: string[]
   schema_issues: RegistrySchemaIssue[]
@@ -229,6 +230,9 @@ export interface RegistryHealthReport {
   dangling_relationships: string[]
   dependency_issues: RegistryDependencyIssue[]
   pending_classification_count: number
+  last_scan_at?: string
+  last_full_scan_at?: string
+  staleness_reasons?: string[]
   healthy: boolean
 }
 

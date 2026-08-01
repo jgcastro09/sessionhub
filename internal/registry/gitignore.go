@@ -9,7 +9,7 @@ import (
 // to be committed (docs/configuration.md), but index.sqlite3 is a rebuildable
 // derived cache (Phase 7) that would otherwise churn/conflict in a team's
 // Git history for no benefit — it is never source of truth for anything.
-const registryGitignoreContents = "index.sqlite3\nindex.sqlite3-wal\nindex.sqlite3-shm\n"
+const registryGitignoreContents = "index.sqlite3\nindex.sqlite3-wal\nindex.sqlite3-shm\nscanstate.json\n"
 
 // ensureRegistryGitignore writes .shproject/registry/.gitignore if it is
 // missing or has drifted from the fixed contents above. The file is fully

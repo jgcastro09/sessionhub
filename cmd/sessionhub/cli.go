@@ -300,15 +300,31 @@ func registryGit(svc *registry.Service, projectID string, args []string) error {
 func registryScan(svc *registry.Service, projectID string, args []string) error {
 	fs := flag.NewFlagSet("registry scan", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "print JSON")
+	full := fs.Bool("full", false, "bypass the fingerprint cache and re-read/re-hash every eligible file (audit)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	entries, err := svc.Scan(projectID)
+	var entries []registry.Entry
+	var err error
+	if *full {
+		entries, err = svc.ScanFull(projectID)
+	} else {
+		entries, err = svc.Scan(projectID)
+	}
 	if err != nil {
 		return err
 	}
+	metrics, metricsErr := svc.ScanMetrics(projectID)
 	if *jsonOut {
-		return printJSON(entries)
+		if metricsErr != nil {
+			return printJSON(struct {
+				Entries []registry.Entry `json:"entries"`
+			}{Entries: entries})
+		}
+		return printJSON(struct {
+			Entries []registry.Entry     `json:"entries"`
+			Metrics registry.ScanMetrics `json:"metrics"`
+		}{Entries: entries, Metrics: metrics})
 	}
 	active := 0
 	for _, e := range entries {
@@ -317,6 +333,11 @@ func registryScan(svc *registry.Service, projectID string, args []string) error 
 		}
 	}
 	fmt.Printf("scanned: %d entries (%d active, %d missing)\n", len(entries), active, len(entries)-active)
+	if metricsErr == nil {
+		fmt.Printf("  %d seen, %d reused, %d reanalyzed, %d bytes read, %dms%s\n",
+			metrics.FilesSeen, metrics.FilesReused, metrics.FilesReanalyzed, metrics.BytesRead, metrics.DurationMS,
+			map[bool]string{true: " (full)"}[metrics.Full])
+	}
 	return nil
 }
 

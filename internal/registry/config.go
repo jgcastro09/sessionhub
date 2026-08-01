@@ -2,6 +2,8 @@ package registry
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 )
 
 // Config is the generic scan configuration stored at
@@ -46,11 +48,41 @@ func (c Config) maxFileBytes() int64 {
 // calls this before ever writing to disk, so an unjustified rule can never
 // reach a project's config.json.
 func (c Config) Validate() error {
+	if err := c.validateRoots(); err != nil {
+		return err
+	}
 	if err := c.Eligibility.Validate(); err != nil {
 		return fmt.Errorf("eligibility policy: %w", err)
 	}
 	if err := c.Classification.Validate(); err != nil {
 		return fmt.Errorf("classification policy: %w", err)
+	}
+	return nil
+}
+
+// validateRoots rejects an absolute root, a root that escapes the project
+// root via "..", and two roots where one is a prefix of the other (a scan
+// under an overlapping pair would double-count and double-write every file
+// under the inner root).
+func (c Config) validateRoots() error {
+	seen := make([]string, 0, len(c.Roots))
+	for _, r := range c.Roots {
+		if strings.TrimSpace(r) == "" {
+			return fmt.Errorf("root %q must not be empty", r)
+		}
+		if filepath.IsAbs(r) {
+			return fmt.Errorf("root %q must be relative to the project root", r)
+		}
+		clean := filepath.ToSlash(filepath.Clean(r))
+		if clean == ".." || strings.HasPrefix(clean, "../") {
+			return fmt.Errorf("root %q escapes the project root", r)
+		}
+		for _, prev := range seen {
+			if clean == prev || strings.HasPrefix(clean+"/", prev+"/") || strings.HasPrefix(prev+"/", clean+"/") {
+				return fmt.Errorf("root %q overlaps root %q", r, prev)
+			}
+		}
+		seen = append(seen, clean)
 	}
 	return nil
 }

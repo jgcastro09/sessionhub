@@ -52,6 +52,12 @@ export function RegistryOverviewView({
       {health && (
         <div className={`registry-health-banner ${health.healthy ? 'healthy' : 'unhealthy'}`}>
           {health.healthy ? 'registry saudável' : 'registry com pendências'}
+          {health.last_scan_at && (
+            <span className="card-subtitle" style={{ marginLeft: '0.75rem' }}>
+              último scan: {new Date(health.last_scan_at).toLocaleString()}
+              {health.last_full_scan_at && ` · último scan completo: ${new Date(health.last_full_scan_at).toLocaleString()}`}
+            </span>
+          )}
         </div>
       )}
 
@@ -89,6 +95,7 @@ export function RegistryOverviewView({
           <div className="card-title">Pendências</div>
           <ul>
             {health.missing_paths.length > 0 && <li>{health.missing_paths.length} arquivo(s) descobertos sem registro</li>}
+            {health.pending_rescan.length > 0 && <li>{health.pending_rescan.length} entrada(s) desatualizada(s) em relação ao disco — rode um scan</li>}
             {health.orphaned_entries.length > 0 && <li>{health.orphaned_entries.length} entrada(s) órfã(s) (arquivo removido)</li>}
             {health.stale_reviews.length > 0 && <li>{health.stale_reviews.length} entrada(s) com revisão desatualizada</li>}
             {health.schema_issues.length > 0 && <li>{health.schema_issues.length} problema(s) de metadados em entradas revisadas</li>}

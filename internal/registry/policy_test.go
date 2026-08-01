@@ -62,7 +62,7 @@ func TestExcludedDirPrunesWithoutInspectingContents(t *testing.T) {
 
 	cfg := defaultConfig()
 	cfg.Eligibility.ExcludeDirectoryReasons["vendor"] = "vendored dependencies"
-	result, err := scan(root, cfg)
+	result, err := scan(root, cfg, nil, false)
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestUnrecognizedTextFileSurfacesAsPendingNotIndexed(t *testing.T) {
 	root := t.TempDir()
 	writeSource(t, root, "notes.xyz", "just some plain text notes\n")
 	cfg := defaultConfig()
-	result, err := scan(root, cfg)
+	result, err := scan(root, cfg, nil, false)
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestBinaryUnrecognizedFileIsNeitherEligibleNorPending(t *testing.T) {
 		t.Fatalf("write binary: %v", err)
 	}
 	cfg := defaultConfig()
-	result, err := scan(root, cfg)
+	result, err := scan(root, cfg, nil, false)
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}

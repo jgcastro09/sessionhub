@@ -39,23 +39,37 @@ type discovered struct {
 
 // scanResult is the full output of one filesystem walk: eligible files plus
 // text-looking files that failed the eligibility whitelist (the Pending
-// Classification queue).
+// Classification queue), plus the fingerprint cache to persist for the next
+// incremental scan and the metrics describing what this scan actually did.
 type scanResult struct {
-	Files   []discovered
-	Pending []PendingFile
+	Files        []discovered
+	Pending      []PendingFile
+	Fingerprints map[string]FileFingerprint
+	Metrics      ScanMetrics
 }
 
 // scan walks every configured root under project root, applying symlink
 // containment, the declarative exclusion rules (directories are pruned
 // entirely, never descended into), the eligibility whitelist, and the size
 // cap. Root must already be an absolute, symlink-resolved project root.
-func scan(root string, cfg Config) (scanResult, error) {
+//
+// cache is the fingerprint cache from the previous scan (possibly empty).
+// When full is false, a file whose size+mtime still match its cached
+// fingerprint is never re-read or re-hashed — its discovered record is
+// rebuilt from the cache plus freshly (and cheaply) recomputed path-derived
+// fields. When full is true the cache is consulted only to populate
+// FallbackReasons/metrics, never to skip a read — every eligible file is
+// re-read and re-hashed, for periodic audit.
+func scan(root string, cfg Config, cache map[string]FileFingerprint, full bool) (scanResult, error) {
 	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return scanResult{}, err
 	}
 	seen := map[string]bool{}
-	var result scanResult
+	result := scanResult{
+		Fingerprints: make(map[string]FileFingerprint, len(cache)),
+		Metrics:      ScanMetrics{StartedAt: time.Now().UTC(), Full: full, FallbackReasons: map[string]int{}},
+	}
 	for _, r := range cfg.roots() {
 		start := filepath.Join(resolvedRoot, filepath.Clean(r))
 		walkErr := filepath.WalkDir(start, func(path string, d fs.DirEntry, err error) error {
@@ -109,7 +123,7 @@ func scan(root string, cfg Config) (scanResult, error) {
 				}
 				return nil
 			}
-			entry, ok, readErr := inspectFile(path, rel, cfg, info)
+			entry, fp, reused, reason, ok, readErr := inspectFile(path, rel, cfg, info, cache, full)
 			if readErr != nil {
 				return readErr
 			}
@@ -118,12 +132,23 @@ func scan(root string, cfg Config) (scanResult, error) {
 			}
 			seen[rel] = true
 			result.Files = append(result.Files, entry)
+			result.Fingerprints[rel] = fp
+			result.Metrics.FilesSeen++
+			if reused {
+				result.Metrics.FilesReused++
+			} else {
+				result.Metrics.FilesReanalyzed++
+				result.Metrics.BytesRead += entry.SizeBytes
+				result.Metrics.FallbackReasons[reason]++
+			}
 			return nil
 		})
 		if walkErr != nil {
 			return scanResult{}, walkErr
 		}
 	}
+	result.Metrics.FinishedAt = time.Now().UTC()
+	result.Metrics.DurationMS = result.Metrics.FinishedAt.Sub(result.Metrics.StartedAt).Milliseconds()
 	return result, nil
 }
 
@@ -156,28 +181,67 @@ func inspectPending(absPath, relPath string, info fs.FileInfo) (PendingFile, boo
 	}, true
 }
 
-func inspectFile(absPath, relPath string, cfg Config, info fs.FileInfo) (discovered, bool, error) {
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return discovered{}, false, err
-	}
+// inspectFile builds one discovered record. When full is false and cache
+// holds a fingerprint for relPath whose size+mtime still match info, the
+// file's content-derived facts (hash, line count, symbols, imports/exports)
+// are reused from the cache instead of re-read and re-analyzed — reused
+// reports this happened, for scan metrics. Path-derived facts (language,
+// category, module, kind) are always recomputed regardless, since they can
+// change from a config edit alone, without the file itself changing.
+func inspectFile(absPath, relPath string, cfg Config, info fs.FileInfo, cache map[string]FileFingerprint, full bool) (discovered, FileFingerprint, bool, string, bool, error) {
 	language := languageForPath(relPath)
 	category, kind := cfg.Classification.Classify(relPath)
 	module := moduleForPath(relPath, cfg.ModuleOverrides)
+	modTime := info.ModTime().UTC()
+
+	if !full {
+		if fp, ok := cache[relPath]; ok && fp.matches(info.Size(), modTime) {
+			d := discovered{
+				RelPath: relPath, Filename: filepath.Base(relPath), Extension: strings.ToLower(filepath.Ext(relPath)),
+				Language: language, Kind: kind, Category: category, Module: module,
+				Symbols: fp.Symbols, Includes: fp.Includes, Imports: fp.Imports, Exports: fp.Exports,
+				Dependencies:   union(fp.Includes, fp.Imports),
+				Hash:           fp.Hash,
+				SizeBytes:      fp.Size,
+				LineCount:      fp.LineCount,
+				LastModifiedAt: modTime,
+			}
+			return d, fp, true, "", true, nil
+		}
+	}
+
+	reason := "fingerprint-mismatch"
+	if _, ok := cache[relPath]; !ok {
+		reason = "new"
+	}
+	if full {
+		reason = "full-scan"
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return discovered{}, FileFingerprint{}, false, "", false, err
+	}
 	symbols := detectSymbols(string(data), language)
 	includes, imports, exports := extractDependencies(string(data), language)
 	hash := sha256.Sum256(data)
+	hashHex := hex.EncodeToString(hash[:])
 	lineCount := bytes.Count(data, []byte("\n")) + boolToInt(len(data) > 0 && data[len(data)-1] != '\n')
-	return discovered{
+	fp := FileFingerprint{
+		Size: int64(len(data)), ModTime: modTime, Hash: hashHex, LineCount: lineCount,
+		Symbols: symbols, Includes: includes, Imports: imports, Exports: exports,
+	}
+	d := discovered{
 		RelPath: relPath, Filename: filepath.Base(relPath), Extension: strings.ToLower(filepath.Ext(relPath)),
 		Language: language, Kind: kind, Category: category, Module: module,
 		Symbols: symbols, Includes: includes, Imports: imports, Exports: exports,
 		Dependencies:   union(includes, imports),
-		Hash:           hex.EncodeToString(hash[:]),
+		Hash:           hashHex,
 		SizeBytes:      int64(len(data)),
 		LineCount:      lineCount,
-		LastModifiedAt: info.ModTime().UTC(),
-	}, true, nil
+		LastModifiedAt: modTime,
+	}
+	return d, fp, false, reason, true, nil
 }
 
 func boolToInt(b bool) int {

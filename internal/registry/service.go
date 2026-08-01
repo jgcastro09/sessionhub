@@ -343,11 +343,44 @@ func (s *Service) EntryExists(projectID, entryID string) (bool, error) {
 // them against stored records (recomputing every declarative/structural
 // field, detecting renames by content hash, force-invalidating review
 // status on content change), and writes the updated records back. It
-// returns the full merged entry set.
+// returns the full merged entry set. A file whose size+mtime match its
+// cached fingerprint from the previous scan is never re-read or re-hashed —
+// see ScanFull for an explicit full re-read.
 func (s *Service) Scan(projectID string) ([]Entry, error) {
+	entries, _, err := s.scanInternal(projectID, false)
+	return entries, err
+}
+
+// ScanFull behaves exactly like Scan but bypasses the fingerprint cache
+// entirely: every eligible file is re-read and re-hashed, regardless of a
+// matching size+mtime. Use it as a periodic or on-demand audit against a
+// fingerprint cache that may have drifted from reality (e.g. a filesystem
+// with unreliable mtime resolution).
+func (s *Service) ScanFull(projectID string) ([]Entry, error) {
+	entries, _, err := s.scanInternal(projectID, true)
+	return entries, err
+}
+
+// ScanMetrics returns the ScanMetrics recorded by the most recently
+// completed Scan or ScanFull for a project (zero value if none has run
+// yet), for CLI/API visibility into how much of a scan was actually
+// incremental.
+func (s *Service) ScanMetrics(projectID string) (ScanMetrics, error) {
 	root, err := s.root(projectID)
 	if err != nil {
-		return nil, err
+		return ScanMetrics{}, err
+	}
+	state, err := loadScanState(root)
+	if err != nil {
+		return ScanMetrics{}, err
+	}
+	return state.LastMetrics, nil
+}
+
+func (s *Service) scanInternal(projectID string, full bool) ([]Entry, ScanMetrics, error) {
+	root, err := s.root(projectID)
+	if err != nil {
+		return nil, ScanMetrics{}, err
 	}
 	lock := s.lockFor(projectID)
 	lock.Lock()
@@ -355,28 +388,32 @@ func (s *Service) Scan(projectID string) ([]Entry, error) {
 
 	cfg, err := loadConfig(root)
 	if err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
 	if _, statErr := os.Stat(configPath(root)); os.IsNotExist(statErr) {
 		if err := atomicfile.WriteJSON(configPath(root), cfg); err != nil {
-			return nil, err
+			return nil, ScanMetrics{}, err
 		}
 	}
 	if err := ensureRegistryGitignore(root); err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
 	taxonomy, err := LoadTaxonomy(root)
 	if err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
+	}
+	scanState, err := loadScanState(root)
+	if err != nil {
+		return nil, ScanMetrics{}, err
 	}
 
-	result, err := scan(root, cfg)
+	result, err := scan(root, cfg, scanState.Fingerprints, full)
 	if err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
 	existing, err := loadAllEntries(root)
 	if err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
 
 	byPath := map[string]int{}   // path -> index in existing
@@ -455,16 +492,27 @@ func (s *Service) Scan(projectID string) ([]Entry, error) {
 	}
 
 	if err := saveAllEntries(root, merged); err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
 	if err := savePending(root, result.Pending); err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
 	if err := s.syncIndex(root, changed); err != nil {
-		return nil, err
+		return nil, ScanMetrics{}, err
 	}
+
+	scanState.Fingerprints = result.Fingerprints
+	scanState.LastScanAt = now
+	scanState.LastMetrics = result.Metrics
+	if full {
+		scanState.LastFullScanAt = now
+	}
+	if err := saveScanState(root, scanState); err != nil {
+		return nil, ScanMetrics{}, err
+	}
+
 	s.publish(projectID, events.KindRegistryScan, map[string]int{"entries": len(merged), "changed": len(changed)})
-	return merged, nil
+	return merged, result.Metrics, nil
 }
 
 func indexOfDiscovered(found []discovered, path string) (int, bool) {
@@ -487,9 +535,14 @@ func indexOfDiscovered(found []discovered, path string) (int, bool) {
 // is force-set to NeedsReview, unconditionally, regardless of what it was
 // before. This is the fix for the bug where an approved/reviewed file could
 // be edited and silently remain "reviewed" forever.
-func applyDiscovery(existing Entry, d discovered, now time.Time, taxonomy Taxonomy) (Entry, bool) {
-	hashChanged := existing.Hash != d.Hash
-	structuralChanged := hashChanged ||
+// discoveryDiffersFromEntry reports whether a fresh discovery of a file's
+// declarative/structural facts (hash, size, category, symbols, dependencies,
+// ...) no longer matches what an existing stored entry says — i.e. whether
+// Scan() would change this entry if run right now. Health() reuses this
+// exact comparison (never trusting that a scan has already happened) so
+// "healthy" can never mean "nobody has rescanned yet."
+func discoveryDiffersFromEntry(existing Entry, d discovered) bool {
+	return existing.Hash != d.Hash ||
 		existing.Path != d.RelPath || existing.Category != d.Category || existing.Kind != d.Kind ||
 		existing.Module != d.Module || existing.Language != d.Language ||
 		!equalSymbols(existing.Symbols, d.Symbols) ||
@@ -497,8 +550,12 @@ func applyDiscovery(existing Entry, d discovered, now time.Time, taxonomy Taxono
 		!equalStringSlices(existing.Imports, d.Imports) ||
 		!equalStringSlices(existing.Exports, d.Exports) ||
 		!equalStringSlices(existing.Dependencies, d.Dependencies) ||
-		existing.LineCount != d.LineCount || existing.SizeBytes != d.SizeBytes ||
-		existing.Status != StatusActive
+		existing.LineCount != d.LineCount || existing.SizeBytes != d.SizeBytes
+}
+
+func applyDiscovery(existing Entry, d discovered, now time.Time, taxonomy Taxonomy) (Entry, bool) {
+	hashChanged := existing.Hash != d.Hash
+	structuralChanged := discoveryDiffersFromEntry(existing, d) || existing.Status != StatusActive
 
 	existing.Path = d.RelPath
 	existing.Filename = d.Filename
