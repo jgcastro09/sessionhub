@@ -258,6 +258,8 @@ func runRegistryCLI(svc *registry.Service, projectID string, args []string) erro
 		return registryScan(svc, projectID, args[1:])
 	case "health", "validate":
 		return registryHealth(svc, projectID, args[1:])
+	case "ensure-fresh":
+		return registryEnsureFresh(svc, projectID, args[1:])
 	case "search":
 		return registrySearch(svc, projectID, args[1:])
 	case "graph":
@@ -341,9 +343,16 @@ func registryScan(svc *registry.Service, projectID string, args []string) error 
 	return nil
 }
 
+// registryHealth is informational by default — it never fails the process,
+// so a script or CI step that runs it incidentally is never silently
+// gated by an unrelated project's pending reviews or classifications. Only
+// --strict opts a caller (Audit Contract, a hook, CI) into treating an
+// unhealthy report as a failure, per Fase 1.5's "gate estrito somente por
+// opt-in."
 func registryHealth(svc *registry.Service, projectID string, args []string) error {
 	fs := flag.NewFlagSet("registry health", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "print JSON")
+	strict := fs.Bool("strict", false, "exit non-zero when the report is unhealthy")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -352,7 +361,13 @@ func registryHealth(svc *registry.Service, projectID string, args []string) erro
 		return err
 	}
 	if *jsonOut {
-		return printJSON(report)
+		if printErr := printJSON(report); printErr != nil {
+			return printErr
+		}
+		if *strict && !report.Healthy {
+			return fmt.Errorf("registry not healthy (--strict)")
+		}
+		return nil
 	}
 	if report.Healthy {
 		fmt.Println("registry healthy")
@@ -360,6 +375,9 @@ func registryHealth(svc *registry.Service, projectID string, args []string) erro
 	}
 	for _, p := range report.MissingPaths {
 		fmt.Printf("missing entry: %s\n", p)
+	}
+	for _, p := range report.PendingRescan {
+		fmt.Printf("pending rescan (drifted from disk): %s\n", p)
 	}
 	for _, id := range report.StaleReviews {
 		fmt.Printf("stale (needs review): %s\n", id)
@@ -376,9 +394,41 @@ func registryHealth(svc *registry.Service, projectID string, args []string) erro
 	if report.PendingClassificationCount > 0 {
 		fmt.Printf("pending classification: %d files\n", report.PendingClassificationCount)
 	}
-	return fmt.Errorf("registry not healthy: %d missing, %d stale, %d unclassified, %d dangling, %d dependency issues, %d pending",
-		len(report.MissingPaths), len(report.StaleReviews), len(report.ClassificationIssues),
+	summary := fmt.Sprintf("registry not healthy: %d missing, %d pending rescan, %d stale, %d unclassified, %d dangling, %d dependency issues, %d pending classification",
+		len(report.MissingPaths), len(report.PendingRescan), len(report.StaleReviews), len(report.ClassificationIssues),
 		len(report.DanglingRelationships), len(report.DependencyIssues), report.PendingClassificationCount)
+	if !*strict {
+		fmt.Println(summary)
+		return nil
+	}
+	return fmt.Errorf("%s (--strict)", summary)
+}
+
+func registryEnsureFresh(svc *registry.Service, projectID string, args []string) error {
+	fs := flag.NewFlagSet("registry ensure-fresh", flag.ContinueOnError)
+	jsonOut := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	result, err := svc.EnsureFresh(projectID)
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSON(result)
+	}
+	if result.Reconciled {
+		fmt.Println("reconciled pending changes")
+	} else {
+		fmt.Println("already fresh")
+	}
+	fmt.Printf("freshness: %s\n", result.Freshness.Status)
+	if !result.Health.Healthy {
+		fmt.Printf("health: unhealthy (%d issue reason(s))\n", len(result.Health.StalenessReasons))
+	} else {
+		fmt.Println("health: healthy")
+	}
+	return nil
 }
 
 func registrySearch(svc *registry.Service, projectID string, args []string) error {

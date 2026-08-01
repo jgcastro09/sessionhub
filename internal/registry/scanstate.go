@@ -58,6 +58,31 @@ type ScanState struct {
 	LastFullScanAt time.Time                  `json:"last_full_scan_at"`
 	LastMetrics    ScanMetrics                `json:"last_metrics"`
 	Fingerprints   map[string]FileFingerprint `json:"fingerprints"`
+	Freshness      Freshness                  `json:"freshness"`
+}
+
+// FreshnessStatus is the Fase 1.5 continuous-freshness state: whether the
+// registry's stored records are currently known to match disk (fresh),
+// being reconciled (updating), known to have drifted (stale), or the last
+// reconciliation attempt errored (failed). Unlike Health (always a live,
+// re-derived comparison), Freshness is a persisted status flag meant for a
+// background watcher or EnsureFresh caller to report progress/outcome
+// without every caller re-running a full Health() comparison.
+type FreshnessStatus string
+
+const (
+	FreshnessFresh    FreshnessStatus = "fresh"
+	FreshnessUpdating FreshnessStatus = "updating"
+	FreshnessStale    FreshnessStatus = "stale"
+	FreshnessFailed   FreshnessStatus = "failed"
+)
+
+// Freshness is the current freshness flag plus why it's set — e.g. "3
+// file(s) changed since last scan" or a Scan() error message.
+type Freshness struct {
+	Status    FreshnessStatus `json:"status"`
+	Reason    string          `json:"reason,omitempty"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 func loadScanState(root string) (ScanState, error) {

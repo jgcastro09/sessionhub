@@ -377,6 +377,85 @@ func (s *Service) ScanMetrics(projectID string) (ScanMetrics, error) {
 	return state.LastMetrics, nil
 }
 
+// GetFreshness returns the persisted freshness flag for a project (the zero
+// value — Status "" — if EnsureFresh has never run), without triggering any
+// reconciliation itself. Use EnsureFresh to both check and reconcile.
+func (s *Service) GetFreshness(projectID string) (Freshness, error) {
+	root, err := s.root(projectID)
+	if err != nil {
+		return Freshness{}, err
+	}
+	state, err := loadScanState(root)
+	if err != nil {
+		return Freshness{}, err
+	}
+	return state.Freshness, nil
+}
+
+// EnsureFreshResult reports what EnsureFresh found and did.
+type EnsureFreshResult struct {
+	Health     HealthReport `json:"health"`
+	Freshness  Freshness    `json:"freshness"`
+	Reconciled bool         `json:"reconciled"` // a Scan() actually ran to catch up
+}
+
+// EnsureFresh is the Fase 1.5 entry point every context-delivering read
+// (search, impact analysis, the Reader, MCP tools) should call before
+// answering: it re-derives Health() (already independent of any prior
+// scan — see Fase 0) and, only if that comparison finds real drift
+// (PendingRescan, MissingPaths, or new pending-classification files),
+// reconciles it with a Scan() before returning. A project with no drift
+// costs one read-only Health() call and no write. The Freshness flag this
+// persists is for a watcher or UI to report state without recomputing
+// Health() themselves; EnsureFresh's own correctness never depends on it.
+func (s *Service) EnsureFresh(projectID string) (EnsureFreshResult, error) {
+	report, err := s.Health(projectID)
+	if err != nil {
+		return EnsureFreshResult{}, err
+	}
+	needsReconcile := len(report.PendingRescan) > 0 || len(report.MissingPaths) > 0 || report.PendingClassificationCount > 0
+	if !needsReconcile {
+		fresh := s.setFreshness(projectID, FreshnessFresh, "")
+		return EnsureFreshResult{Health: report, Freshness: fresh}, nil
+	}
+
+	s.setFreshness(projectID, FreshnessUpdating, strings.Join(report.StalenessReasons, "; "))
+	if _, err := s.Scan(projectID); err != nil {
+		failed := s.setFreshness(projectID, FreshnessFailed, err.Error())
+		return EnsureFreshResult{Freshness: failed}, err
+	}
+	report, err = s.Health(projectID)
+	if err != nil {
+		failed := s.setFreshness(projectID, FreshnessFailed, err.Error())
+		return EnsureFreshResult{Freshness: failed}, err
+	}
+	fresh := s.setFreshness(projectID, FreshnessFresh, "")
+	return EnsureFreshResult{Health: report, Freshness: fresh, Reconciled: true}, nil
+}
+
+// setFreshness persists the freshness flag under the project's scan lock —
+// brief critical sections only, never held across a Scan() call (which
+// takes the same lock internally, keyed by the same projectID). Errors are
+// swallowed: Freshness is a reporting cache, never load-bearing for
+// correctness.
+func (s *Service) setFreshness(projectID string, status FreshnessStatus, reason string) Freshness {
+	f := Freshness{Status: status, Reason: reason, UpdatedAt: time.Now().UTC()}
+	root, err := s.root(projectID)
+	if err != nil {
+		return f
+	}
+	lock := s.lockFor(projectID)
+	lock.Lock()
+	defer lock.Unlock()
+	state, err := loadScanState(root)
+	if err != nil {
+		return f
+	}
+	state.Freshness = f
+	_ = saveScanState(root, state)
+	return f
+}
+
 func (s *Service) scanInternal(projectID string, full bool) ([]Entry, ScanMetrics, error) {
 	root, err := s.root(projectID)
 	if err != nil {

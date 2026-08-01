@@ -43,6 +43,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/taxonomy", s.handleRegistryTaxonomyGet)
 	api.HandleFunc("PUT /api/v2/projects/{projectID}/registry/taxonomy", s.handleRegistryTaxonomyPut)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/health", s.handleRegistryHealth)
+	api.HandleFunc("POST /api/v2/projects/{projectID}/registry/ensure-fresh", s.handleRegistryEnsureFresh)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/stats", s.handleRegistryStats)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/pending", s.handleRegistryPending)
 	api.HandleFunc("GET /api/v2/projects/{projectID}/registry/review-queue", s.handleRegistryReviewQueue)

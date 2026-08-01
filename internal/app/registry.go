@@ -34,7 +34,12 @@ func (a *App) WebRegistryGet(ctx context.Context, projectID, entryID string) (re
 	return a.Registry.Get(projectID, entryID)
 }
 
+// WebRegistrySearch ensures freshness (Fase 1.5) before searching:
+// best-effort, since a transient reconciliation failure should never turn a
+// working search into a hard failure — the search still runs against
+// whatever is currently on disk either way.
 func (a *App) WebRegistrySearch(ctx context.Context, projectID string, q registry.SearchQuery) ([]registry.SearchResult, int, error) {
+	_, _ = a.Registry.EnsureFresh(projectID)
 	return a.Registry.Search(projectID, q)
 }
 
@@ -64,7 +69,12 @@ func (a *App) WebRegistryReview(ctx context.Context, projectID, entryID string, 
 }
 
 func (a *App) WebRegistrySource(ctx context.Context, projectID, entryID string) (string, error) {
+	_, _ = a.Registry.EnsureFresh(projectID)
 	return a.Registry.ReadSource(projectID, entryID)
+}
+
+func (a *App) WebRegistryEnsureFresh(ctx context.Context, projectID string) (registry.EnsureFreshResult, error) {
+	return a.Registry.EnsureFresh(projectID)
 }
 
 func (a *App) WebRegistrySourceHistory(ctx context.Context, projectID, entryID string, limit int) ([]gitstate.FileRevision, error) {
@@ -80,10 +90,12 @@ func (a *App) WebRegistryGitStatus(ctx context.Context, projectID string) (regis
 }
 
 func (a *App) WebRegistryGraph(ctx context.Context, projectID string) (registry.Graph, []registry.DependencyIssue, error) {
+	_, _ = a.Registry.EnsureFresh(projectID)
 	return a.Registry.Graph(projectID)
 }
 
 func (a *App) WebRegistryEntryGraph(ctx context.Context, projectID, entryID string, depth, limit int) (registry.Graph, error) {
+	_, _ = a.Registry.EnsureFresh(projectID)
 	return a.Registry.EntryGraph(projectID, entryID, depth, limit)
 }
 

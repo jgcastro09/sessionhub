@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { api } from '../../api'
 import { usePoll } from '../../hooks/usePoll'
 
@@ -35,19 +36,46 @@ export function RegistryOverviewView({
   onScan: () => void
   scanning: boolean
 }) {
-  const { data: health, error: healthError } = usePoll(() => api.registryHealth(projectId), 15000, onUnauthorized, [projectId, tick])
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data: health, error: healthError } = usePoll(
+    () => api.registryHealth(projectId),
+    15000,
+    onUnauthorized,
+    [projectId, tick, refreshKey],
+  )
   const { data: stats, error: statsError } = usePoll(() => api.registryStats(projectId), 15000, onUnauthorized, [projectId, tick])
+  const [ensuring, setEnsuring] = useState(false)
+  const [ensureError, setEnsureError] = useState<string>()
+
+  async function ensureFresh() {
+    setEnsuring(true)
+    setEnsureError(undefined)
+    try {
+      await api.registryEnsureFresh(projectId)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      setEnsureError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnsuring(false)
+    }
+  }
 
   return (
     <>
       <div className="view-title-row">
         <div className="view-title">Visão geral</div>
-        <button type="button" className="btn-primary" onClick={onScan} disabled={scanning}>
-          {scanning ? 'escaneando…' : 'escanear'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button type="button" className="btn-link" onClick={ensureFresh} disabled={ensuring}>
+            {ensuring ? 'garantindo frescor…' : 'garantir frescor'}
+          </button>
+          <button type="button" className="btn-primary" onClick={onScan} disabled={scanning}>
+            {scanning ? 'escaneando…' : 'escanear'}
+          </button>
+        </div>
       </div>
       {healthError && <div className="error-banner">{healthError}</div>}
       {statsError && <div className="error-banner">{statsError}</div>}
+      {ensureError && <div className="error-banner">{ensureError}</div>}
 
       {health && (
         <div className={`registry-health-banner ${health.healthy ? 'healthy' : 'unhealthy'}`}>

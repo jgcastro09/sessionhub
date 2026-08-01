@@ -56,6 +56,7 @@ type Backend interface {
 	WebRegistrySemanticSearch(ctx context.Context, projectID, query string, limit int) ([]registry.SearchResult, error)
 	WebRegistryScan(ctx context.Context, projectID string) ([]registry.Entry, error)
 	WebRegistryHealth(ctx context.Context, projectID string) (registry.HealthReport, error)
+	WebRegistryEnsureFresh(ctx context.Context, projectID string) (registry.EnsureFreshResult, error)
 	WebRegistryReview(ctx context.Context, projectID, entryID string, input registry.ReviewInput) (registry.Entry, error)
 	WebRegistrySource(ctx context.Context, projectID, entryID string) (string, error)
 	WebRegistrySourceHistory(ctx context.Context, projectID, entryID string, limit int) ([]gitstate.FileRevision, error)

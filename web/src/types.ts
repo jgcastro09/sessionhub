@@ -236,6 +236,18 @@ export interface RegistryHealthReport {
   healthy: boolean
 }
 
+export interface RegistryFreshness {
+  status: 'fresh' | 'updating' | 'stale' | 'failed' | ''
+  reason?: string
+  updated_at: string
+}
+
+export interface RegistryEnsureFreshResult {
+  health: RegistryHealthReport
+  freshness: RegistryFreshness
+  reconciled: boolean
+}
+
 export interface RegistryStats {
   total_files: number
   total_lines: number

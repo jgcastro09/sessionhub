@@ -15,6 +15,7 @@ import type {
   RegistrySearchQuery,
   RegistrySearchResult,
   RegistryHealthReport,
+  RegistryEnsureFreshResult,
   RegistryStats,
   RegistryPendingFile,
   RegistryConfig,
@@ -148,6 +149,8 @@ export const api = {
 		get<RegistryPendingFile[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/pending`),
 	registryScan: (projectId: string) =>
 		send<RegistryEntry[]>('POST', `/api/v2/projects/${encodeURIComponent(projectId)}/registry/scan`),
+	registryEnsureFresh: (projectId: string) =>
+		send<RegistryEnsureFreshResult>('POST', `/api/v2/projects/${encodeURIComponent(projectId)}/registry/ensure-fresh`),
 	registryGitStatus: (projectId: string) =>
 		get<RegistryGitCorrelation>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/git`),
 	registryGraph: (projectId: string) =>

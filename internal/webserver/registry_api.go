@@ -71,6 +71,11 @@ func (s *Server) handleRegistryHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, report, err)
 }
 
+func (s *Server) handleRegistryEnsureFresh(w http.ResponseWriter, r *http.Request) {
+	result, err := s.backend.WebRegistryEnsureFresh(r.Context(), r.PathValue("projectID"))
+	writeJSON(w, result, err)
+}
+
 func (s *Server) handleRegistryStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := s.backend.WebRegistryStats(r.Context(), r.PathValue("projectID"))
 	writeJSON(w, stats, err)

@@ -6,6 +6,15 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-01 00:44:45 -03:00
+
+### Added
+
+- Code Registry Fase 1.5 (part 1 — continuous freshness): `Service.EnsureFresh` re-derives Health() and, only if it finds real drift (an unscanned edit, a new file, a new pending-classification file), reconciles it with a Scan() before returning — the entry point context-delivering reads should call before answering. Wired best-effort into the Web Panel's search, graph/impact, and Reader (source) bridges, plus a new `POST .../registry/ensure-fresh` API route, `sessionhub registry ensure-fresh` CLI command, and a "garantir frescor" button on the Registry Overview. A persisted `Freshness` flag (`fresh`/`updating`/`stale`/`failed` + reason) survives across calls in `scanstate.json`.
+- `sessionhub registry health --strict`: health reporting is informational by default (never fails the process) — only `--strict` opts a caller (Audit Contract, a hook, CI) into a non-zero exit on an unhealthy report, per Fase 1.5's "gate estrito somente por opt-in." Previously every `registry health` call failed the process on any issue, with no way to opt out.
+
+Bumps version to 0.6.2.
+
 ## [0.6.1] - 2026-08-01 00:16:02 -03:00
 
 ### Fixed
