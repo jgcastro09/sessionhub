@@ -6,6 +6,14 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-01 00:52:12 -03:00
+
+### Added
+
+- Code Registry Fase 1.5 (part 2 — watcher): an opt-in, per-project filesystem watcher (`internal/registry/watcher.go`, backed by `fsnotify`) that debounces create/write/rename/remove bursts into a single incremental `Scan()` once the filesystem goes quiet — disabled by default via a new `Config.Watch` policy (`{enabled, debounce_ms}`), never AI proposals, never a network call. `App` starts a watcher for every attached project at launch and after any registry config save, both true no-ops unless that project's own policy opts in; excluded directories (`node_modules`, `vendor`, `.git`, ...) are never registered with the OS watch, matching the scanner's own pruning.
+
+Bumps version to 0.6.3.
+
 ## [0.6.2] - 2026-08-01 00:44:45 -03:00
 
 ### Added

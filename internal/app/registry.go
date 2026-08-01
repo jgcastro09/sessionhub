@@ -10,12 +10,59 @@ import (
 // These bridge internal/registry.Service the same way tasks.go bridges
 // internal/tasks.Service — see the note there about ctx.
 
+// EnsureRegistryWatcher (idempotent) reconciles the running Fase 1.5
+// filesystem watcher for projectID against its current Config.Watch policy:
+// starts one if the policy is now enabled and none is running, stops one if
+// the policy is now disabled and one is running. Call this after attaching
+// a new project or saving registry config so a person never has to restart
+// the app for a watch-policy change to take effect; App.New already calls
+// it for every already-attached project at startup.
+func (a *App) EnsureRegistryWatcher(projectID string) {
+	a.registryWatchersMu.Lock()
+	defer a.registryWatchersMu.Unlock()
+	existing, running := a.registryWatchers[projectID]
+
+	cfg, err := a.Registry.LoadConfig(projectID)
+	if err != nil {
+		return
+	}
+	if !cfg.Watch.Enabled {
+		if running {
+			_ = existing.Close()
+			delete(a.registryWatchers, projectID)
+		}
+		return
+	}
+	if running {
+		return
+	}
+	w, err := a.Registry.StartWatcher(projectID)
+	if err != nil || w == nil {
+		return // a transient error never blocks the app
+	}
+	a.registryWatchers[projectID] = w
+}
+
+func (a *App) stopRegistryWatchers() {
+	a.registryWatchersMu.Lock()
+	watchers := a.registryWatchers
+	a.registryWatchers = nil
+	a.registryWatchersMu.Unlock()
+	for _, w := range watchers {
+		_ = w.Close()
+	}
+}
+
 func (a *App) WebRegistryConfigGet(ctx context.Context, projectID string) (registry.Config, error) {
 	return a.Registry.LoadConfig(projectID)
 }
 
 func (a *App) WebRegistryConfigPut(ctx context.Context, projectID string, cfg registry.Config) error {
-	return a.Registry.SaveConfig(projectID, cfg)
+	if err := a.Registry.SaveConfig(projectID, cfg); err != nil {
+		return err
+	}
+	a.EnsureRegistryWatcher(projectID)
+	return nil
 }
 
 func (a *App) WebRegistryTaxonomyGet(ctx context.Context, projectID string) (registry.Taxonomy, error) {

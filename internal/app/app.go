@@ -46,6 +46,8 @@ type App struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	closeOnce           sync.Once
+	registryWatchersMu  sync.Mutex
+	registryWatchers    map[string]*registry.Watcher
 	remoteMu            sync.Mutex
 	remoteHost          *remote.Host
 	remoteDiscovery     *remote.Discovery
@@ -113,14 +115,24 @@ func New(parent context.Context, paths config.Paths, version string) (*App, erro
 		Terminals: terminals, Executors: executors,
 		Context: contexthub.New(repository), Metrics: metrics.NewCalculator(),
 		Automation: automationEngine, AutomationScheduler: automationScheduler,
-		Voice:           voice.NewManager(paths.Tools),
-		Events:          eventBus,
-		Tasks:           tasksService,
-		Registry:        registryService,
-		Embedding:       embeddingManager,
-		networkSettings: networkSettings,
-		webSettings:     webSettings,
-		ctx:             ctx, cancel: cancel, recovered: recovered,
+		Voice:            voice.NewManager(paths.Tools),
+		Events:           eventBus,
+		Tasks:            tasksService,
+		Registry:         registryService,
+		Embedding:        embeddingManager,
+		networkSettings:  networkSettings,
+		webSettings:      webSettings,
+		registryWatchers: map[string]*registry.Watcher{},
+		ctx:              ctx, cancel: cancel, recovered: recovered,
+	}
+	// Starting a watcher is a deliberate no-op for any project whose
+	// Config.Watch.Enabled is false (the default) — see
+	// Service.StartWatcher. A watcher that fails to start (a bad root, a
+	// filesystem-watch limit) never prevents the app itself from starting.
+	if attached, err := projects.List(); err == nil {
+		for _, p := range attached {
+			a.EnsureRegistryWatcher(p.ID)
+		}
 	}
 	// Remote Mode is a peer feature: every open SessionHub hosts its own
 	// terminal endpoint and advertises it only on the local LAN/tailnet.
@@ -167,6 +179,7 @@ func (a *App) Close() error {
 		a.AutomationScheduler.Close()
 		a.cancel()
 		a.Automation.Wait()
+		a.stopRegistryWatchers()
 		result = errors.Join(a.StopRemoteHost(), a.StopWebPanel(), a.Terminals.Close(), a.Voice.Close(), a.Embedding.Close(), a.Store.Close())
 	})
 	return result

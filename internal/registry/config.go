@@ -25,6 +25,19 @@ type Config struct {
 	// SearchAliases expands a query term into a set of related terms before
 	// full-text matching (Phase 7), e.g. "db": ["database","sqlite","storage"].
 	SearchAliases map[string][]string `json:"search_aliases,omitempty"`
+
+	// Watch is the Fase 1.5 continuous-freshness policy: opt-in (disabled by
+	// default) and per-project, never assumed.
+	Watch WatchPolicy `json:"watch,omitempty"`
+}
+
+// WatchPolicy controls the optional filesystem watcher (watcher.go). It is
+// never enabled implicitly — a person or Setup step must turn it on.
+type WatchPolicy struct {
+	Enabled bool `json:"enabled"`
+	// DebounceMS is how long the watcher waits for the filesystem to go
+	// quiet before scanning; 0 uses defaultWatchDebounce (1500ms).
+	DebounceMS int `json:"debounce_ms,omitempty"`
 }
 
 const defaultMaxFileBytes = 2 << 20
