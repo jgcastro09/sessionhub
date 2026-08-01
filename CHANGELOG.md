@@ -6,6 +6,44 @@ All notable changes to Session Hub are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-01 00:02:25 -03:00
+
+### Added
+
+- Code Registry: implemented Fases 0, 1, 2, 4, and 5 of the global context-service plan (`plans/global-code-registry-context-service.md`).
+  - **Fase 0 (base de verdade)**: `Health()` now diffs the current filesystem against stored entries (hash, size, category, symbols, dependencies), derives `PendingClassificationCount` from the in-memory scan instead of only `pending.json`, validates `Config.Roots` (relative, no `..`, inside the resolved project root, no unexpected overlap), and reports dangling relationships, dependency issues, and stale reviews.
+  - **Fase 1 (scanner incremental)**: fingerprint-based reuse so an unchanged rescan skips re-reading and re-analyzing files; a diff between the previous inventory and the current walk drives `missing`/rename-by-hash detection.
+  - **Fase 2 (analisadores)**: a shared symbol/import/export extraction layer (`languages.go`, `imports.go`, `symbols.go`) covering common language families, with a portable regex fallback so an unsupported language never blocks a scan.
+  - **Fase 4 (busca)**: FTS5-backed lexical search (`search.go`) fused via reciprocal rank fusion with optional semantic ranking from `internal/embedding`, filterable by review status, criticality, kind, module, and area, with pagination and a deterministic naive fallback when the index is unavailable.
+  - **Fase 5 (arquitetura/relações/impacto)**: a configurable `Taxonomy` (`taxonomy.go`) for module/area/role classification, a dependency graph (`graph.go`) with `DependencyIssue` diagnostics for unresolved/ambiguous imports, and depth/limit-bound reverse `ImpactAnalysis` ranked by criticality and graph reach.
+- Web Panel: replaced the single-page Registry view with a sub-tabbed `RegistryLayout` (Overview, All Files, Architecture, Areas, Relationships, Reader, Global Search, Git Audit, Review Queue, Pending, Config) sharing one Inspector panel across sections.
+
+Bumps version to 0.6.0.
+
+## [0.5.4] - 2026-07-31 23:31:34 -03:00
+
+### Changed
+
+- Extended the global Code Registry plan with continuous freshness, a project-safe agent contract, unified MCP freshness tools, and optional strict gates. The Registry can update through an opt-in local watcher or `ensure-fresh`; existing project instructions are detected but never changed without an explicit preview and confirmation.
+
+Bumps version to 0.5.4.
+
+## [0.5.3] - 2026-07-31 23:22:50 -03:00
+
+### Changed
+
+- Refined the global Code Registry context-service plan for an AI-first, human-controlled workflow: AI produces evidence-backed, confidence-scored file-context proposals; users can confirm, edit, reject, or author every description and classification manually; deterministic automation remains available even without a configured AI provider.
+
+Bumps version to 0.5.3.
+
+## [0.5.2] - 2026-07-31 23:10:32 -03:00
+
+### Added
+
+- Added the Code Registry global-context-service evolution plan. It defines a language- and domain-agnostic path to reliable health checks, real incremental scans, pluggable analyzers, evidence-backed human-readable file context, content-aware lexical and semantic search, configurable architecture graphs, local history, and unified CLI/TUI/Web/API/MCP access.
+
+Bumps version to 0.5.2.
+
 ## [0.5.1] - 2026-07-31 18:37:28 -03:00
 
 ### Fixed

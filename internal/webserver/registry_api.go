@@ -4,27 +4,66 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/jgcastro09/sessionhub/internal/gitstate"
 	"github.com/jgcastro09/sessionhub/internal/registry"
 )
 
+func (s *Server) handleRegistryConfigGet(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.backend.WebRegistryConfigGet(r.Context(), r.PathValue("projectID"))
+	writeJSON(w, cfg, err)
+}
+
+func (s *Server) handleRegistryConfigPut(w http.ResponseWriter, r *http.Request) {
+	var cfg registry.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.backend.WebRegistryConfigPut(r.Context(), r.PathValue("projectID"), cfg); err != nil {
+		if err := cfg.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSONError(w, err)
+		return
+	}
+	writeJSON(w, cfg, nil)
+}
+
+func (s *Server) handleRegistryTaxonomyGet(w http.ResponseWriter, r *http.Request) {
+	tax, err := s.backend.WebRegistryTaxonomyGet(r.Context(), r.PathValue("projectID"))
+	writeJSON(w, tax, err)
+}
+
+func (s *Server) handleRegistryTaxonomyPut(w http.ResponseWriter, r *http.Request) {
+	var tax registry.Taxonomy
+	if err := json.NewDecoder(r.Body).Decode(&tax); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.backend.WebRegistryTaxonomyPut(r.Context(), r.PathValue("projectID"), tax); err != nil {
+		writeJSONError(w, err)
+		return
+	}
+	writeJSON(w, tax, nil)
+}
+
 func (s *Server) handleRegistryList(w http.ResponseWriter, r *http.Request) {
-	items, err := s.backend.WebRegistryList(r.Context(), r.PathValue("projectID"))
-	writeJSON(w, registry.RedactedEntries(items), err)
+	q := parseSearchQuery(r)
+	results, total, err := s.backend.WebRegistrySearch(r.Context(), r.PathValue("projectID"), q)
+	writeJSON(w, searchPage{Results: results, Total: total}, err)
 }
 
 func (s *Server) handleRegistryGet(w http.ResponseWriter, r *http.Request) {
 	entry, err := s.backend.WebRegistryGet(r.Context(), r.PathValue("projectID"), r.PathValue("entryID"))
-	if err != nil {
-		writeJSONError(w, err)
-		return
-	}
-	writeJSON(w, entry.Redacted(), nil)
+	writeJSONOrError(w, entry, err)
 }
 
 func (s *Server) handleRegistryScan(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.backend.WebRegistryScan(r.Context(), r.PathValue("projectID"))
-	writeJSON(w, registry.RedactedEntries(entries), err)
+	writeJSON(w, entries, err)
 }
 
 func (s *Server) handleRegistryHealth(w http.ResponseWriter, r *http.Request) {
@@ -32,66 +71,160 @@ func (s *Server) handleRegistryHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, report, err)
 }
 
+func (s *Server) handleRegistryStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.backend.WebRegistryStats(r.Context(), r.PathValue("projectID"))
+	writeJSON(w, stats, err)
+}
+
+func (s *Server) handleRegistryPending(w http.ResponseWriter, r *http.Request) {
+	pending, err := s.backend.WebRegistryPending(r.Context(), r.PathValue("projectID"))
+	if pending == nil && err == nil {
+		pending = []registry.PendingFile{}
+	}
+	writeJSON(w, pending, err)
+}
+
+func (s *Server) handleRegistryReviewQueue(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r, 50)
+	entries, total, err := s.backend.WebRegistryReviewQueue(r.Context(), r.PathValue("projectID"), limit, offset)
+	writeJSON(w, searchPage{Results: entriesToResults(entries), Total: total}, err)
+}
+
+type searchPage struct {
+	Results []registry.SearchResult `json:"results"`
+	Total   int                     `json:"total"`
+}
+
+func entriesToResults(entries []registry.Entry) []registry.SearchResult {
+	out := make([]registry.SearchResult, len(entries))
+	for i, e := range entries {
+		out[i] = registry.SearchResult{Entry: e}
+	}
+	return out
+}
+
 func (s *Server) handleRegistrySearch(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("query")
-	limit := 20
+	q := parseSearchQuery(r)
+	results, total, err := s.backend.WebRegistrySearch(r.Context(), r.PathValue("projectID"), q)
+	writeJSON(w, searchPage{Results: results, Total: total}, err)
+}
+
+func parseSearchQuery(r *http.Request) registry.SearchQuery {
+	values := r.URL.Query()
+	limit, offset := parsePagination(r, 100)
+	q := registry.SearchQuery{
+		Text:       values.Get("query"),
+		Categories: splitQueryList(values.Get("category")),
+		Modules:    splitQueryList(values.Get("module")),
+		Areas:      splitQueryList(values.Get("area")),
+		Languages:  splitQueryList(values.Get("language")),
+		Roles:      splitQueryList(values.Get("role")),
+		Hash:       values.Get("hash"),
+		Semantic:   values.Get("semantic") == "true",
+		Limit:      limit,
+		Offset:     offset,
+	}
+	for _, v := range splitQueryList(values.Get("review_status")) {
+		q.ReviewStatus = append(q.ReviewStatus, registry.ReviewStatus(v))
+	}
+	for _, v := range splitQueryList(values.Get("criticality")) {
+		q.Criticality = append(q.Criticality, registry.Criticality(v))
+	}
+	for _, v := range splitQueryList(values.Get("kind")) {
+		q.Kind = append(q.Kind, registry.Kind(v))
+	}
+	return q
+}
+
+func splitQueryList(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func parsePagination(r *http.Request, defaultLimit int) (limit, offset int) {
+	limit = defaultLimit
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			limit = parsed
 		}
 	}
-	var results []registry.SearchResult
-	var err error
-	if r.URL.Query().Get("semantic") == "true" {
-		results, err = s.backend.WebRegistrySemanticSearch(r.Context(), r.PathValue("projectID"), query, limit)
-	} else {
-		results, err = s.backend.WebRegistrySearch(r.Context(), r.PathValue("projectID"), query, limit)
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
+			offset = parsed
+		}
 	}
-	writeJSON(w, redactResults(results), err)
+	return limit, offset
 }
 
-func redactResults(results []registry.SearchResult) []registry.SearchResult {
-	out := make([]registry.SearchResult, len(results))
-	for i, r := range results {
-		out[i] = registry.SearchResult{Entry: r.Entry.Redacted(), Score: r.Score}
-	}
-	return out
+func (s *Server) handleRegistrySemanticSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	limit, _ := parsePagination(r, 20)
+	results, err := s.backend.WebRegistrySemanticSearch(r.Context(), r.PathValue("projectID"), query, limit)
+	writeJSON(w, results, err)
 }
 
-func (s *Server) handleRegistryContext(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectID")
-	entryID := r.URL.Query().Get("entry_id")
-	if entryID == "" {
-		http.Error(w, "entry_id query parameter is required", http.StatusBadRequest)
-		return
-	}
-	entry, err := s.backend.WebRegistryGet(r.Context(), projectID, entryID)
-	if err != nil {
-		writeJSONError(w, err)
-		return
-	}
-	related, err := s.backend.WebRegistrySearch(r.Context(), projectID, entry.Module+" "+joinSymbols(entry), 10)
-	if err != nil {
-		writeJSONError(w, err)
-		return
-	}
-	pack := registry.ContextPack{
-		Entry:   entry.Redacted(),
-		Related: redactResults(registry.SearchResults(related).Filter(entry.EntryID)),
-	}
-	writeJSON(w, pack, nil)
+func (s *Server) handleRegistryGraph(w http.ResponseWriter, r *http.Request) {
+	graph, issues, err := s.backend.WebRegistryGraph(r.Context(), r.PathValue("projectID"))
+	writeJSON(w, graphWithIssues{Graph: graph, DependencyIssues: issues}, err)
 }
 
-func joinSymbols(e registry.Entry) string {
-	out := ""
-	for _, s := range e.Symbols {
-		out += s + " "
+type graphWithIssues struct {
+	registry.Graph
+	DependencyIssues []registry.DependencyIssue `json:"dependency_issues"`
+}
+
+func (s *Server) handleRegistryEntryGraph(w http.ResponseWriter, r *http.Request) {
+	depth := 2
+	limit := 150
+	if raw := r.URL.Query().Get("depth"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			depth = parsed
+		}
 	}
-	return out
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	graph, err := s.backend.WebRegistryEntryGraph(r.Context(), r.PathValue("projectID"), r.PathValue("entryID"), depth, limit)
+	writeJSON(w, graph, err)
 }
 
 func (s *Server) handleRegistrySource(w http.ResponseWriter, r *http.Request) {
 	source, err := s.backend.WebRegistrySource(r.Context(), r.PathValue("projectID"), r.PathValue("entryID"))
+	if err != nil {
+		writeJSONError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"content": source}, nil)
+}
+
+func (s *Server) handleRegistrySourceHistory(w http.ResponseWriter, r *http.Request) {
+	limit, _ := parsePagination(r, 50)
+	revisions, err := s.backend.WebRegistrySourceHistory(r.Context(), r.PathValue("projectID"), r.PathValue("entryID"), limit)
+	if revisions == nil && err == nil {
+		revisions = []gitstate.FileRevision{}
+	}
+	writeJSON(w, revisions, err)
+}
+
+func (s *Server) handleRegistrySourceAtRevision(w http.ResponseWriter, r *http.Request) {
+	ref := r.URL.Query().Get("ref")
+	if ref == "" {
+		http.Error(w, "ref query parameter is required", http.StatusBadRequest)
+		return
+	}
+	source, err := s.backend.WebRegistrySourceAtRevision(r.Context(), r.PathValue("projectID"), r.PathValue("entryID"), ref)
 	if err != nil {
 		writeJSONError(w, err)
 		return
@@ -111,9 +244,13 @@ func (s *Server) handleRegistryReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry, err := s.backend.WebRegistryReview(r.Context(), r.PathValue("projectID"), r.PathValue("entryID"), input)
+	writeJSONOrError(w, entry, err)
+}
+
+func writeJSONOrError(w http.ResponseWriter, value any, err error) {
 	if err != nil {
 		writeJSONError(w, err)
 		return
 	}
-	writeJSON(w, entry.Redacted(), nil)
+	writeJSON(w, value, nil)
 }

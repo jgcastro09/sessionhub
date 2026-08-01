@@ -1,9 +1,10 @@
-// Package registry implements the Code Registry service described in
-// plans/project-task-manager-code-registry.md: a semantic inventory of a
-// Project's source tree, stored as JSON records under
-// <project>/.shproject/registry/records, with .shproject as the only
-// canonical store. There is no server, no Python runtime, and no import
-// path from the legacy "modules/Code Registry" reference implementation.
+// Package registry implements the Code Registry: a declaratively indexed,
+// hash-authoritative catalog of a Project's source tree, stored as JSON
+// records under <project>/.shproject/registry, with a rebuildable SQLite
+// cache (index.sqlite3) for full-text and semantic search. .shproject/
+// records/*.json is the only canonical store; everything else the package
+// produces (the SQLite cache, computed relationship graphs, health reports)
+// is fully re-derivable from it.
 package registry
 
 import "time"
@@ -19,45 +20,125 @@ const (
 	// (matching hash) was found for it. The entry is kept, not deleted, so
 	// tasks that reference it and human review notes are not lost silently.
 	StatusMissing Status = "missing"
+	// StatusDeprecated is an explicit human/agent mark; the file may still
+	// exist on disk but is no longer considered part of the maintained tree.
+	// Scan never sets or clears this — only Review does.
+	StatusDeprecated Status = "deprecated"
 )
 
-// Entry is one Code Registry record (plan section 5.2). Fields split into
-// two groups: automatic facts the scanner may always overwrite, and
-// human-reviewed fields the scanner must preserve once Reviewed is true.
+// Kind is a file's structural role, assigned declaratively from path/
+// extension rules (see classification.go). It is always recomputed on scan.
+type Kind string
+
+const (
+	KindImplementation Kind = "implementation"
+	KindHeader         Kind = "header"
+	KindTest           Kind = "test"
+	KindTool           Kind = "tool"
+	KindComponent      Kind = "component"
+	KindConfig         Kind = "config"
+	KindDocs           Kind = "docs"
+	KindScript         Kind = "script"
+	KindOther          Kind = "other"
+)
+
+// ReviewStatus tracks whether a human/agent has confirmed an entry's
+// semantic fields (Description/Responsibilities/Criticality/RelatedFiles)
+// match its current content. See applyDiscovery in scanner.go for the one
+// rule that governs it: any content-hash change forces NeedsReview,
+// unconditionally, regardless of the prior status.
+type ReviewStatus string
+
+const (
+	ReviewNeedsReview ReviewStatus = "needs_review"
+	ReviewReviewed    ReviewStatus = "reviewed"
+)
+
+// Criticality is a reviewer-assigned risk tier. Never set automatically.
+type Criticality string
+
+const (
+	CriticalityStandard  Criticality = "standard"
+	CriticalityImportant Criticality = "important"
+	CriticalityCritical  Criticality = "critical"
+)
+
+// SymbolRef is one detected top-level identifier and the 1-based line it
+// starts on, so the Web Panel can jump directly to it.
+type SymbolRef struct {
+	Name string `json:"name"`
+	Line int    `json:"line"`
+}
+
+// Entry is one Code Registry record. Fields are split into three groups by
+// ownership, and Scan never blurs the line between them:
+//
+//   - declarative/structural facts (Category, Module, Area, Role, Symbols,
+//     Includes/Imports/Exports/Dependencies, size/line/hash/mtime) are always
+//     recomputed from the file's path and content on every scan — they can
+//     never go stale because nothing ever "freezes" them;
+//   - human/agent-authored fields (Description, Responsibilities,
+//     Criticality, RelatedFiles) are never touched by Scan, only by Review;
+//   - review-state fields (Hash vs LastReviewedHash, ReviewStatus) are the
+//     bridge between the two: Scan may advance Hash, and the moment it does
+//     so for a changed file it also force-sets ReviewStatus to NeedsReview,
+//     so a reviewed file can never silently drift out of sync with its own
+//     description. Only Review ever sets LastReviewedHash/ReviewReviewed.
 type Entry struct {
-	EntryID string `json:"entry_id"`
+	EntryID   string `json:"entry_id"`
+	Path      string `json:"path"`
+	Filename  string `json:"filename"`
+	Extension string `json:"extension"`
+	Language  string `json:"language"`
+	Kind      Kind   `json:"kind"`
 
-	// --- automatic facts, always safe for the scanner to overwrite ---
-	Path     string   `json:"path"`
-	Category string   `json:"category"`
-	Language string   `json:"language"`
-	Hash     string   `json:"hash"`
-	Size     int64    `json:"size"`
-	Lines    int      `json:"lines"`
-	Symbols  []string `json:"symbols,omitempty"`
-	Status   Status   `json:"status"`
+	// --- declarative facts, always recomputed from Path on every scan ---
+	Category string `json:"category"`
+	Module   string `json:"module"`
+	Area     string `json:"area"`
+	Role     string `json:"role"`
 
-	// --- human-reviewed fields, preserved once Reviewed is true ---
-	Module             string     `json:"module,omitempty"`
-	Description        string     `json:"description,omitempty"`
-	Responsibilities   []string   `json:"responsibilities,omitempty"`
-	Criticality        string     `json:"criticality,omitempty"`
-	RelationsConfirmed []string   `json:"relations_confirmed,omitempty"`
-	RelationsProbable  []string   `json:"relations_probable,omitempty"`
-	Reviewed           bool       `json:"reviewed"`
-	ReviewedAt         *time.Time `json:"reviewed_at,omitempty"`
+	// --- structural facts, always recomputed from content on every scan ---
+	Symbols      map[string][]SymbolRef `json:"symbols,omitempty"`
+	Includes     []string               `json:"includes,omitempty"`
+	Imports      []string               `json:"imports,omitempty"`
+	Exports      []string               `json:"exports,omitempty"`
+	Dependencies []string               `json:"dependencies,omitempty"`
 
-	// --- semantic index, maintained by EnsureSemanticIndex ---
-	// Embedding is the vector for this entry's indexed text, computed by
-	// whatever Embedder is wired in (internal/embedding's local llama.cpp
-	// engine). EmbeddingHash records which Hash it was computed from, so a
-	// changed file is re-embedded automatically and an unchanged one never
-	// costs another embedding call.
-	Embedding     []float32 `json:"embedding,omitempty"`
-	EmbeddingHash string    `json:"embedding_hash,omitempty"`
+	LineCount      int       `json:"line_count"`
+	SizeBytes      int64     `json:"size_bytes"`
+	LastModifiedAt time.Time `json:"last_modified_at"`
+	Hash           string    `json:"hash"`
+	Status         Status    `json:"status"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	// --- human/agent-authored, never touched by Scan() ---
+	Description      string      `json:"description,omitempty"`
+	Responsibilities []string    `json:"responsibilities,omitempty"`
+	Criticality      Criticality `json:"criticality,omitempty"`
+	RelatedFiles     []string    `json:"related_files,omitempty"` // entry_id, confirmed
+
+	// --- auto-computed, scan-refreshed, but not human-owned ---
+	ProbableRelatedFiles []string `json:"probable_related_files,omitempty"` // entry_id, same-stem heuristic
+	PreviousPaths        []string `json:"previous_paths,omitempty"`         // rename history, capped 20
+
+	// --- review state ---
+	LastReviewedHash string       `json:"last_reviewed_hash,omitempty"`
+	ReviewStatus     ReviewStatus `json:"review_status"`
+	ReviewedAt       *time.Time   `json:"reviewed_at,omitempty"`
+	ReviewedBy       string       `json:"reviewed_by,omitempty"`
+
+	LastScannedAt time.Time `json:"last_scanned_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// Stale reports whether the entry's current content hash has moved past
+// what was last confirmed by a human/agent review — the single source of
+// truth for "does this need another look," independent of ReviewStatus
+// (which Scan sets, but health.go re-derives this independently to catch
+// any future regression in the scan path).
+func (e Entry) Stale() bool {
+	return e.ReviewStatus != ReviewReviewed || e.Hash != e.LastReviewedHash
 }
 
 // recordFile is the on-disk shape of one records/<category>.json file.
@@ -65,23 +146,19 @@ type recordFile struct {
 	Entries []Entry `json:"entries"`
 }
 
-// Redacted drops the raw embedding vector — 384 floats of no use to a human
-// or the Web Panel, only ever needed internally for cosine comparison — the
-// same "strip the heavy/internal field before this leaves the process"
-// convention domain.ExecutorConfig.Redacted() already uses for secrets.
-// EmbeddingHash stays, since "has this file been semantically indexed?" is
-// useful to show.
-func (e Entry) Redacted() Entry {
-	e.Embedding = nil
-	return e
+// PendingFile is a text-looking file that failed the eligibility whitelist
+// (policy.go) — surfaced in the "Pending Classification" queue instead of
+// being silently indexed or silently dropped. Fully derived: rewritten in
+// whole on every scan, never hand-edited.
+type PendingFile struct {
+	Path        string    `json:"path"`
+	Extension   string    `json:"extension"`
+	SizeBytes   int64     `json:"size_bytes"`
+	DetectedAt  time.Time `json:"detected_at"`
+	SuggestedBy string    `json:"suggested_reason,omitempty"` // e.g. "text content, unrecognized extension"
 }
 
-// RedactedEntries applies Redacted to a whole slice, for list/search
-// responses.
-func RedactedEntries(entries []Entry) []Entry {
-	out := make([]Entry, len(entries))
-	for i, e := range entries {
-		out[i] = e.Redacted()
-	}
-	return out
+// pendingFile is the on-disk shape of pending.json.
+type pendingFileList struct {
+	Files []PendingFile `json:"files"`
 }

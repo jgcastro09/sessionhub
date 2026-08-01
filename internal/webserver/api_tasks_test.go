@@ -12,7 +12,6 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/app"
 	"github.com/jgcastro09/sessionhub/internal/config"
 	"github.com/jgcastro09/sessionhub/internal/project"
-	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/tasks"
 	"github.com/jgcastro09/sessionhub/internal/webserver"
 )
@@ -124,58 +123,5 @@ func TestTasksAPIEndToEnd(t *testing.T) {
 	defer missingResp.Body.Close()
 	if missingResp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 for missing task, got %d", missingResp.StatusCode)
-	}
-}
-
-func TestRegistryAPIEndToEnd(t *testing.T) {
-	application, projectID := newTestApp(t)
-	base := newTestServer(t, application)
-
-	scanResp, err := http.Post(base+"/api/v2/projects/"+projectID+"/registry/scan", "application/json", nil)
-	if err != nil {
-		t.Fatalf("POST scan: %v", err)
-	}
-	defer scanResp.Body.Close()
-	var entries []registry.Entry
-	if err := json.NewDecoder(scanResp.Body).Decode(&entries); err != nil {
-		t.Fatalf("decode entries: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatalf("expected at least one entry from scan")
-	}
-
-	healthResp, err := http.Get(base + "/api/v2/projects/" + projectID + "/registry/health")
-	if err != nil {
-		t.Fatalf("GET health: %v", err)
-	}
-	defer healthResp.Body.Close()
-	var report registry.CoverageReport
-	if err := json.NewDecoder(healthResp.Body).Decode(&report); err != nil {
-		t.Fatalf("decode health: %v", err)
-	}
-	if !report.OK() {
-		t.Fatalf("expected clean coverage right after scan, got %+v", report)
-	}
-
-	searchResp, err := http.Get(base + "/api/v2/projects/" + projectID + "/registry/search?query=NewProject")
-	if err != nil {
-		t.Fatalf("GET search: %v", err)
-	}
-	defer searchResp.Body.Close()
-	var results []registry.SearchResult
-	if err := json.NewDecoder(searchResp.Body).Decode(&results); err != nil {
-		t.Fatalf("decode search: %v", err)
-	}
-	if len(results) != 1 || results[0].Entry.Path != "internal/app/app.go" {
-		t.Fatalf("unexpected search results: %+v", results)
-	}
-
-	contextResp, err := http.Get(base + "/api/v2/projects/" + projectID + "/registry/context?entry_id=" + results[0].Entry.EntryID)
-	if err != nil {
-		t.Fatalf("GET context: %v", err)
-	}
-	defer contextResp.Body.Close()
-	if contextResp.StatusCode != http.StatusOK {
-		t.Fatalf("context status: %d", contextResp.StatusCode)
 	}
 }

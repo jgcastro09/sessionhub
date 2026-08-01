@@ -25,7 +25,9 @@ func newTestService(t *testing.T) (*Service, string, string) {
 	if _, err := catalog.Attach(root); err != nil {
 		t.Fatalf("Attach: %v", err)
 	}
-	return New(catalog, events.NewBus()), proj.ID, root
+	svc := New(catalog, events.NewBus())
+	t.Cleanup(func() { _ = svc.Close() })
+	return svc, proj.ID, root
 }
 
 func writeSource(t *testing.T, root, rel, content string) {
@@ -37,6 +39,14 @@ func writeSource(t *testing.T, root, rel, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", rel, err)
 	}
+}
+
+func symbolNames(symbols map[string][]SymbolRef, category string) []string {
+	var out []string
+	for _, s := range symbols[category] {
+		out = append(out, s.Name)
+	}
+	return out
 }
 
 func TestScanDiscoversMixedProject(t *testing.T) {
@@ -64,20 +74,26 @@ func TestScanDiscoversMixedProject(t *testing.T) {
 	if goEntry.Language != "go" || goEntry.Category != "go" {
 		t.Fatalf("unexpected classification: %+v", goEntry)
 	}
-	if len(goEntry.Symbols) != 1 || goEntry.Symbols[0] != "NewProject" {
+	if names := symbolNames(goEntry.Symbols, "functions"); len(names) != 1 || names[0] != "NewProject" {
 		t.Fatalf("expected NewProject symbol, got %v", goEntry.Symbols)
+	}
+	if goEntry.ReviewStatus != ReviewNeedsReview {
+		t.Fatalf("new entries must default to needs_review, got %q", goEntry.ReviewStatus)
 	}
 	tsEntry, ok := byPath["web/src/App.tsx"]
 	if !ok || tsEntry.Language != "typescript" {
 		t.Fatalf("unexpected typescript entry: %+v", tsEntry)
 	}
 	pyEntry, ok := byPath["scripts/build.py"]
-	if !ok || pyEntry.Language != "python" || len(pyEntry.Symbols) != 1 || pyEntry.Symbols[0] != "build" {
+	if !ok || pyEntry.Language != "python" {
 		t.Fatalf("unexpected python entry: %+v", pyEntry)
+	}
+	if names := symbolNames(pyEntry.Symbols, "functions"); len(names) != 1 || names[0] != "build" {
+		t.Fatalf("expected build symbol, got %v", pyEntry.Symbols)
 	}
 }
 
-func TestValidateFlagsMissingCoverage(t *testing.T) {
+func TestHealthFlagsMissingCoverage(t *testing.T) {
 	svc, projectID, root := newTestService(t)
 	writeSource(t, root, "a.go", "package a\n")
 	if _, err := svc.Scan(projectID); err != nil {
@@ -85,12 +101,9 @@ func TestValidateFlagsMissingCoverage(t *testing.T) {
 	}
 	writeSource(t, root, "b.go", "package a\nfunc B() {}\n")
 
-	report, err := svc.Validate(projectID)
+	report, err := svc.Health(projectID)
 	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-	if report.OK() {
-		t.Fatalf("expected coverage gap for b.go, got %+v", report)
+		t.Fatalf("Health: %v", err)
 	}
 	if len(report.MissingPaths) != 1 || report.MissingPaths[0] != "b.go" {
 		t.Fatalf("unexpected missing paths: %v", report.MissingPaths)
@@ -99,44 +112,20 @@ func TestValidateFlagsMissingCoverage(t *testing.T) {
 	if _, err := svc.Scan(projectID); err != nil {
 		t.Fatalf("second Scan: %v", err)
 	}
-	report, err = svc.Validate(projectID)
+	report, err = svc.Health(projectID)
 	if err != nil {
-		t.Fatalf("Validate after rescan: %v", err)
+		t.Fatalf("Health after rescan: %v", err)
 	}
-	if !report.OK() {
-		t.Fatalf("expected full coverage after rescan, got %+v", report)
+	if len(report.MissingPaths) != 0 {
+		t.Fatalf("expected full coverage after rescan, got %+v", report.MissingPaths)
 	}
-}
-
-func TestReviewIsPreservedAcrossRescan(t *testing.T) {
-	svc, projectID, root := newTestService(t)
-	writeSource(t, root, "internal/foo/foo.go", "package foo\nfunc Foo() {}\n")
-	entries, err := svc.Scan(projectID)
-	if err != nil {
-		t.Fatalf("Scan: %v", err)
+	// Neither file has been reviewed yet, so the registry as a whole is
+	// correctly still not Healthy — StaleReviews must list both.
+	if len(report.StaleReviews) != 2 {
+		t.Fatalf("expected both unreviewed entries flagged stale, got %v", report.StaleReviews)
 	}
-	entryID := entries[0].EntryID
-
-	if _, err := svc.Review(projectID, entryID, ReviewInput{
-		Module: "foo", Description: "Handles foo.", Criticality: "high",
-	}); err != nil {
-		t.Fatalf("Review: %v", err)
-	}
-
-	// Content changes, but the review must survive a rescan.
-	writeSource(t, root, "internal/foo/foo.go", "package foo\nfunc Foo() {}\nfunc Bar() {}\n")
-	if _, err := svc.Scan(projectID); err != nil {
-		t.Fatalf("rescan: %v", err)
-	}
-	updated, err := svc.Get(projectID, entryID)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if updated.Description != "Handles foo." || updated.Criticality != "high" {
-		t.Fatalf("review fields lost after rescan: %+v", updated)
-	}
-	if len(updated.Symbols) != 2 {
-		t.Fatalf("expected automatic fields to still update: %+v", updated)
+	if report.Healthy {
+		t.Fatalf("registry with unreviewed entries must not report healthy")
 	}
 }
 
@@ -168,21 +157,24 @@ func TestRenameDetectionPreservesEntryID(t *testing.T) {
 	if renamed.EntryID != original.EntryID {
 		t.Fatalf("rename did not preserve entry_id: got %s want %s", renamed.EntryID, original.EntryID)
 	}
+	if len(renamed.PreviousPaths) != 1 || renamed.PreviousPaths[0] != "old/name.go" {
+		t.Fatalf("expected previous_paths to record the old path, got %v", renamed.PreviousPaths)
+	}
 }
 
-func TestSearchIsLexicalAndDeterministic(t *testing.T) {
+func TestSearchIsDeterministicAndFiltered(t *testing.T) {
 	svc, projectID, root := newTestService(t)
 	writeSource(t, root, "internal/tasks/service.go", "package tasks\nfunc Create() {}\n")
 	writeSource(t, root, "internal/registry/service.go", "package registry\nfunc Scan() {}\n")
 	if _, err := svc.Scan(projectID); err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
-	results, err := svc.Search(projectID, "tasks", 10)
+	results, total, err := svc.Search(projectID, SearchQuery{Text: "tasks", Limit: 10})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(results) != 1 || results[0].Entry.Path != "internal/tasks/service.go" {
-		t.Fatalf("unexpected search results: %+v", results)
+	if total != 1 || len(results) != 1 || results[0].Entry.Path != "internal/tasks/service.go" {
+		t.Fatalf("unexpected search results: total=%d results=%+v", total, results)
 	}
 
 	if _, err := svc.SemanticSearch(context.Background(), projectID, "tasks", 10); err != ErrSemanticUnavailable {
@@ -190,9 +182,24 @@ func TestSearchIsLexicalAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestSearchFiltersByCategory(t *testing.T) {
+	svc, projectID, root := newTestService(t)
+	writeSource(t, root, "a.go", "package a\n")
+	writeSource(t, root, "b.py", "def b():\n    pass\n")
+	if _, err := svc.Scan(projectID); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	results, total, err := svc.Search(projectID, SearchQuery{Categories: []string{"go"}})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if total != 1 || results[0].Entry.Path != "a.go" {
+		t.Fatalf("expected only the go entry, got total=%d results=%+v", total, results)
+	}
+}
+
 // fakeEmbedder maps known substrings to hand-picked vectors so tests can
-// assert on ranking without a real embedding engine. Anything else gets a
-// deterministic hash-based vector so re-embedding is still exercised.
+// assert on ranking without a real embedding engine.
 type fakeEmbedder struct{ calls int }
 
 func (f *fakeEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {

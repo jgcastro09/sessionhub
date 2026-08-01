@@ -224,9 +224,9 @@ function TechnicalContextPanel({
     let cancelled = false
     const id = window.setTimeout(() => {
       api
-        .registrySearch(projectId, query)
+        .registrySearch(projectId, { query, limit: 20 })
         .then((found) => {
-          if (!cancelled) setResults(found.map((r) => r.entry))
+          if (!cancelled) setResults(found.results.map((r) => r.entry))
         })
         .catch(() => {
           if (!cancelled) setResults([])

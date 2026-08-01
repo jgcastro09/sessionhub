@@ -15,6 +15,7 @@ import (
 	"github.com/jgcastro09/sessionhub/internal/config"
 	"github.com/jgcastro09/sessionhub/internal/domain"
 	"github.com/jgcastro09/sessionhub/internal/events"
+	"github.com/jgcastro09/sessionhub/internal/gitstate"
 	"github.com/jgcastro09/sessionhub/internal/registry"
 	"github.com/jgcastro09/sessionhub/internal/remote"
 	"github.com/jgcastro09/sessionhub/internal/safego"
@@ -45,15 +46,26 @@ type Backend interface {
 	WebTasksClaim(ctx context.Context, projectID, taskID, executorID, terminalID string) ([]tasks.Claim, error)
 	WebTasksReleaseClaim(ctx context.Context, projectID, terminalID string) ([]tasks.Claim, error)
 
+	WebRegistryConfigGet(ctx context.Context, projectID string) (registry.Config, error)
+	WebRegistryConfigPut(ctx context.Context, projectID string, cfg registry.Config) error
+	WebRegistryTaxonomyGet(ctx context.Context, projectID string) (registry.Taxonomy, error)
+	WebRegistryTaxonomyPut(ctx context.Context, projectID string, tax registry.Taxonomy) error
 	WebRegistryList(ctx context.Context, projectID string) ([]registry.Entry, error)
 	WebRegistryGet(ctx context.Context, projectID, entryID string) (registry.Entry, error)
-	WebRegistrySearch(ctx context.Context, projectID, query string, limit int) ([]registry.SearchResult, error)
+	WebRegistrySearch(ctx context.Context, projectID string, q registry.SearchQuery) ([]registry.SearchResult, int, error)
 	WebRegistrySemanticSearch(ctx context.Context, projectID, query string, limit int) ([]registry.SearchResult, error)
 	WebRegistryScan(ctx context.Context, projectID string) ([]registry.Entry, error)
-	WebRegistryHealth(ctx context.Context, projectID string) (registry.CoverageReport, error)
+	WebRegistryHealth(ctx context.Context, projectID string) (registry.HealthReport, error)
 	WebRegistryReview(ctx context.Context, projectID, entryID string, input registry.ReviewInput) (registry.Entry, error)
 	WebRegistrySource(ctx context.Context, projectID, entryID string) (string, error)
+	WebRegistrySourceHistory(ctx context.Context, projectID, entryID string, limit int) ([]gitstate.FileRevision, error)
+	WebRegistrySourceAtRevision(ctx context.Context, projectID, entryID, ref string) (string, error)
 	WebRegistryGitStatus(ctx context.Context, projectID string) (registry.GitCorrelation, error)
+	WebRegistryGraph(ctx context.Context, projectID string) (registry.Graph, []registry.DependencyIssue, error)
+	WebRegistryEntryGraph(ctx context.Context, projectID, entryID string, depth, limit int) (registry.Graph, error)
+	WebRegistryPending(ctx context.Context, projectID string) ([]registry.PendingFile, error)
+	WebRegistryReviewQueue(ctx context.Context, projectID string, limit, offset int) ([]registry.Entry, int, error)
+	WebRegistryStats(ctx context.Context, projectID string) (registry.Stats, error)
 
 	// Subscribe opens a live feed of Task/Registry events for one project,
 	// backing handleEvents. The returned cancel func must be called once the

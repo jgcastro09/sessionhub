@@ -5,58 +5,91 @@ import (
 	"strings"
 )
 
-// maxSymbols caps how many top-level identifiers one entry records, so a
-// generated or vendored-looking file with thousands of matches never bloats
-// a record.
-const maxSymbols = 64
+// maxSymbolsPerCategory/maxSymbolsPerFile cap how many identifiers one entry
+// records, so a generated or vendored-looking file with thousands of
+// matches never bloats a record.
+const (
+	maxSymbolsPerCategory = 128
+	maxSymbolsPerFile     = 256
+)
 
-var symbolPatterns = map[string][]*regexp.Regexp{
+type symbolPattern struct {
+	category string
+	re       *regexp.Regexp
+}
+
+// symbolPatternsByLanguage is deliberately light, regex-based structural
+// analysis, not a real parser — enough to make search, the Inspector panel,
+// and the relationship graph's "implements" pairing useful. Session Hub
+// cross-compiles CGO-free (see .goreleaser.yml), which rules out a
+// tree-sitter-based parser; this stays pure Go.
+var symbolPatternsByLanguage = map[string][]symbolPattern{
 	"go": {
-		regexp.MustCompile(`(?m)^func\s+(?:\([^)]*\)\s+)?([A-Za-z_]\w*)\s*\(`),
-		regexp.MustCompile(`(?m)^type\s+([A-Za-z_]\w*)\s+(?:struct|interface)\b`),
+		{"functions", regexp.MustCompile(`(?m)^func\s+(?:\([^)]*\)\s+)?([A-Za-z_]\w*)\s*\(`)},
+		{"types", regexp.MustCompile(`(?m)^type\s+([A-Za-z_]\w*)\s+(?:struct|interface)\b`)},
 	},
 	"typescript": {
-		regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)`),
-		regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?class\s+([A-Za-z_]\w*)`),
-		regexp.MustCompile(`(?m)^\s*export\s+(?:const|function)\s+([A-Za-z_]\w*)`),
-		regexp.MustCompile(`(?m)^\s*(?:export\s+)?interface\s+([A-Za-z_]\w*)`),
+		{"functions", regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)`)},
+		{"classes", regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?class\s+([A-Za-z_]\w*)`)},
+		{"functions", regexp.MustCompile(`(?m)^\s*export\s+(?:const|function)\s+([A-Za-z_]\w*)`)},
+		{"interfaces", regexp.MustCompile(`(?m)^\s*(?:export\s+)?interface\s+([A-Za-z_]\w*)`)},
 	},
 	"python": {
-		regexp.MustCompile(`(?m)^def\s+([A-Za-z_]\w*)\s*\(`),
-		regexp.MustCompile(`(?m)^class\s+([A-Za-z_]\w*)\s*[:\(]`),
+		{"functions", regexp.MustCompile(`(?m)^def\s+([A-Za-z_]\w*)\s*\(`)},
+		{"classes", regexp.MustCompile(`(?m)^class\s+([A-Za-z_]\w*)\s*[:\(]`)},
 	},
 	"shell": {
-		regexp.MustCompile(`(?m)^\s*(?:function\s+)?([A-Za-z_]\w*)\s*\(\)\s*\{`),
+		{"functions", regexp.MustCompile(`(?m)^\s*(?:function\s+)?([A-Za-z_]\w*)\s*\(\)\s*\{`)},
+	},
+	"rust": {
+		{"functions", regexp.MustCompile(`(?m)^\s*(?:pub\s+)?fn\s+([A-Za-z_]\w*)`)},
+		{"types", regexp.MustCompile(`(?m)^\s*(?:pub\s+)?(?:struct|enum|trait)\s+([A-Za-z_]\w*)`)},
+	},
+	"c": {
+		{"functions", regexp.MustCompile(`(?m)^[A-Za-z_][\w\s\*]*?\b([A-Za-z_]\w*)\s*\([^;{]*\)\s*\{`)},
+		{"types", regexp.MustCompile(`(?m)^\s*(?:typedef\s+)?struct\s+([A-Za-z_]\w*)`)},
 	},
 }
 
 func init() {
-	symbolPatterns["javascript"] = symbolPatterns["typescript"]
+	symbolPatternsByLanguage["javascript"] = symbolPatternsByLanguage["typescript"]
+	symbolPatternsByLanguage["cpp"] = symbolPatternsByLanguage["c"]
 }
 
-// detectSymbols runs the light, regex-based structural analysis the plan
-// calls for (5.3: "analisar estrutura leve de Go, JS/TS, Python, ... shell e
-// manifestos") — deliberately not a real parser, just enough to make search
-// and context packs useful.
-func detectSymbols(content, language string) []string {
-	patterns, ok := symbolPatterns[language]
+// detectSymbols runs the regex patterns for language against content,
+// returning identifiers grouped by category with their 1-based source line.
+func detectSymbols(content, language string) map[string][]SymbolRef {
+	patterns, ok := symbolPatternsByLanguage[language]
 	if !ok {
 		return nil
 	}
+	out := map[string][]SymbolRef{}
 	seen := map[string]bool{}
-	var out []string
-	for _, pattern := range patterns {
-		for _, match := range pattern.FindAllStringSubmatch(content, -1) {
-			name := strings.TrimSpace(match[1])
-			if name == "" || seen[name] {
+	total := 0
+	for _, p := range patterns {
+		if total >= maxSymbolsPerFile {
+			break
+		}
+		for _, m := range p.re.FindAllStringSubmatchIndex(content, -1) {
+			if total >= maxSymbolsPerFile || len(m) < 4 {
+				break
+			}
+			name := strings.TrimSpace(content[m[2]:m[3]])
+			if name == "" {
 				continue
 			}
-			seen[name] = true
-			out = append(out, name)
-			if len(out) >= maxSymbols {
-				return out
+			key := p.category + "\x00" + name
+			if seen[key] || len(out[p.category]) >= maxSymbolsPerCategory {
+				continue
 			}
+			line := 1 + strings.Count(content[:m[0]], "\n")
+			out[p.category] = append(out[p.category], SymbolRef{Name: name, Line: line})
+			seen[key] = true
+			total++
 		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

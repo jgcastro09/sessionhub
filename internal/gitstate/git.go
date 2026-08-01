@@ -101,6 +101,50 @@ func Diff(ctx context.Context, workspace string) (string, error) {
 	return string(data), nil
 }
 
+// FileRevision is one commit that touched a single file, for the Code
+// Registry Reader's version selector.
+type FileRevision struct {
+	Hash    string `json:"hash"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Subject string `json:"subject"`
+}
+
+// FileHistory returns path's Git commit log, most recent first, capped at
+// limit entries (0 means unbounded). Read-only (git log).
+func FileHistory(ctx context.Context, workspace, path string, limit int) ([]FileRevision, error) {
+	args := []string{"log", "--follow", "--format=%H%x1f%an%x1f%ad%x1f%s", "--date=iso-strict"}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("-n%d", limit))
+	}
+	args = append(args, "--", path)
+	out, err := run(ctx, workspace, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read Git file history: %w", err)
+	}
+	var revisions []FileRevision
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x1f")
+		if len(parts) != 4 {
+			continue
+		}
+		revisions = append(revisions, FileRevision{Hash: parts[0], Author: parts[1], Date: parts[2], Subject: parts[3]})
+	}
+	return revisions, nil
+}
+
+// FileAtRevision returns path's content as of ref. Read-only (git show).
+func FileAtRevision(ctx context.Context, workspace, ref, path string) (string, error) {
+	out, err := run(ctx, workspace, "show", ref+":"+path)
+	if err != nil {
+		return "", fmt.Errorf("read Git file at revision: %w", err)
+	}
+	return out, nil
+}
+
 func run(ctx context.Context, dir string, args ...string) (string, error) {
 	data, err := runRaw(ctx, dir, args...)
 	return string(data), err

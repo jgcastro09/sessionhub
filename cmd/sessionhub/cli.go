@@ -251,17 +251,17 @@ func tasksAudit(svc *tasks.Service, projectID string, args []string) error {
 
 func runRegistryCLI(svc *registry.Service, projectID string, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("expected a registry subcommand (scan, build, validate, search, context, review)")
+		return fmt.Errorf("expected a registry subcommand (scan, health, search, graph, review)")
 	}
 	switch args[0] {
 	case "scan", "build":
 		return registryScan(svc, projectID, args[1:])
-	case "validate":
-		return registryValidate(svc, projectID, args[1:])
+	case "health", "validate":
+		return registryHealth(svc, projectID, args[1:])
 	case "search":
 		return registrySearch(svc, projectID, args[1:])
-	case "context":
-		return registryContext(svc, projectID, args[1:])
+	case "graph":
+		return registryGraph(svc, projectID, args[1:])
 	case "review":
 		return registryReview(svc, projectID, args[1:])
 	case "git":
@@ -308,7 +308,7 @@ func registryScan(svc *registry.Service, projectID string, args []string) error 
 		return err
 	}
 	if *jsonOut {
-		return printJSON(registry.RedactedEntries(entries))
+		return printJSON(entries)
 	}
 	active := 0
 	for _, e := range entries {
@@ -320,36 +320,51 @@ func registryScan(svc *registry.Service, projectID string, args []string) error 
 	return nil
 }
 
-func registryValidate(svc *registry.Service, projectID string, args []string) error {
-	fs := flag.NewFlagSet("registry validate", flag.ContinueOnError)
+func registryHealth(svc *registry.Service, projectID string, args []string) error {
+	fs := flag.NewFlagSet("registry health", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	report, err := svc.Validate(projectID)
+	report, err := svc.Health(projectID)
 	if err != nil {
 		return err
 	}
 	if *jsonOut {
 		return printJSON(report)
 	}
-	if report.OK() {
-		fmt.Println("coverage OK")
+	if report.Healthy {
+		fmt.Println("registry healthy")
 		return nil
 	}
 	for _, p := range report.MissingPaths {
 		fmt.Printf("missing entry: %s\n", p)
 	}
-	for _, p := range report.StaleHashes {
-		fmt.Printf("stale (needs review): %s\n", p)
+	for _, id := range report.StaleReviews {
+		fmt.Printf("stale (needs review): %s\n", id)
 	}
-	return fmt.Errorf("coverage incomplete: %d missing, %d stale", len(report.MissingPaths), len(report.StaleHashes))
+	for _, id := range report.ClassificationIssues {
+		fmt.Printf("unclassified: %s\n", id)
+	}
+	for _, id := range report.DanglingRelationships {
+		fmt.Printf("dangling relationship: %s\n", id)
+	}
+	for _, issue := range report.DependencyIssues {
+		fmt.Printf("%s dependency %q: %s\n", issue.Path, issue.RawImport, issue.Reason)
+	}
+	if report.PendingClassificationCount > 0 {
+		fmt.Printf("pending classification: %d files\n", report.PendingClassificationCount)
+	}
+	return fmt.Errorf("registry not healthy: %d missing, %d stale, %d unclassified, %d dangling, %d dependency issues, %d pending",
+		len(report.MissingPaths), len(report.StaleReviews), len(report.ClassificationIssues),
+		len(report.DanglingRelationships), len(report.DependencyIssues), report.PendingClassificationCount)
 }
 
 func registrySearch(svc *registry.Service, projectID string, args []string) error {
 	fs := flag.NewFlagSet("registry search", flag.ContinueOnError)
 	limit := fs.Int("limit", 20, "max results")
-	semantic := fs.Bool("semantic", false, "use semantic search instead of lexical")
+	semantic := fs.Bool("semantic", false, "include semantic ranking alongside full-text")
+	category := fs.String("category", "", "filter by category")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -357,22 +372,16 @@ func registrySearch(svc *registry.Service, projectID string, args []string) erro
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: sessionhub registry search <query>")
 	}
-	var results []registry.SearchResult
-	var err error
-	if *semantic {
-		results, err = svc.SemanticSearch(context.Background(), projectID, fs.Arg(0), *limit)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "semantic search unavailable (%v), falling back to lexical\n", err)
-			results, err = svc.Search(projectID, fs.Arg(0), *limit)
-		}
-	} else {
-		results, err = svc.Search(projectID, fs.Arg(0), *limit)
+	q := registry.SearchQuery{Text: fs.Arg(0), Limit: *limit, Semantic: *semantic}
+	if *category != "" {
+		q.Categories = []string{*category}
 	}
+	results, _, err := svc.Search(projectID, q)
 	if err != nil {
 		return err
 	}
 	if *jsonOut {
-		return printJSON(redactCLIResults(results))
+		return printJSON(results)
 	}
 	for _, r := range results {
 		fmt.Printf("%d\t%s\t%s\n", r.Score, r.Entry.EntryID, r.Entry.Path)
@@ -380,50 +389,43 @@ func registrySearch(svc *registry.Service, projectID string, args []string) erro
 	return nil
 }
 
-func redactCLIResults(results []registry.SearchResult) []registry.SearchResult {
-	out := make([]registry.SearchResult, len(results))
-	for i, r := range results {
-		out[i] = registry.SearchResult{Entry: r.Entry.Redacted(), Score: r.Score}
-	}
-	return out
-}
-
-func registryContext(svc *registry.Service, projectID string, args []string) error {
-	fs := flag.NewFlagSet("registry context", flag.ContinueOnError)
+func registryGraph(svc *registry.Service, projectID string, args []string) error {
+	fs := flag.NewFlagSet("registry graph", flag.ContinueOnError)
+	depth := fs.Int("depth", 2, "traversal depth")
+	limit := fs.Int("limit", 150, "max nodes")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: sessionhub registry context <entry-id>")
+		return fmt.Errorf("usage: sessionhub registry graph <entry-id>")
 	}
 	entry, err := svc.Get(projectID, fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	related, err := svc.Search(projectID, entry.Module+" "+strings.Join(entry.Symbols, " "), 10)
+	g, err := svc.EntryGraph(projectID, fs.Arg(0), *depth, *limit)
 	if err != nil {
 		return err
 	}
-	pack := registry.ContextPack{Entry: entry.Redacted(), Related: redactCLIResults(registry.SearchResults(related).Filter(entry.EntryID))}
 	if *jsonOut {
-		return printJSON(pack)
+		return printJSON(g)
 	}
-	fmt.Printf("%s (%s)\n%s\n\nrelated:\n", entry.EntryID, entry.Path, entry.Description)
-	for _, r := range registry.SearchResults(related).Filter(entry.EntryID) {
-		fmt.Printf("  %s\t%s\n", r.Entry.EntryID, r.Entry.Path)
+	fmt.Printf("%s (%s)\n%s\n\nrelated (%d nodes, %d edges):\n", entry.EntryID, entry.Path, entry.Description, len(g.Nodes), len(g.Edges))
+	for _, e := range g.Edges {
+		if e.From == entry.EntryID || e.To == entry.EntryID {
+			fmt.Printf("  %s %s -> %s (%s)\n", e.Kind, e.From, e.To, e.Confidence)
+		}
 	}
 	return nil
 }
 
 func registryReview(svc *registry.Service, projectID string, args []string) error {
 	fs := flag.NewFlagSet("registry review", flag.ContinueOnError)
-	module := fs.String("module", "", "module name")
 	description := fs.String("description", "", "human description")
-	criticality := fs.String("criticality", "", "low, medium, or high")
+	criticality := fs.String("criticality", "", "standard, important, or critical")
 	responsibilities := fs.String("responsibilities", "", "comma-separated responsibilities")
-	relationsConfirmed := fs.String("relations-confirmed", "", "comma-separated confirmed relations")
-	relationsProbable := fs.String("relations-probable", "", "comma-separated probable relations")
+	relatedFiles := fs.String("related-files", "", "comma-separated related entry_ids")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -432,16 +434,16 @@ func registryReview(svc *registry.Service, projectID string, args []string) erro
 		return fmt.Errorf("usage: sessionhub registry review <entry-id> [flags]")
 	}
 	entry, err := svc.Review(projectID, fs.Arg(0), registry.ReviewInput{
-		Module: *module, Description: *description, Criticality: *criticality,
-		Responsibilities:   splitCSV(*responsibilities),
-		RelationsConfirmed: splitCSV(*relationsConfirmed),
-		RelationsProbable:  splitCSV(*relationsProbable),
+		Description:      *description,
+		Criticality:      registry.Criticality(*criticality),
+		Responsibilities: splitCSV(*responsibilities),
+		RelatedFiles:     splitCSV(*relatedFiles),
 	})
 	if err != nil {
 		return err
 	}
 	if *jsonOut {
-		return printJSON(entry.Redacted())
+		return printJSON(entry)
 	}
 	fmt.Printf("reviewed %s\n", entry.EntryID)
 	return nil

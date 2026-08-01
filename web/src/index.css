@@ -641,3 +641,357 @@ a {
 .audit-status.pending {
   color: var(--state-queued);
 }
+
+/* --- Code Registry panel --- */
+
+@media (min-width: 720px) {
+  .content:has(.registry-subtabs) {
+    max-width: 1080px;
+  }
+}
+
+.registry-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.registry-subtab {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.registry-subtab.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.registry-health-banner {
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  display: inline-block;
+}
+
+.registry-health-banner.healthy {
+  color: var(--state-running);
+  background: var(--accent-dim);
+}
+
+.registry-health-banner.unhealthy {
+  color: var(--state-queued);
+  background: color-mix(in srgb, var(--state-queued) 15%, var(--bg-elevated));
+}
+
+.registry-review-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.registry-review-badge.needs_review {
+  color: var(--state-queued);
+  background: color-mix(in srgb, var(--state-queued) 15%, var(--bg-elevated));
+}
+
+.registry-review-badge.reviewed {
+  color: var(--state-running);
+  background: var(--accent-dim);
+}
+
+.registry-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 640px) {
+  .registry-charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.registry-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.registry-bar-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.registry-bar-label {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.registry-bar-track {
+  height: 8px;
+  background: var(--bg-elevated-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.registry-bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.registry-bar-value {
+  text-align: right;
+  color: var(--text);
+}
+
+.registry-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.registry-filter-bar .text-input {
+  flex: 1 1 140px;
+}
+
+.registry-number-input {
+  width: 64px;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.registry-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.registry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.registry-table th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.registry-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+.registry-table tbody tr {
+  cursor: pointer;
+}
+
+.registry-table tbody tr:hover {
+  background: var(--bg-elevated-2);
+}
+
+.registry-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 10px 0 20px;
+}
+
+.registry-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .registry-split {
+    grid-template-columns: 240px 1fr;
+  }
+}
+
+.registry-split-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.registry-split-main {
+  min-width: 0;
+}
+
+.registry-tree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.registry-tree-row:hover {
+  background: var(--bg-elevated-2);
+}
+
+.registry-tree-row.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.registry-file-tree {
+  font-size: 13px;
+}
+
+.registry-reader-pane {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 70vh;
+}
+
+.registry-reader-code {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 12px;
+}
+
+.registry-reader-line {
+  display: flex;
+  gap: 12px;
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.registry-reader-line:hover {
+  background: var(--bg-elevated-2);
+}
+
+.registry-reader-line-number {
+  color: var(--text-dim);
+  user-select: none;
+  min-width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.registry-graph-svg {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  max-height: 70vh;
+}
+
+.registry-graph-node {
+  cursor: pointer;
+}
+
+.registry-graph-label {
+  font-size: 10px;
+  fill: var(--text);
+}
+
+.registry-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.registry-graph-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.registry-reasons-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.registry-reasons-row code {
+  flex: 0 0 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.registry-reasons-row .text-input {
+  flex: 1;
+}
+
+.inspector-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 55%, transparent);
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.inspector-panel {
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  padding: 16px;
+}
+
+.inspector-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}

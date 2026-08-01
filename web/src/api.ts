@@ -11,9 +11,19 @@ import type {
   AuditReport,
   TaskClaim,
   RegistryEntry,
+  RegistrySearchPage,
+  RegistrySearchQuery,
   RegistrySearchResult,
-  RegistryCoverageReport,
-  RegistryContextPack,
+  RegistryHealthReport,
+  RegistryStats,
+  RegistryPendingFile,
+  RegistryConfig,
+  RegistryTaxonomy,
+  RegistryGraph,
+  RegistryGraphWithIssues,
+  RegistryGitCorrelation,
+  RegistryFileRevision,
+  RegistryReviewInput,
 } from './types'
 
 export class UnauthorizedError extends Error {
@@ -112,38 +122,74 @@ export const api = {
 	taskClaims: (projectId: string) => get<TaskClaim[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/tasks/claims`),
 
 	// --- Code Registry ---
-	registryEntries: (projectId: string) => get<RegistryEntry[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries`),
+	registryConfig: (projectId: string) => get<RegistryConfig>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/config`),
+	saveRegistryConfig: (projectId: string, cfg: RegistryConfig) =>
+		send<RegistryConfig>('PUT', `/api/v2/projects/${encodeURIComponent(projectId)}/registry/config`, cfg),
+	registryTaxonomy: (projectId: string) =>
+		get<RegistryTaxonomy>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/taxonomy`),
+	saveRegistryTaxonomy: (projectId: string, tax: RegistryTaxonomy) =>
+		send<RegistryTaxonomy>('PUT', `/api/v2/projects/${encodeURIComponent(projectId)}/registry/taxonomy`, tax),
 	registryEntry: (projectId: string, entryId: string) =>
 		get<RegistryEntry>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries/${encodeURIComponent(entryId)}`),
 	registrySource: (projectId: string, entryId: string) =>
 		get<{ content: string }>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries/${encodeURIComponent(entryId)}/source`),
+	registrySourceHistory: (projectId: string, entryId: string) =>
+		get<RegistryFileRevision[]>(
+			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries/${encodeURIComponent(entryId)}/source/history`,
+		),
+	registrySourceAtRevision: (projectId: string, entryId: string, ref: string) =>
+		get<{ content: string }>(
+			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries/${encodeURIComponent(entryId)}/source/at?ref=${encodeURIComponent(ref)}`,
+		),
 	registryHealth: (projectId: string) =>
-		get<RegistryCoverageReport>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/health`),
+		get<RegistryHealthReport>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/health`),
+	registryStats: (projectId: string) => get<RegistryStats>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/stats`),
+	registryPending: (projectId: string) =>
+		get<RegistryPendingFile[]>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/pending`),
 	registryScan: (projectId: string) =>
 		send<RegistryEntry[]>('POST', `/api/v2/projects/${encodeURIComponent(projectId)}/registry/scan`),
-	registrySearch: (projectId: string, query: string) =>
-		get<RegistrySearchResult[]>(
-			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/search?query=${encodeURIComponent(query)}`,
+	registryGitStatus: (projectId: string) =>
+		get<RegistryGitCorrelation>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/git`),
+	registryGraph: (projectId: string) =>
+		get<RegistryGraphWithIssues>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/graph`),
+	registryEntryGraph: (projectId: string, entryId: string, depth = 2, limit = 150) =>
+		get<RegistryGraph>(
+			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries/${encodeURIComponent(entryId)}/graph?depth=${depth}&limit=${limit}`,
 		),
-	registryContext: (projectId: string, entryId: string) =>
-		get<RegistryContextPack>(
-			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/context?entry_id=${encodeURIComponent(entryId)}`,
+	registryEntries: (projectId: string, q: RegistrySearchQuery = {}) =>
+		get<RegistrySearchPage>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries?${searchQueryString(q)}`),
+	registrySearch: (projectId: string, q: RegistrySearchQuery) =>
+		get<RegistrySearchPage>(`/api/v2/projects/${encodeURIComponent(projectId)}/registry/search?${searchQueryString(q)}`),
+	registryReviewQueue: (projectId: string, limit = 50, offset = 0) =>
+		get<RegistrySearchPage>(
+			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/review-queue?limit=${limit}&offset=${offset}`,
 		),
-	reviewRegistryEntry: (
-		projectId: string,
-		entryId: string,
-		input: {
-			module: string
-			description: string
-			responsibilities: string[]
-			criticality: string
-			relations_confirmed: string[]
-			relations_probable: string[]
-		},
-	) =>
+	reviewRegistryEntry: (projectId: string, entryId: string, input: RegistryReviewInput) =>
 		send<RegistryEntry>(
 			'POST',
 			`/api/v2/projects/${encodeURIComponent(projectId)}/registry/entries/${encodeURIComponent(entryId)}/review`,
 			input,
 		),
 }
+
+function searchQueryString(q: RegistrySearchQuery): string {
+	const params = new URLSearchParams()
+	if (q.query) params.set('query', q.query)
+	if (q.category) params.set('category', q.category)
+	if (q.module) params.set('module', q.module)
+	if (q.area) params.set('area', q.area)
+	if (q.language) params.set('language', q.language)
+	if (q.role) params.set('role', q.role)
+	if (q.review_status) params.set('review_status', q.review_status)
+	if (q.criticality) params.set('criticality', q.criticality)
+	if (q.kind) params.set('kind', q.kind)
+	if (q.hash) params.set('hash', q.hash)
+	if (q.semantic) params.set('semantic', 'true')
+	if (q.limit) params.set('limit', String(q.limit))
+	if (q.offset) params.set('offset', String(q.offset))
+	return params.toString()
+}
+
+// Re-exported so views that only need the score/reasons shape don't have to
+// import RegistrySearchResult separately from RegistrySearchPage.
+export type { RegistrySearchResult }

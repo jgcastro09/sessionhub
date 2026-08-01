@@ -51,7 +51,7 @@ type dataMsg struct {
 	git             *gitstate.State
 	taskCards       []tasks.Card
 	registryEntries []registry.Entry
-	registryHealth  registry.CoverageReport
+	registryHealth  registry.HealthReport
 	err             error
 }
 
@@ -326,7 +326,7 @@ type Model struct {
 	git                 *gitstate.State
 	taskCards           []tasks.Card
 	registryEntries     []registry.Entry
-	registryHealth      registry.CoverageReport
+	registryHealth      registry.HealthReport
 	taskFilterQuery     string
 	registryFilterQuery string
 	// registrySemanticResults, when non-nil, is the last "m" (meaning
@@ -494,7 +494,7 @@ func (m Model) reload() tea.Cmd {
 		var gitState *gitstate.State
 		var taskCards []tasks.Card
 		var registryEntries []registry.Entry
-		var registryHealth registry.CoverageReport
+		var registryHealth registry.HealthReport
 		if projectID == "" && len(projects) > 0 {
 			projectID = projects[0].ID
 		}
@@ -518,7 +518,7 @@ func (m Model) reload() tea.Cmd {
 			// the whole reload.
 			taskCards, _ = application.Tasks.List(projectID, tasks.Filter{})
 			registryEntries, _ = application.Registry.List(projectID, false)
-			registryHealth, _ = application.Registry.Validate(projectID)
+			registryHealth, _ = application.Registry.Health(projectID)
 		}
 		return dataMsg{
 			projects: projects, executors: executors, instances: instances,
@@ -3262,7 +3262,7 @@ func (m Model) emptyContent(width, height int) string {
 		if len(m.registryHealth.MissingPaths) > 0 {
 			coverage = fmt.Sprintf("%d file(s) missing an entry", len(m.registryHealth.MissingPaths))
 		}
-		body.WriteString(mutedStyle.Render(fmt.Sprintf("Coverage: %s  •  pending review: %d", coverage, len(m.registryHealth.StaleHashes))) + "\n\n")
+		body.WriteString(mutedStyle.Render(fmt.Sprintf("Coverage: %s  •  pending review: %d", coverage, len(m.registryHealth.StaleReviews))) + "\n\n")
 		list := m.filteredRegistryEntries()
 		switch {
 		case m.registrySemanticPending:
@@ -3280,8 +3280,8 @@ func (m Model) emptyContent(width, height int) string {
 				if i == m.selected {
 					prefix, style = "› ", sideActiveStyle
 				}
-				reviewed := "unreviewed"
-				if entry.Reviewed {
+				reviewed := "needs review"
+				if entry.ReviewStatus == registry.ReviewReviewed {
 					reviewed = "reviewed"
 				}
 				body.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, style.Render(entry.Path), mutedStyle.Render("["+reviewed+"]")))
@@ -3808,17 +3808,23 @@ func taskDetailsForm(card tasks.Card) formModel {
 
 func registryDetailsForm(entry registry.Entry) formModel {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Language: %s   Category: %s   Lines: %d\n", entry.Language, entry.Category, entry.Lines)
+	fmt.Fprintf(&b, "Language: %s   Category: %s   Lines: %d\n", entry.Language, entry.Category, entry.LineCount)
 	if entry.Module != "" {
 		fmt.Fprintf(&b, "Module: %s\n", entry.Module)
 	}
 	if entry.Description != "" {
 		fmt.Fprintf(&b, "\n%s\n", entry.Description)
 	}
-	if len(entry.Symbols) > 0 {
-		fmt.Fprintf(&b, "\nSymbols: %s\n", strings.Join(entry.Symbols, ", "))
+	var symbolNames []string
+	for _, refs := range entry.Symbols {
+		for _, ref := range refs {
+			symbolNames = append(symbolNames, ref.Name)
+		}
 	}
-	if !entry.Reviewed {
+	if len(symbolNames) > 0 {
+		fmt.Fprintf(&b, "\nSymbols: %s\n", strings.Join(symbolNames, ", "))
+	}
+	if entry.ReviewStatus != registry.ReviewReviewed {
 		b.WriteString("\n(not yet reviewed — use the Web Panel to add a description and relations)\n")
 	}
 	return formModel{kind: automationDetailsView, title: entry.Path, details: b.String()}

@@ -8,35 +8,57 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-// discovered is one file found by scan, before it is reconciled against
-// stored records.
+// discovered is one eligible file found by scan, before it is reconciled
+// against stored records. It carries every automatically-derived fact about
+// the file — Area/Role are deliberately not here, since those depend on the
+// entry's (human-owned) Description via taxonomy text-term matching and are
+// computed downstream, after merging, in service.go.
 type discovered struct {
-	RelPath  string
-	Hash     string
-	Size     int64
-	Lines    int
-	Language string
-	Category string
-	Symbols  []string
+	RelPath   string
+	Filename  string
+	Extension string
+	Language  string
+	Kind      Kind
+	Category  string
+	Module    string
+
+	Symbols      map[string][]SymbolRef
+	Includes     []string
+	Imports      []string
+	Exports      []string
+	Dependencies []string
+
+	Hash           string
+	SizeBytes      int64
+	LineCount      int
+	LastModifiedAt time.Time
 }
 
-// scan walks every configured root under project root, applying containment
-// (project.ResolvePath-equivalent symlink safety), default exclusions,
-// Config.Exclude/Include globs, the extension allowlist, the size limit, and
-// a text-content sniff for files with an unrecognized extension. Root must
-// already be an absolute, symlink-resolved project root.
-func scan(root string, cfg Config) ([]discovered, error) {
+// scanResult is the full output of one filesystem walk: eligible files plus
+// text-looking files that failed the eligibility whitelist (the Pending
+// Classification queue).
+type scanResult struct {
+	Files   []discovered
+	Pending []PendingFile
+}
+
+// scan walks every configured root under project root, applying symlink
+// containment, the declarative exclusion rules (directories are pruned
+// entirely, never descended into), the eligibility whitelist, and the size
+// cap. Root must already be an absolute, symlink-resolved project root.
+func scan(root string, cfg Config) (scanResult, error) {
 	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return nil, err
+		return scanResult{}, err
 	}
 	seen := map[string]bool{}
-	var out []discovered
+	var result scanResult
 	for _, r := range cfg.roots() {
 		start := filepath.Join(resolvedRoot, filepath.Clean(r))
-		err := filepath.WalkDir(start, func(path string, d fs.DirEntry, err error) error {
+		walkErr := filepath.WalkDir(start, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				if os.IsNotExist(err) {
 					return nil
@@ -50,8 +72,9 @@ func scan(root string, cfg Config) ([]discovered, error) {
 			if rel == "." {
 				return nil
 			}
+			rel = filepath.ToSlash(rel)
 			if d.IsDir() {
-				if isExcludedDir(d.Name()) {
+				if cfg.Eligibility.ExcludedDir(d.Name()) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -70,14 +93,7 @@ func scan(root string, cfg Config) ([]discovered, error) {
 			if seen[rel] {
 				return nil
 			}
-			if len(cfg.Exclude) > 0 && matchesAny(cfg.Exclude, rel) {
-				return nil
-			}
-			if len(cfg.Include) > 0 && !matchesAny(cfg.Include, rel) {
-				return nil
-			}
-			ext := strings.ToLower(filepath.Ext(rel))
-			if !cfg.allowsExtension(ext) {
+			if cfg.Eligibility.ExcludedPath(rel) {
 				return nil
 			}
 			info, statErr := d.Info()
@@ -87,7 +103,13 @@ func scan(root string, cfg Config) ([]discovered, error) {
 			if info.Size() > cfg.maxFileBytes() {
 				return nil
 			}
-			entry, ok, readErr := inspectFile(path, rel, cfg)
+			if !cfg.Eligibility.Eligible(rel) {
+				if pending, ok := inspectPending(path, rel, info); ok {
+					result.Pending = append(result.Pending, pending)
+				}
+				return nil
+			}
+			entry, ok, readErr := inspectFile(path, rel, cfg, info)
 			if readErr != nil {
 				return readErr
 			}
@@ -95,38 +117,66 @@ func scan(root string, cfg Config) ([]discovered, error) {
 				return nil
 			}
 			seen[rel] = true
-			out = append(out, entry)
+			result.Files = append(result.Files, entry)
 			return nil
 		})
-		if err != nil {
-			return nil, err
+		if walkErr != nil {
+			return scanResult{}, walkErr
 		}
 	}
-	return out, nil
+	return result, nil
 }
 
-func inspectFile(absPath, relPath string, cfg Config) (discovered, bool, error) {
+// inspectPending sniffs a file that failed the eligibility whitelist to
+// decide whether it belongs in the Pending Classification queue (looks like
+// text, unrecognized type — a human should decide) or should be silently
+// skipped (looks binary — never worth surfacing). This sniff is purely a UX
+// signal: eligibility itself is decided entirely by the declarative
+// whitelist in policy.go, never by content.
+func inspectPending(absPath, relPath string, info fs.FileInfo) (PendingFile, bool) {
+	if info.Size() == 0 {
+		return PendingFile{}, false
+	}
+	f, err := os.Open(absPath)
+	if err != nil {
+		return PendingFile{}, false
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	if bytes.IndexByte(buf[:n], 0) >= 0 {
+		return PendingFile{}, false // looks binary
+	}
+	return PendingFile{
+		Path:        relPath,
+		Extension:   strings.ToLower(filepath.Ext(relPath)),
+		SizeBytes:   info.Size(),
+		DetectedAt:  time.Now().UTC(),
+		SuggestedBy: "text content, extension not on the eligibility whitelist",
+	}, true
+}
+
+func inspectFile(absPath, relPath string, cfg Config, info fs.FileInfo) (discovered, bool, error) {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return discovered{}, false, err
 	}
-	ext := strings.ToLower(filepath.Ext(relPath))
-	_, knownExt := languageByExt[ext]
-	sniffLen := len(data)
-	if sniffLen > 512 {
-		sniffLen = 512
-	}
-	if !knownExt && !buildFileNames[filepath.Base(relPath)] && bytes.IndexByte(data[:sniffLen], 0) >= 0 {
-		return discovered{}, false, nil // looks binary and isn't a recognized source extension
-	}
-
-	hash := sha256.Sum256(data)
-	language, category := classify(relPath, cfg.Categories)
+	language := languageForPath(relPath)
+	category, kind := cfg.Classification.Classify(relPath)
+	module := moduleForPath(relPath, cfg.ModuleOverrides)
 	symbols := detectSymbols(string(data), language)
+	includes, imports, exports := extractDependencies(string(data), language)
+	hash := sha256.Sum256(data)
+	lineCount := bytes.Count(data, []byte("\n")) + boolToInt(len(data) > 0 && data[len(data)-1] != '\n')
 	return discovered{
-		RelPath: relPath, Hash: hex.EncodeToString(hash[:]), Size: int64(len(data)),
-		Lines:    bytes.Count(data, []byte("\n")) + boolToInt(len(data) > 0 && data[len(data)-1] != '\n'),
-		Language: language, Category: category, Symbols: symbols,
+		RelPath: relPath, Filename: filepath.Base(relPath), Extension: strings.ToLower(filepath.Ext(relPath)),
+		Language: language, Kind: kind, Category: category, Module: module,
+		Symbols: symbols, Includes: includes, Imports: imports, Exports: exports,
+		Dependencies:   union(includes, imports),
+		Hash:           hex.EncodeToString(hash[:]),
+		SizeBytes:      int64(len(data)),
+		LineCount:      lineCount,
+		LastModifiedAt: info.ModTime().UTC(),
 	}, true, nil
 }
 
